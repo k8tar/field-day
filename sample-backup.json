@@ -1,0 +1,47 @@
+{
+  "exportDate": "2025-07-10T16:30:00.000Z",
+  "stationCallsign": "K8TAR",
+  "stationDesignator": "PHONE 1",
+  "stationClass": "1A",
+  "stationSection": "MI",
+  "operators": [
+    "K8TAR",
+    "K8RDM",
+    "W8ABC"
+  ],
+  "qsos": [
+    {
+      "id": 1,
+      "call": "W1TEST",
+      "class": "1A",
+      "section": "CT",
+      "datetime": "2025-07-10T15:49:14",
+      "band": "40m",
+      "mode": "PH",
+      "operator": "K8RDM",
+      "stationDesignator": "PHONE 1"
+    },
+    {
+      "id": 2,
+      "call": "K2TEST",
+      "class": "2A",
+      "section": "NY",
+      "datetime": "2025-07-10T15:52:56",
+      "band": "20m",
+      "mode": "CW",
+      "operator": "K8RDM",
+      "stationDesignator": "PHONE 1"
+    },
+    {
+      "id": 3,
+      "call": "N3TEST",
+      "class": "3A",
+      "section": "PA",
+      "datetime": "2025-07-10T16:14:11",
+      "band": "15m",
+      "mode": "DIG",
+      "operator": "K8TAR",
+      "stationDesignator": "DIGI 1"
+    }
+  ]
+}

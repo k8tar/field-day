@@ -1,0 +1,105 @@
+<template>
+  <div class="station-info">
+    <div class="station-details">
+      <div class="info-item">
+        <div class="info-value">{{ stationCallsign || "Not Set" }}</div>
+      </div>
+      <div class="info-item">
+        <div class="info-value">{{ stationClass || "Not Set" }}</div>
+      </div>
+      <div class="info-item">
+        <div class="info-value">{{ stationSection || "Not Set" }}</div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { ref, onMounted, onBeforeUnmount } from 'vue';
+
+const stationCallsign = ref(localStorage.getItem('stationCallsign') || '');
+const stationClass = ref(localStorage.getItem('stationClass') || '');
+const stationSection = ref(localStorage.getItem('stationSection') || '');
+
+// Function to refresh data from localStorage
+const refreshData = () => {
+  stationCallsign.value = localStorage.getItem('stationCallsign') || '';
+  stationClass.value = localStorage.getItem('stationClass') || '';
+  stationSection.value = localStorage.getItem('stationSection') || '';
+};
+
+// Function to handle storage changes
+const handleStorageChange = (e: StorageEvent) => {
+  if (e.key === 'stationCallsign') {
+    stationCallsign.value = e.newValue || '';
+  } else if (e.key === 'stationClass') {
+    stationClass.value = e.newValue || '';
+  } else if (e.key === 'stationSection') {
+    stationSection.value = e.newValue || '';
+  }
+};
+
+// Custom event handler for same-window localStorage changes
+const handleCustomUpdate = (e: CustomEvent) => {
+  refreshData();
+};
+
+// Add event listeners
+onMounted(() => {
+  window.addEventListener('storage', handleStorageChange);
+  window.addEventListener('stationInfoUpdate', handleCustomUpdate as EventListener);
+  
+  // Initial load
+  refreshData();
+});
+
+// Clean up the event listeners
+onBeforeUnmount(() => {
+  window.removeEventListener('storage', handleStorageChange);
+  window.removeEventListener('stationInfoUpdate', handleCustomUpdate as EventListener);
+});
+</script>
+
+<style lang="scss" scoped>
+@use '@/assets/styles/global.scss';
+.station-info {
+  background-color: var(--form-bg);
+  border: 1px solid var(--border-color); /* Back to original border */
+  border-radius: 4px; /* Back to original radius */
+  padding: 0.5rem; /* Back to original padding */
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1); /* Back to original shadow */
+  transition: background-color 0.3s ease, border-color 0.3s ease;
+}
+
+.station-details {
+  display: flex;
+  flex-wrap: nowrap; /* Prevent wrapping */
+  gap: 0.75rem; /* Back to original gap */
+  justify-content: space-between; /* Back to original justification */
+  width: 100%;
+  overflow-x: auto; /* Add horizontal scrolling if needed */
+}
+
+.info-item {
+  display: flex;
+  flex-direction: column;
+  min-width: 0; /* Allow items to shrink below content size */
+  flex-shrink: 1; /* Allow items to shrink */
+}
+
+.info-label {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  margin-bottom: 0.2rem;
+  white-space: nowrap;
+}
+
+.info-value {
+  font-weight: 700; /* Bolder font weight */
+  color: var(--text-color);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 1.1rem; /* Increased font size for more prominence */
+}
+</style>
