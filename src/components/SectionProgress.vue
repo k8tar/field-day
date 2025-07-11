@@ -68,13 +68,13 @@ defineEmits(['open-section-map']);
 // ARRL Divisions and their sections (compact version) - ordered by division numbers
 const arrlDivisions = {
   'Rocky Mountain (0)': {
-    sections: ['CO', 'NM', 'NV', 'UT', 'WY']
+    sections: ['CO', 'NM', 'UT', 'WY']
   },
   'New England (1)': {
     sections: ['CT', 'EMA', 'ME', 'NH', 'RI', 'VT', 'WMA']
   },
   'Hudson (2)': {
-    sections: ['ENY', 'NNY', 'NYC', 'WNY']
+    sections: ['ENY', 'NNY', 'WNY']
   },
   'Atlantic (3)': {
     sections: ['EPA', 'MDC', 'NLI', 'NNJ', 'SNJ', 'WPA']
@@ -83,19 +83,22 @@ const arrlDivisions = {
     sections: ['AL', 'AR', 'LA', 'MS', 'TN']
   },
   'Southeastern (4)': {
-    sections: ['FL', 'GA', 'NC', 'NFL', 'SC', 'SFL', 'VI', 'WCF']
+    sections: ['AL', 'GA', 'NFL', 'SFL']
+  },
+  'Roanoke (4)': {
+    sections: ['NC', 'SC', 'VA', 'WV']
   },
   'Midwest (5)': {
     sections: ['IA', 'KS', 'MO', 'NE']
   },
   'Southwestern (5)': {
-    sections: ['AZ', 'TX']
+    sections: ['AZ', 'NV']
   },
   'West Gulf (5)': {
-    sections: ['NTX', 'OK', 'STX']
+    sections: ['NTX', 'OK', 'STX', 'WTX']
   },
   'Pacific (6)': {
-    sections: ['EB', 'LAX', 'ORG', 'SB', 'SC', 'SCV', 'SDG', 'SF', 'SJV', 'SV']
+    sections: ['EB', 'LAX', 'ORG', 'SB', 'SCV', 'SDG', 'SF', 'SJV', 'SV']
   },
   'Northwestern (7)': {
     sections: ['AK', 'EWA', 'ID', 'MT', 'OR', 'WWA']

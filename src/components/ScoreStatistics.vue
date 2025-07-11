@@ -2,7 +2,7 @@
 <template>
   <div class="score-statistics">
     <div class="stats-header">
-      <h2>Score Statistics</h2>
+      <h2>Score Statistics - {{ qsos.length }} Contacts, {{ totalScore }} Points</h2>
       <button class="bonus-button" @click="showBonusModal = true" title="Field Day Bonuses">
         <span class="material-icons">star</span>
         Bonuses
@@ -10,14 +10,6 @@
     </div>
     <div class="stats-content">
       <div class="stats-grid">
-        <div class="stat-item total-score">
-          <label>Total Score:</label>
-          <span class="stat-value total-value">{{ totalScore }}</span>
-        </div>
-        <div class="stat-item">
-          <label>Total QSOs:</label>
-          <span class="stat-value">{{ qsos.length }}</span>
-        </div>
         <div class="stat-item">
           <label>Total QSO Points:</label>
           <span class="stat-value">{{ totalQsoPoints }}</span>

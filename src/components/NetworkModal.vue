@@ -133,11 +133,11 @@
             >
               <div class="station-info">
                 <div class="station-header">
-                  <span class="station-callsign">{{ station.callsign }}</span>
-                  <span class="station-designator">{{ station.designator }}</span>
+                  <span class="station-designator-main">{{ station.designator }}</span>
+                  <span class="station-callsign-sub">{{ station.callsign }}</span>
                 </div>
                 <div class="station-details">
-                  <span class="station-ip">{{ station.ip }}</span>
+                  <span class="station-ip">{{ station.ip }}:{{ station.port }}</span>
                   <span class="station-qsos">{{ station.qsoCount }} QSOs</span>
                   <span class="station-score">{{ station.score }} pts</span>
                 </div>
@@ -245,6 +245,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import { networkService, type NetworkStation } from '@/services/networkService';
+import { fileStorage } from '@/services/fileStorage';
 
 interface StationInfo {
   id: string;
@@ -279,24 +280,68 @@ const autoReconnect = ref(false);
 const isUploading = ref(false);
 const uploadStatus = ref<{ type: 'success' | 'error'; message: string } | null>(null);
 
-// Get local QSO count
-const localQsoCount = computed(() => {
+// Get local QSO count - reactive property that will be updated
+const localQsoCount = ref(0);
+
+// Function to update QSO count from file storage
+async function updateLocalQsoCount() {
   try {
-    const qsosJson = localStorage.getItem('qsos');
-    if (qsosJson) {
-      const qsos = JSON.parse(qsosJson);
-      return qsos.length;
-    }
+    const qsos = await fileStorage.getQsoData();
+    localQsoCount.value = qsos.length;
   } catch (error) {
-    console.error('Error reading local QSOs:', error);
+    console.error('Error reading QSOs from file storage:', error);
+    // Initialize with zero instead of localStorage fallback
+    localQsoCount.value = 0;
   }
-  return 0;
+}
+
+// Station information - reactive to config changes
+const localStationInfo = ref({
+  callsign: '',
+  designator: '1A'
 });
 
-// Station information
-const localStationInfo = ref({
-  callsign: localStorage.getItem('stationCallsign') || '',
-  designator: localStorage.getItem('stationDesignator') || '1A'
+// Function to refresh station info from file storage
+async function refreshStationInfo() {
+  try {
+    const stationConfig = await fileStorage.getStationConfig();
+    localStationInfo.value.callsign = stationConfig.callsign || '';
+    localStationInfo.value.designator = stationConfig.designator || '1A';
+  } catch (error) {
+    console.error('Error loading station config from file storage:', error);
+    // Initialize with defaults instead of localStorage fallback
+    localStationInfo.value.callsign = '';
+    localStationInfo.value.designator = '1A';
+  }
+}
+
+// Watch for changes to station info and save to file storage
+watch(() => localStationInfo.value.callsign, async (newCallsign) => {
+  try {
+    const currentConfig = await fileStorage.getStationConfig();
+    if (newCallsign !== currentConfig.callsign) {
+      await fileStorage.saveStationConfig({ callsign: newCallsign });
+      
+      // Trigger update event for other components
+      window.dispatchEvent(new CustomEvent('stationInfoUpdate'));
+    }
+  } catch (error) {
+    console.error('Failed to save callsign to file storage:', error);
+  }
+});
+
+watch(() => localStationInfo.value.designator, async (newDesignator) => {
+  try {
+    const currentConfig = await fileStorage.getStationConfig();
+    if (newDesignator !== currentConfig.designator) {
+      await fileStorage.saveStationConfig({ designator: newDesignator });
+      
+      // Trigger update event for other components
+      window.dispatchEvent(new CustomEvent('stationInfoUpdate'));
+    }
+  } catch (error) {
+    console.error('Failed to save designator to file storage:', error);
+  }
 });
 
 // Connected and discovered stations - use network service
@@ -337,6 +382,9 @@ function onNetworkModeChange() {
   if (networkMode.value === 'auto') {
     scanForStations();
   }
+  
+  // Save the network mode change
+  saveNetworkSettings();
 }
 
 async function scanForStations() {
@@ -372,6 +420,8 @@ async function startConnection() {
     // Connect to host using network service
     await networkService.connectToHost(hostAddress.value);
   }
+  
+  // Settings are automatically saved by the network service methods above
 }
 
 function disconnect() {
@@ -404,12 +454,11 @@ async function uploadLocalQsos() {
   try {
     console.log(`📤 Manually uploading ${localQsoCount.value} local QSOs to file storage...`);
     
-    const qsosJson = localStorage.getItem('qsos');
-    if (!qsosJson) {
-      throw new Error('No QSOs found in localStorage');
+    // Get QSOs from file storage
+    const qsos = await fileStorage.getQsoData();
+    if (qsos.length === 0) {
+      throw new Error('No QSOs found in file storage');
     }
-    
-    const qsos = JSON.parse(qsosJson);
     
     const response = await fetch('/api/qsos/bulk', {
       method: 'POST',
@@ -455,7 +504,7 @@ async function uploadLocalQsos() {
 }
 
 // Auto-scan on mount if in auto mode
-onMounted(() => {
+onMounted(async () => {
   // Detect local IP (mock)
   localIP.value = '192.168.1.100';
   
@@ -463,10 +512,80 @@ onMounted(() => {
   const settings = networkService.getNetworkSettings();
   autoReconnect.value = settings.autoReconnect;
   
-  if (networkMode.value === 'auto') {
+  // Load saved network settings into UI
+  const currentMode = networkService.getCurrentNetworkMode();
+  networkMode.value = currentMode;
+  
+  if (currentMode === 'host') {
+    hostPort.value = networkService.getHostPort();
+  } else if (currentMode === 'join') {
+    hostAddress.value = networkService.getHostAddress();
+  }
+  
+  console.log('📡 Loaded network settings into UI:', {
+    mode: networkMode.value,
+    autoReconnect: autoReconnect.value,
+    hostPort: hostPort.value,
+    hostAddress: hostAddress.value,
+    isConnected: networkService.status.isConnected
+  });
+  
+  // Load initial data from file storage
+  await refreshStationInfo();
+  await updateLocalQsoCount();
+  
+  // Listen for station info updates from config modal
+  window.addEventListener('stationInfoUpdate', refreshStationInfo);
+  
+  // Only auto-scan if in auto mode and not already connected
+  if (networkMode.value === 'auto' && !networkService.status.isConnected) {
     scanForStations();
   }
 });
+
+// Clean up event listeners on unmount
+onUnmounted(() => {
+  window.removeEventListener('stationInfoUpdate', refreshStationInfo);
+});
+
+// Watch for changes to persist settings
+watch(hostPort, (newPort) => {
+  if (networkMode.value === 'host') {
+    saveNetworkSettings();
+  }
+});
+
+watch(hostAddress, (newAddress) => {
+  if (networkMode.value === 'join') {
+    saveNetworkSettings();
+  }
+});
+
+// Save network settings to persistence
+async function saveNetworkSettings() {
+  try {
+    // Update network service with current UI state
+    networkService.setAutoReconnect(autoReconnect.value);
+    
+    // Update network mode and related settings
+    if (networkMode.value === 'host') {
+      networkService.updateNetworkMode('host', { hostPort: hostPort.value });
+    } else if (networkMode.value === 'join' && hostAddress.value) {
+      networkService.updateNetworkMode('join', { hostAddress: hostAddress.value });
+    } else {
+      networkService.updateNetworkMode('auto');
+    }
+    
+    console.log('💾 Network settings saved via UI:', {
+      mode: networkMode.value,
+      autoReconnect: autoReconnect.value,
+      hostPort: hostPort.value,
+      hostAddress: hostAddress.value
+    });
+  } catch (error) {
+    console.error('❌ Failed to save network settings:', error);
+  }
+}
 </script>
 
 <style lang="scss" scoped>
@@ -644,9 +763,17 @@ onMounted(() => {
   margin-bottom: 0.25rem;
 }
 
-.station-callsign {
+.station-designator-main {
   font-weight: 600;
-  font-size: 1rem;
+  font-size: 1.1rem;
+  color: var(--primary-color);
+}
+
+.station-callsign-sub {
+  font-size: 0.85rem;
+  color: var(--text-color);
+  opacity: 0.8;
+  margin-left: 0.5rem;
 }
 
 .station-designator {

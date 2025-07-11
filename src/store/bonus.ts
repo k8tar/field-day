@@ -1,4 +1,5 @@
 import { ref, watch } from 'vue';
+import { fileStorage } from '@/services/fileStorage';
 
 export interface Bonus {
   id: string;
@@ -84,22 +85,34 @@ const defaultBonuses: Bonus[] = [
   }
 ];
 
-// Load bonuses from localStorage or use defaults
-const loadBonuses = (): Bonus[] => {
-  const stored = localStorage.getItem(BONUS_STORAGE_KEY);
-  if (stored) {
-    const parsedBonuses = JSON.parse(stored);
-    // Merge with defaults to add any new bonuses
-    const mergedBonuses = defaultBonuses.map(defaultBonus => {
-      const storedBonus = parsedBonuses.find((b: Bonus) => b.id === defaultBonus.id);
-      return storedBonus ? { ...defaultBonus, completed: storedBonus.completed } : defaultBonus;
-    });
-    return mergedBonuses;
+// Load bonuses from file storage or use defaults
+const loadBonuses = async (): Promise<Bonus[]> => {
+  try {
+    const stored = await fileStorage.getBonuses();
+    if (stored && stored.length > 0) {
+      // Merge with defaults to add any new bonuses
+      const mergedBonuses = defaultBonuses.map(defaultBonus => {
+        const storedBonus = stored.find((b: Bonus) => b.id === defaultBonus.id);
+        return storedBonus ? { ...defaultBonus, completed: storedBonus.completed } : defaultBonus;
+      });
+      return mergedBonuses;
+    }
+  } catch (error) {
+    console.error('Failed to load bonuses from file storage:', error);
   }
+  
   return defaultBonuses;
 };
 
-export const bonuses = ref<Bonus[]>(loadBonuses());
+export const bonuses = ref<Bonus[]>(defaultBonuses);
+
+// Initialize bonuses from file storage
+async function initializeBonuses() {
+  bonuses.value = await loadBonuses();
+}
+
+// Call initialization immediately
+initializeBonuses();
 
 export function toggleBonus(bonusId: string) {
   const bonus = bonuses.value.find(b => b.id === bonusId);
@@ -116,8 +129,12 @@ export function resetAllBonuses() {
   // No need to call saveBonuses() manually since we have a watcher
 }
 
-function saveBonuses() {
-  localStorage.setItem(BONUS_STORAGE_KEY, JSON.stringify(bonuses.value));
+async function saveBonuses() {
+  try {
+    await fileStorage.saveBonuses(bonuses.value);
+  } catch (error) {
+    console.error('Failed to save bonuses to file storage:', error);
+  }
 }
 
 // Watch for changes and save automatically

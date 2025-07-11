@@ -1,29 +1,32 @@
 import { ref, watch } from 'vue';
 
+// Check if fileStorage is available (only in browser with app loaded)
+declare global {
+  interface Window {
+    fileStorage?: any;
+  }
+}
+
 // Initialize theme preference
 let darkModePreference = false;
 
-// Function to safely check localStorage and system preference
-function getInitialTheme(): boolean {
+// Function to safely check theme storage
+async function getInitialTheme(): Promise<boolean> {
   if (typeof window === 'undefined') return false;
   
-  // Check new key first
-  const newTheme = localStorage.getItem('theme');
-  if (newTheme !== null) {
-    return newTheme === 'dark';
+  try {
+    // Try to get theme from file storage first
+    if (window.fileStorage && typeof window.fileStorage.getSettings === 'function') {
+      const settings = await window.fileStorage.getSettings();
+      if (settings.theme !== undefined) {
+        return settings.theme === 'dark';
+      }
+    }
+  } catch (error) {
+    console.warn('Failed to load theme from file storage:', error);
   }
   
-  // Check for legacy keys and migrate
-  const legacyDarkMode = localStorage.getItem('darkMode');
-  if (legacyDarkMode !== null) {
-    const isLegacyDark = legacyDarkMode === 'true';
-    // Migrate to new key
-    localStorage.setItem('theme', isLegacyDark ? 'dark' : 'light');
-    localStorage.removeItem('darkMode'); // Clean up old key
-    return isLegacyDark;
-  }
-  
-  // Default to system preference
+  // Fall back to system preference if no stored preference
   if (window.matchMedia) {
     return window.matchMedia('(prefers-color-scheme: dark)').matches;
   }
@@ -31,8 +34,29 @@ function getInitialTheme(): boolean {
   return false;
 }
 
+// Function to save theme
+async function saveTheme(isDarkMode: boolean): Promise<void> {
+  try {
+    if (window.fileStorage && typeof window.fileStorage.saveSettings === 'function') {
+      const currentSettings = await window.fileStorage.getSettings();
+      await window.fileStorage.saveSettings({
+        ...currentSettings,
+        theme: isDarkMode ? 'dark' : 'light'
+      });
+    }
+  } catch (error) {
+    console.error('Failed to save theme to file storage:', error);
+  }
+}
+
 // Initialize reactive state
-const isDark = ref(getInitialTheme());
+const isDark = ref(false);
+
+// Initialize theme asynchronously
+getInitialTheme().then(initialTheme => {
+  isDark.value = initialTheme;
+  applyTheme(isDark.value);
+});
 
 // Function to apply theme to DOM
 function applyTheme(isDarkMode: boolean) {
@@ -49,16 +73,11 @@ function applyTheme(isDarkMode: boolean) {
 
 // Apply initial theme
 applyTheme(isDark.value);
-if (typeof localStorage !== 'undefined') {
-  localStorage.setItem('theme', isDark.value ? 'dark' : 'light');
-}
 
 // Watch for changes to isDark and apply them
 watch(isDark, (newValue) => {
   applyTheme(newValue);
-  if (typeof localStorage !== 'undefined') {
-    localStorage.setItem('theme', newValue ? 'dark' : 'light');
-  }
+  saveTheme(newValue);
   console.log('Theme changed to:', newValue ? 'dark' : 'light');
 }, { immediate: false });
 

@@ -255,6 +255,7 @@
 import { ref, watch, onMounted, computed } from 'vue';
 import { qsos, type QSO } from '@/store/qso';
 import { validateArrlSection, normalizeArrlSection, validateArrlClass, normalizeArrlClass } from '@/constants/arrl-sections';
+import { fileStorage } from '@/services/fileStorage';
 
 const props = defineProps<{
   isOpen: boolean;
@@ -292,17 +293,26 @@ const importPreview = ref<any>(null);
 const replaceExistingData = ref(false);
 
 // Load settings on component mount
-onMounted(() => {
-  stationCallsign.value = localStorage.getItem('stationCallsign') || '';
-  stationDesignator.value = localStorage.getItem('stationDesignator') || '';
-  stationClass.value = localStorage.getItem('stationClass') || '';
-  stationSection.value = localStorage.getItem('stationSection') || '';
-  
-  const savedOperators = localStorage.getItem('operators');
-  if (savedOperators) {
-    operators.value = JSON.parse(savedOperators);
-  } else {
-    operators.value = ['K8TAR', 'W1AW'];
+onMounted(async () => {
+  try {
+    // Load station config from file storage
+    const stationConfig = await fileStorage.getStationConfig();
+    stationCallsign.value = stationConfig.callsign || '';
+    stationDesignator.value = stationConfig.designator || '';
+    stationClass.value = stationConfig.stationClass || '';
+    stationSection.value = stationConfig.stationSection || '';
+
+    // Load operators from file storage
+    const savedOperators = await fileStorage.getOperators();
+    operators.value = savedOperators.length > 0 ? savedOperators : [];
+  } catch (error) {
+    console.error('Failed to load configuration from file storage:', error);
+    // Initialize with defaults instead of localStorage fallback
+    stationCallsign.value = '';
+    stationDesignator.value = '';
+    stationClass.value = '';
+    stationSection.value = '';
+    operators.value = [];
   }
 });
 
@@ -323,7 +333,7 @@ function removeOperator(index: number) {
   operators.value.splice(index, 1);
 }
 
-function saveConfig() {
+async function saveConfig() {
   // Validate section before saving
   if (stationSection.value && !validateArrlSection(stationSection.value)) {
     console.error('Invalid station section provided:', stationSection.value);
@@ -344,11 +354,23 @@ function saveConfig() {
   const normalizedClass = stationClass.value ? 
     normalizeArrlClass(stationClass.value) : '';
   
-  localStorage.setItem('stationCallsign', stationCallsign.value);
-  localStorage.setItem('stationDesignator', stationDesignator.value);
-  localStorage.setItem('stationClass', normalizedClass || '');
-  localStorage.setItem('stationSection', normalizedSection || '');
-  localStorage.setItem('operators', JSON.stringify(operators.value));
+  try {
+    // Save station config to file storage
+    await fileStorage.saveStationConfig({
+      callsign: stationCallsign.value,
+      designator: stationDesignator.value,
+      stationClass: normalizedClass || '',
+      stationSection: normalizedSection || ''
+    });
+
+    // Save operators to file storage
+    await fileStorage.saveOperators(operators.value);
+
+    console.log('✅ Station configuration saved to file storage');
+  } catch (error) {
+    console.error('Failed to save configuration to file storage:', error);
+    throw error; // Re-throw to handle in UI
+  }
   
   // Trigger custom event to update StationInfo and other components
   window.dispatchEvent(new CustomEvent('stationInfoUpdate'));
@@ -365,7 +387,7 @@ function hideResetConfirmModal() {
   showResetModal.value = false;
 }
 
-function confirmResetLog() {
+async function confirmResetLog() {
   // Clear all data - QSOs, station config, and operators
   qsos.value = [];
   stationCallsign.value = '';
@@ -374,13 +396,22 @@ function confirmResetLog() {
   stationSection.value = '';
   operators.value = [];
   
-  // Clear localStorage
-  localStorage.setItem('qsos', JSON.stringify([]));
-  localStorage.removeItem('stationCallsign');
-  localStorage.removeItem('stationDesignator');
-  localStorage.removeItem('stationClass');
-  localStorage.removeItem('stationSection');
-  localStorage.removeItem('operators');
+  try {
+    // Clear file storage
+    await fileStorage.saveQsoData([]);
+    await fileStorage.saveStationConfig({
+      callsign: '',
+      designator: '',
+      stationClass: '',
+      stationSection: ''
+    });
+    await fileStorage.saveOperators([]);
+    
+    console.log('✅ All data cleared from file storage');
+  } catch (error) {
+    console.error('Failed to clear file storage:', error);
+    throw error; // Re-throw to handle in UI
+  }
   
   // Hide the modal
   hideResetConfirmModal();
@@ -397,10 +428,18 @@ function hideWipeQsosModal() {
   showWipeQsosModal.value = false;
 }
 
-function confirmWipeQsos() {
+async function confirmWipeQsos() {
   // Clear only the QSOs, preserve station config and operators
   qsos.value = [];
-  localStorage.setItem('qsos', JSON.stringify([]));
+  
+  try {
+    // Clear QSOs in file storage
+    await fileStorage.saveQsoData([]);
+    console.log('✅ QSOs cleared from file storage');
+  } catch (error) {
+    console.error('Failed to clear QSOs in file storage:', error);
+    throw error; // Re-throw to handle in UI
+  }
   
   // Hide the modal
   hideWipeQsosModal();
@@ -415,17 +454,27 @@ function close() {
 }
 
 // Watch for changes to isOpen prop to reset form data when opened
-watch(() => props.isOpen, (newValue) => {
+watch(() => props.isOpen, async (newValue) => {
   if (newValue) {
-    // Reload settings when modal is opened
-    stationCallsign.value = localStorage.getItem('stationCallsign') || '';
-    stationDesignator.value = localStorage.getItem('stationDesignator') || '';
-    stationClass.value = localStorage.getItem('stationClass') || '';
-    stationSection.value = localStorage.getItem('stationSection') || '';
-    
-    const savedOperators = localStorage.getItem('operators');
-    if (savedOperators) {
-      operators.value = JSON.parse(savedOperators);
+    try {
+      // Reload settings from file storage when modal is opened
+      const stationConfig = await fileStorage.getStationConfig();
+      stationCallsign.value = stationConfig.callsign || '';
+      stationDesignator.value = stationConfig.designator || '';
+      stationClass.value = stationConfig.stationClass || '';
+      stationSection.value = stationConfig.stationSection || '';
+
+      // Load operators from file storage
+      const savedOperators = await fileStorage.getOperators();
+      operators.value = savedOperators;
+    } catch (error) {
+      console.error('Failed to reload configuration from file storage:', error);
+      // Initialize with defaults instead of localStorage fallback
+      stationCallsign.value = '';
+      stationDesignator.value = '';
+      stationClass.value = '';
+      stationSection.value = '';
+      operators.value = [];
     }
   }
 });
@@ -551,7 +600,7 @@ function parseJsonFile(content: string) {
   }
 }
 
-function confirmJsonImport() {
+async function confirmJsonImport() {
   if (!importPreview.value) return;
   
   if (replaceExistingData.value) {
@@ -600,18 +649,28 @@ function confirmJsonImport() {
     }
   }
   
-  // Save all data to localStorage
+  // Normalize data before saving
   const normalizedSection = stationSection.value ? 
     normalizeArrlSection(stationSection.value) : '';
   const normalizedClass = stationClass.value ? 
     normalizeArrlClass(stationClass.value) : '';
   
-  localStorage.setItem('stationCallsign', stationCallsign.value);
-  localStorage.setItem('stationDesignator', stationDesignator.value);
-  localStorage.setItem('stationClass', normalizedClass || '');
-  localStorage.setItem('stationSection', normalizedSection || '');
-  localStorage.setItem('operators', JSON.stringify(operators.value));
-  localStorage.setItem('qsos', JSON.stringify(qsos.value));
+  try {
+    // Save all data to file storage
+    await fileStorage.saveStationConfig({
+      callsign: stationCallsign.value,
+      designator: stationDesignator.value,
+      stationClass: normalizedClass || '',
+      stationSection: normalizedSection || ''
+    });
+    await fileStorage.saveOperators(operators.value);
+    await fileStorage.saveQsoData(qsos.value);
+
+    console.log('✅ Imported data saved to file storage');
+  } catch (error) {
+    console.error('Failed to save imported data to file storage:', error);
+    throw error; // Re-throw to handle in UI
+  }
   
   // Reset import state
   cancelImport();

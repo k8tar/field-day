@@ -1,5 +1,6 @@
 import { ref, watch } from 'vue';
 import { networkService } from '@/services/networkService';
+import { fileStorage } from '@/services/fileStorage';
 
 export interface QSO {
   id?: number;      // Auto-assigned unique ID
@@ -17,18 +18,67 @@ export interface QSO {
 const QSO_STORAGE_KEY = 'qsos';
 const SETTINGS_KEY = 'qso_settings';
 
-export const qsos = ref<QSO[]>(JSON.parse(localStorage.getItem(QSO_STORAGE_KEY) || '[]'));
+// Initialize QSOs from file storage
+export const qsos = ref<QSO[]>([]);
 
-// Ensure all existing QSOs have timestamps (migration for existing data)
-qsos.value.forEach(qso => {
-  if (!qso.timestamp) {
-    qso.timestamp = new Date(qso.datetime).getTime();
+// Load QSOs from file storage on initialization
+async function initializeQsos() {
+  try {
+    const savedQsos = await fileStorage.getQsoData();
+    qsos.value = savedQsos;
+    
+    // Ensure all QSOs have timestamps (migration for existing data)
+    qsos.value.forEach(qso => {
+      if (!qso.timestamp) {
+        qso.timestamp = new Date(qso.datetime).getTime();
+      }
+    });
+    
+    console.log(`📚 Loaded ${qsos.value.length} QSOs from file storage`);
+  } catch (error) {
+    console.error('❌ Failed to load QSOs from file storage:', error);
+    qsos.value = []; // Start with empty array if file storage fails
   }
-});
+}
 
-export const band = ref(localStorage.getItem(SETTINGS_KEY + '_band') || '');
-export const operator = ref(localStorage.getItem(SETTINGS_KEY + '_operator') || '');
-export const mode = ref(localStorage.getItem(SETTINGS_KEY + '_mode') || 'PH');
+// Initialize immediately
+initializeQsos();
+
+export const band = ref('40m');
+export const operator = ref('');
+export const mode = ref('PH');
+
+// Function to load settings from file storage
+async function loadSettings() {
+  try {
+    const settings = await fileStorage.getSettings();
+    band.value = settings.band || '40m';
+    operator.value = settings.operator || '';
+    mode.value = settings.mode || 'PH';
+  } catch (error) {
+    console.error('Failed to load settings from file storage:', error);
+    // Use defaults if file storage fails
+    band.value = '40m';
+    operator.value = '';
+    mode.value = 'PH';
+  }
+}
+
+// Function to save settings to file storage
+async function saveSettings() {
+  try {
+    await fileStorage.saveSettings({
+      band: band.value,
+      operator: operator.value,
+      mode: mode.value
+    });
+  } catch (error) {
+    console.error('Failed to save settings to file storage:', error);
+  }
+}
+
+// Initialize settings
+loadSettings();
 
 // Upload local QSOs to server (for network discovery/sync)
 async function uploadLocalQsosToServer(force = false): Promise<boolean> {
@@ -55,7 +105,15 @@ async function uploadLocalQsosToServer(force = false): Promise<boolean> {
       console.log(`✅ Successfully uploaded to file storage: ${result.added} new QSOs added, ${result.total} total on server`);
       
       // Mark as uploaded to avoid repeated uploads
-      localStorage.setItem('qsos_uploaded_to_server', 'true');
+      try {
+        const currentSettings = await fileStorage.getSettings();
+        await fileStorage.saveSettings({
+          ...currentSettings,
+          qsosUploadedToServer: true
+        });
+      } catch (settingsError) {
+        console.warn('Failed to save upload flag to file storage:', settingsError);
+      }
       return true;
     } else {
       console.error('❌ Failed to upload QSOs to server:', response.status, response.statusText);
@@ -70,18 +128,47 @@ async function uploadLocalQsosToServer(force = false): Promise<boolean> {
 // Force upload all QSOs (manual trigger)
 export async function forceUploadAllQsos(): Promise<boolean> {
   console.log('🔄 Force uploading all QSOs to server file storage...');
-  localStorage.removeItem('qsos_uploaded_to_server'); // Remove upload flag
+  try {
+    // Clear upload flag from file storage
+    const currentSettings = await fileStorage.getSettings();
+    await fileStorage.saveSettings({
+      ...currentSettings,
+      qsosUploadedToServer: false
+    });
+  } catch (error) {
+    console.warn('Failed to clear upload flag in file storage:', error);
+  }
   return await uploadLocalQsosToServer(true);
 }
 
 // Auto-upload QSOs when page loads (with delay to ensure server is ready)
 setTimeout(async () => {
-  const wasUploaded = localStorage.getItem('qsos_uploaded_to_server');
-  if (!wasUploaded || qsos.value.length > 0) {
+  try {
+    const settings = await fileStorage.getSettings();
+    const wasUploaded = settings.qsosUploadedToServer;
+    if (!wasUploaded || qsos.value.length > 0) {
+      console.log('🚀 Auto-uploading local QSOs to server on page load...');
+      await uploadLocalQsosToServer();
+    }
+  } catch (error) {
+    console.warn('Failed to check upload status from file storage:', error);
+    // Default to upload if we can't check the status
     console.log('🚀 Auto-uploading local QSOs to server on page load...');
     await uploadLocalQsosToServer();
   }
 }, 1000); // 1 second delay
+
+// Register for network QSO updates
+networkService.onQsoUpdate((update) => {
+  console.log('📡 Received network QSO update:', update);
+  handleNetworkQsoUpdate(update);
+});
+
+// Auto-start sync functionality
+if (typeof window !== 'undefined') {
+  console.log('🌐 Starting automatic QSO sync...');
+  // The network service and API server will handle automatic syncing
+}
 
 // Set up network QSO synchronization
 networkService.onQsoUpdate((update) => {
@@ -158,7 +245,7 @@ function addNetworkQso(networkQso: any) {
       const index = qsos.value.findIndex(q => q.id === existingQso.id);
       if (index >= 0) {
         qsos.value[index] = { ...networkQso };
-        localStorage.setItem(QSO_STORAGE_KEY, JSON.stringify(qsos.value));
+        saveQsos(); // Use file storage
         console.log('Replaced with older network QSO:', networkQso.call);
       }
       return;
@@ -168,7 +255,7 @@ function addNetworkQso(networkQso: any) {
   // No duplicate found, add the QSO
   qsos.value.push(networkQso);
   qsos.value.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0)); // Sort by timestamp
-  localStorage.setItem(QSO_STORAGE_KEY, JSON.stringify(qsos.value));
+  saveQsos(); // Use file storage
   console.log('Added network QSO:', networkQso.call);
 }
 
@@ -179,7 +266,7 @@ function updateNetworkQso(networkQso: any) {
     const existingQso = qsos.value[index];
     if ((networkQso.timestamp || 0) >= (existingQso.timestamp || 0)) {
       qsos.value[index] = { ...networkQso };
-      localStorage.setItem(QSO_STORAGE_KEY, JSON.stringify(qsos.value));
+      saveQsos(); // Use file storage
       console.log('Updated network QSO:', networkQso);
     }
   }
@@ -189,20 +276,32 @@ function deleteNetworkQso(qsoId: number) {
   const index = qsos.value.findIndex(qso => qso.id === qsoId);
   if (index >= 0) {
     qsos.value.splice(index, 1);
-    localStorage.setItem(QSO_STORAGE_KEY, JSON.stringify(qsos.value));
+    saveQsos(); // Use file storage
     console.log('Deleted network QSO:', qsoId);
   }
 }
 
-function getLocalStationId(): string {
-  const callsign = localStorage.getItem('stationCallsign') || 'UNKNOWN';
-  const designator = localStorage.getItem('stationDesignator') || '1A';
-  return `${callsign}-${designator}`;
+async function getLocalStationId(): Promise<string> {
+  try {
+    const stationConfig = await fileStorage.getStationConfig();
+    const callsign = stationConfig.callsign || 'UNKNOWN';
+    const designator = stationConfig.designator || '1A';
+    return `${callsign}-${designator}`;
+  } catch (error) {
+    console.error('Failed to get station config from file storage:', error);
+    return 'UNKNOWN-1A';
+  }
 }
 
-export function logQso(qso: any) {
-  // Include the station designator from localStorage
-  const stationDesignator = localStorage.getItem('stationDesignator') || '';
+export async function logQso(qso: any) {
+  // Include the station designator from file storage
+  let stationDesignator = '';
+  try {
+    const stationConfig = await fileStorage.getStationConfig();
+    stationDesignator = stationConfig.designator || '';
+  } catch (error) {
+    console.error('Failed to get station designator from file storage:', error);
+  }
   
   // Generate a unique ID for the QSO
   const lastId = qsos.value.length > 0 ? 
@@ -219,13 +318,15 @@ export function logQso(qso: any) {
   };
   
   qsos.value.push(newQso);
-  localStorage.setItem(QSO_STORAGE_KEY, JSON.stringify(qsos.value));
+  saveQsos(); // Use file storage
   
   // Upload new QSO to local server for sharing
   uploadSingleQsoToServer(newQso);
   
   // Broadcast QSO to network if connected
-  networkService.broadcastQsoUpdate(newQso, 'add');
+  networkService.broadcastQsoUpdate(newQso, 'add').catch(error => {
+    console.error('Failed to broadcast QSO update:', error);
+  });
 }
 
 // Upload a single QSO to the server
@@ -249,6 +350,16 @@ async function uploadSingleQsoToServer(qso: any): Promise<void> {
   }
 }
 
+// Centralized save function using file storage
+async function saveQsos(): Promise<void> {
+  try {
+    await fileStorage.saveQsoData(qsos.value);
+    console.log(`💾 Saved ${qsos.value.length} QSOs to file storage`);
+  } catch (error) {
+    console.error('❌ Failed to save QSOs to file storage:', error);
+  }
+}
+
 // Add these fully implemented functions
 export function deleteQso(id: number) {
   console.log('Deleting QSO with ID:', id);
@@ -262,12 +373,14 @@ export function deleteQso(id: number) {
   // Update the reactive reference
   qsos.value = updatedQsos;
   
-  // Update localStorage
-  localStorage.setItem(QSO_STORAGE_KEY, JSON.stringify(qsos.value));
+  // Update file storage
+  saveQsos(); // Use file storage
   
   // Broadcast deletion to network if connected and QSO was found
   if (deletedQso) {
-    networkService.broadcastQsoUpdate(deletedQso, 'delete');
+    networkService.broadcastQsoUpdate(deletedQso, 'delete').catch(error => {
+      console.error('Failed to broadcast QSO deletion:', error);
+    });
   }
   
   console.log('QSO deleted, new count:', qsos.value.length);
@@ -293,11 +406,13 @@ export function updateQso(id: number, updatedQso: QSO) {
     // Update the reactive reference
     qsos.value = newQsos;
     
-    // Save to localStorage
-    localStorage.setItem(QSO_STORAGE_KEY, JSON.stringify(qsos.value));
+    // Save to file storage
+    saveQsos(); // Use file storage
     
     // Broadcast update to network if connected
-    networkService.broadcastQsoUpdate(updated, 'update');
+    networkService.broadcastQsoUpdate(updated, 'update').catch(error => {
+      console.error('Failed to broadcast QSO update:', error);
+    });
     
     console.log('QSO updated:', updated);
   } else {
@@ -342,6 +457,6 @@ export function getSectionOrder(section: string): number {
   return 500; // Everything else in the middle
 }
 
-watch(band, (val) => localStorage.setItem(SETTINGS_KEY + '_band', val));
-watch(operator, (val) => localStorage.setItem(SETTINGS_KEY + '_operator', val));
-watch(mode, (val) => localStorage.setItem(SETTINGS_KEY + '_mode', val));
+watch(band, () => saveSettings());
+watch(operator, () => saveSettings());
+watch(mode, () => saveSettings());

@@ -3,9 +3,15 @@ import App from './App.vue'
 import router from './router'
 import store from './store'
 import { setupStationInfoAPI } from './api/stationInfo'
+import { networkService } from './services/networkService'
 
 // Setup station info API for network discovery
 setupStationInfoAPI();
+
+// Expose networkService globally for debugging
+if (typeof window !== 'undefined') {
+  (window as any).networkService = networkService;
+}
 
 // If you need to access Electron's ipcRenderer, do so via preload.js and window.electron
 const ipcRenderer = window?.Electron?.ipcRenderer;

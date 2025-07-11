@@ -5,6 +5,9 @@ node_modules
 # Shared QSO storage file (development only)
 shared-qsos.json
 
+# Field Day data storage (port-specific directories)
+fieldday-data/
+
 # local env files
 .env.local
 .env.*.local

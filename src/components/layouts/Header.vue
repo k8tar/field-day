@@ -75,9 +75,10 @@ import { isDark, toggleTheme } from '@/store/theme';
 import ConfigModal from '@/components/ConfigModal.vue';
 import NetworkModal from '@/components/NetworkModal.vue';
 import { networkService } from '@/services/networkService';
+import { fileStorage } from '@/services/fileStorage';
 
 // Station designator
-const stationDesignator = ref(localStorage.getItem('stationDesignator') || '');
+const stationDesignator = ref('');
 
 // Mode selection
 const currentMode = ref(storeMode.value || 'PH');
@@ -95,7 +96,7 @@ watch(storeMode, (val) => {
 
 // Band selection
 const bands = ['160m', '80m', '40m', '20m', '15m', '10m', '6m', '2m'];
-const selectedBand = ref(storeBand.value || '');
+const selectedBand = ref(storeBand.value || '40m');
 
 function updateBand() {
   storeBand.value = selectedBand.value;
@@ -119,23 +120,30 @@ watch(storeOperator, (val) => {
   selectedOperator.value = val;
 });
 
-// Load operators from localStorage
-function loadOperators() {
-  const savedOperators = localStorage.getItem('operators');
-  if (savedOperators) {
-    try {
-      const parsed = JSON.parse(savedOperators);
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        operators.value = parsed;
-        // Update selected operator if it's not in the new list
-        if (!operators.value.includes(selectedOperator.value)) {
-          selectedOperator.value = operators.value[0];
-          updateOperator();
-        }
+// Load operators from file storage
+async function loadOperators() {
+  try {
+    const savedOperators = await fileStorage.getOperators();
+    if (savedOperators && savedOperators.length > 0) {
+      operators.value = savedOperators;
+      // Update selected operator if it's not in the new list
+      if (!operators.value.includes(selectedOperator.value)) {
+        selectedOperator.value = operators.value[0];
+        updateOperator();
       }
-    } catch (error) {
-      console.error('Error loading operators:', error);
     }
+  } catch (error) {
+    console.error('Error loading operators:', error);
+  }
+}
+
+// Load station information from file storage
+async function loadStationInfo() {
+  try {
+    const config = await fileStorage.getStationConfig();
+    stationDesignator.value = config.designator || '';
+  } catch (error) {
+    console.error('Error loading station info:', error);
   }
 }
 
@@ -173,25 +181,38 @@ function handleNetworkClose() {
   networkModalOpen.value = false;
 }
 
-// Check for first-time setup
-function checkFirstTimeSetup() {
-  const hasConfig = localStorage.getItem('stationCallsign') || 
-                   localStorage.getItem('stationDesignator') ||
-                   localStorage.getItem('operators');
-  const hasQsos = localStorage.getItem('qsos');
-  
-  if (!hasConfig && !hasQsos) {
+// Check for first-time setup using file storage
+async function checkFirstTimeSetup() {
+  try {
+    const config = await fileStorage.getStationConfig();
+    const qsos = await fileStorage.getQsoData();
+    const operators = await fileStorage.getOperators();
+    
+    // Check if we have any configuration or data
+    const hasConfig = config.callsign !== 'K8TAR' || 
+                     config.designator !== 'PHONE 1' || 
+                     operators.length > 0;
+    const hasQsos = qsos.length > 0;
+    
+    if (!hasConfig && !hasQsos) {
+      isFirstTime.value = true;
+      configOpen.value = true;
+    }
+  } catch (error) {
+    console.error('Failed to check first-time setup:', error);
+    // If we can't check, assume first-time setup
     isFirstTime.value = true;
     configOpen.value = true;
   }
 }
 
-onMounted(() => {
+onMounted(async () => {
   // Load operators and station info
-  loadOperators();
+  await loadOperators();
+  await loadStationInfo();
   
   // Check for first-time setup
-  checkFirstTimeSetup();
+  await checkFirstTimeSetup();
 });
 </script>
 
