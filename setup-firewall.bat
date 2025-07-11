@@ -11,9 +11,9 @@ echo This script will open Windows Firewall port for Field Day Logger instances
 echo to communicate with each other on the local network.
 echo.
 echo Port to be opened:
-echo - 8080 (TCP) - All Field Day instances (hardcoded)
+echo - 8080 (TCP) - All Field Day instances (hardcoded, HTTPS enabled)
 echo.
-echo Note: All Field Day instances now use port 8080 exclusively.
+echo Note: All Field Day instances now use port 8080 exclusively with HTTPS.
 echo Multiple stations should run on different machines/IP addresses.
 echo.
 
@@ -60,21 +60,23 @@ echo.
 echo Field Day Logger is now configured to communicate on port 8080.
 echo.
 echo Summary:
-echo ✓ Inbound TCP port 8080 - Allow Field Day Logger connections
-echo ✓ Outbound TCP port 8080 - Allow Field Day Logger connections
+echo ✓ Inbound TCP port 8080 - Allow Field Day Logger connections (HTTPS)
+echo ✓ Outbound TCP port 8080 - Allow Field Day Logger connections (HTTPS)
 echo.
 echo Next steps:
 echo 1. Start Field Day Logger: npm run dev
-echo 2. The app will automatically use port 8080
+echo 2. The app will automatically use port 8080 with HTTPS
 echo 3. Other stations can discover this instance automatically
 echo 4. Use Network Modal to see connected stations
+echo 5. Accept browser security warnings for self-signed certificates
 echo.
 echo For multiple stations:
 echo - Run each instance on a different machine
-echo - All will use port 8080 (hardcoded)
+echo - All will use port 8080 with HTTPS (hardcoded)
 echo - Use "Auto" mode for automatic discovery
 echo - Use "Host" mode on main logging station
 echo - Use "Join" mode on additional stations
+echo - You may need to accept security warnings in browsers
 echo.
 
 echo Press any key to exit...

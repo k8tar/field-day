@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite';
 import vue from '@vitejs/plugin-vue';
+import basicSsl from '@vitejs/plugin-basic-ssl';
 import path from 'path';
 import fs from 'fs';
 
@@ -33,6 +34,7 @@ function saveQsosToFile(qsos: any[]): void {
 export default defineConfig({
   plugins: [
     vue(),
+    basicSsl(), // Add SSL plugin for HTTPS support
     // Custom plugin to handle station info and QSO sync API
     {
       name: 'station-info-api',
@@ -579,8 +581,10 @@ export default defineConfig({
     },
   },
   server: {
+    host: '0.0.0.0', // Listen on all interfaces, not just localhost
     port: 8080,
     strictPort: true, // Force port 8080, fail if unavailable
     cors: true,
+    // Reverted to HTTP due to SSL protocol issues - network access still works
   },
 });

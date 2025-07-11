@@ -219,12 +219,23 @@
           <button 
             v-if="!isConnected" 
             class="connect-button primary" 
-            @click="startConnection"
-            :disabled="!canConnect"
+            @click.stop="startConnection"
+            :disabled="!canConnect || isConnecting"
+            type="button"
           >
-            <span class="material-icons">{{ networkMode === 'host' ? 'router' : 'wifi' }}</span>
-            {{ networkMode === 'host' ? 'Start Hosting' : 'Connect' }}
+            <span v-if="isConnecting" class="material-icons spinning">hourglass_empty</span>
+            <span v-else class="material-icons">{{ networkMode === 'host' ? 'router' : 'wifi' }}</span>
+            {{ isConnecting ? 'Connecting...' : (networkMode === 'host' ? 'Start Hosting' : 'Connect') }}
           </button>
+          
+          <!-- Connection Status Display -->
+          <div v-if="connectionStatus" class="connection-status" :class="{ 
+            'status-error': connectionStatus.includes('failed') || connectionStatus.includes('error'),
+            'status-success': connectionStatus.includes('success'),
+            'status-progress': connectionStatus.includes('Connecting') || connectionStatus.includes('Starting')
+          }">
+            {{ connectionStatus }}
+          </div>
           <button 
             v-if="isConnected" 
             class="disconnect-button" 
@@ -359,7 +370,7 @@ const conflictsResolved = computed(() => networkService.status.conflictsResolved
 // Computed properties
 const canConnect = computed(() => {
   if (networkMode.value === 'host') {
-    return hostPort.value >= 1024 && hostPort.value <= 65535;
+    return true; // Always true since port 8080 is hardcoded and valid
   } else if (networkMode.value === 'join') {
     return hostAddress.value.trim().length > 0;
   } else {
@@ -412,16 +423,75 @@ function connectToStation(station: NetworkStation) {
   }
 }
 
+// Connection status for user feedback
+const connectionStatus = ref<string>('');
+const isConnecting = ref(false);
+
 async function startConnection() {
-  if (networkMode.value === 'host') {
-    // Start hosting using network service
-    await networkService.startHost(); // Port 8080 is hardcoded
-  } else if (networkMode.value === 'join') {
-    // Connect to host using network service
-    await networkService.connectToHost(hostAddress.value);
+  console.log('🔗 startConnection called, mode:', networkMode.value);
+  console.log('🔗 canConnect:', canConnect.value);
+  console.log('🔗 hostPort:', hostPort.value);
+  console.log('🔗 hostAddress:', hostAddress.value);
+  
+  // Prevent double-clicks
+  if (isConnecting.value) {
+    console.log('⏳ Connection already in progress, ignoring click');
+    return;
   }
   
-  // Settings are automatically saved by the network service methods above
+  isConnecting.value = true;
+  connectionStatus.value = 'Connecting...';
+  
+  try {
+    if (networkMode.value === 'host') {
+      console.log('🏠 Starting host mode...');
+      connectionStatus.value = 'Starting host on port 8080...';
+      
+      const success = await networkService.startHost(); // Port 8080 is hardcoded
+      
+      if (success) {
+        console.log('✅ Host started successfully');
+        connectionStatus.value = 'Host started successfully!';
+        
+        // Clear status after 3 seconds
+        setTimeout(() => {
+          connectionStatus.value = '';
+        }, 3000);
+      } else {
+        throw new Error('Failed to start host - port may be in use');
+      }
+    } else if (networkMode.value === 'join') {
+      console.log('🔗 Joining host at:', hostAddress.value);
+      connectionStatus.value = `Connecting to ${hostAddress.value}...`;
+      
+      const success = await networkService.connectToHost(hostAddress.value);
+      
+      if (success) {
+        console.log('✅ Connected to host successfully');
+        connectionStatus.value = 'Connected successfully!';
+        
+        // Clear status after 3 seconds
+        setTimeout(() => {
+          connectionStatus.value = '';
+        }, 3000);
+      } else {
+        throw new Error(`Failed to connect to ${hostAddress.value}`);
+      }
+    }
+    
+    // Settings are automatically saved by the network service methods above
+    console.log('🔗 Connection process completed');
+  } catch (error) {
+    console.error('❌ Connection failed:', error);
+    connectionStatus.value = `Connection failed: ${error instanceof Error ? error.message : 'Unknown error'}`;
+    
+    // Clear error after 10 seconds
+    setTimeout(() => {
+      connectionStatus.value = '';
+    }, 10000);
+  } finally {
+    isConnecting.value = false;
+  }
 }
 
 function disconnect() {
@@ -923,5 +993,45 @@ async function saveNetworkSettings() {
   border-radius: 3px;
   font-family: 'Consolas', monospace;
   font-size: 0.85rem;
+}
+
+/* Connection Status */
+.connection-status {
+  margin-top: 0.5rem;
+  padding: 0.75rem;
+  border-radius: 4px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  text-align: center;
+  border: 1px solid;
+  transition: all 0.3s ease;
+}
+
+.connection-status.status-progress {
+  background-color: #fef3c7;
+  border-color: #f59e0b;
+  color: #92400e;
+}
+
+.connection-status.status-success {
+  background-color: #d1fae5;
+  border-color: #22c55e;
+  color: #15803d;
+}
+
+.connection-status.status-error {
+  background-color: #fee2e2;
+  border-color: #ef4444;
+  color: #dc2626;
+}
+
+/* Spinning animation for connecting state */
+.spinning {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 </style>

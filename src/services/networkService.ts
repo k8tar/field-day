@@ -201,7 +201,7 @@ class NetworkService {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 1000); // Increased timeout
       
-      const response = await fetch(`http://${ip}:${port}/api/station-info`, {
+      const response = await fetch(`https://${ip}:${port}/api/station-info`, {
         method: 'GET',
         signal: controller.signal,
         headers: {
@@ -374,7 +374,7 @@ class NetworkService {
             for (const station of this.connectedStations) {
               try {
                 console.log(`🔍 Fetching QSO count from ${station.callsign}-${station.designator} at ${station.ip}:${station.port}`);
-                const qsoResponse = await fetch(`http://${station.ip}:${station.port}/api/station-info`);
+                const qsoResponse = await fetch(`https://${station.ip}:${station.port}/api/station-info`);
                 if (qsoResponse.ok) {
                   const stationInfo = await qsoResponse.json();
                   console.log(`📊 Station ${station.callsign}-${station.designator} reports: ${stationInfo.qsoCount} QSOs, ${stationInfo.score} pts`);
@@ -427,7 +427,7 @@ class NetworkService {
             return total + (qso.mode === 'CW' || qso.mode === 'DIG' ? 2 : 1);
           }, 0);
           
-          await fetch(`http://${ip}:${port}/api/network/heartbeat`, {
+          await fetch(`https://${ip}:${port}/api/network/heartbeat`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json'
@@ -457,7 +457,7 @@ class NetworkService {
           const hostStation = this.connectedStations[0]; // Should be the host
           
           // Get updated host stats
-          const response = await fetch(`http://${ip}:${port}/api/station-info`);
+          const response = await fetch(`https://${ip}:${port}/api/station-info`);
           if (response.ok) {
             const stationInfo = await response.json();
             hostStation.qsoCount = stationInfo.qsoCount || 0;
@@ -545,7 +545,7 @@ class NetworkService {
       };
       
       // Register with the host
-      const registerResponse = await fetch(`http://${ip}:${port}/api/network/register`, {
+      const registerResponse = await fetch(`https://${ip}:${port}/api/network/register`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -648,7 +648,7 @@ class NetworkService {
     
     for (const station of this.connectedStations) {
       try {
-        const response = await fetch(`http://${station.ip}:${station.port}/api/qsos?since=${this.status.lastSync}`, {
+        const response = await fetch(`https://${station.ip}:${station.port}/api/qsos?since=${this.status.lastSync}`, {
           timeout: 5000
         } as any);
         
@@ -731,7 +731,7 @@ class NetworkService {
         
         try {
           // Get QSOs from this station since last sync
-          const response = await fetch(`http://${station.ip}:${station.port}/api/qsos?since=${lastSync}`, {
+          const response = await fetch(`https://${station.ip}:${station.port}/api/qsos?since=${lastSync}`, {
             method: 'GET',
             headers: {
               'Accept': 'application/json'
@@ -977,7 +977,7 @@ class NetworkService {
       try {
         console.log(`📤 Sending QSO ${action} to ${station.callsign}-${station.designator} at ${station.ip}:${station.port}`);
         
-        const response = await fetch(`http://${station.ip}:${station.port}/api/qsos`, {
+        const response = await fetch(`https://${station.ip}:${station.port}/api/qsos`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
@@ -1102,7 +1102,7 @@ class NetworkService {
       console.log(`\n🔍 Testing ${address}:${fieldDayPort}...`);
       
       try {
-        const url = `http://${address}:${fieldDayPort}/api/station-info`;
+        const url = `https://${address}:${fieldDayPort}/api/station-info`;
         console.log(`📡 Fetching: ${url}`);
         
         const controller = new AbortController();
@@ -1173,9 +1173,9 @@ class NetworkService {
     
     // Test different URL formats (both IPv4 and IPv6)
     const urls = [
-      `http://127.0.0.1:${fieldDayPort}/api/station-info`,
-      `http://localhost:${fieldDayPort}/api/station-info`,
-      `http://[::1]:${fieldDayPort}/api/station-info`
+      `https://127.0.0.1:${fieldDayPort}/api/station-info`,
+      `https://localhost:${fieldDayPort}/api/station-info`,
+      `https://[::1]:${fieldDayPort}/api/station-info`
     ];
     
     for (const url of urls) {
