@@ -26,6 +26,11 @@ This directory contains the build pipeline and distribution files for the Field 
    npm run build:installer
    ```
 
+4. **Build Windows installer (requires Administrator privileges):**
+   - See [BUILD-INSTALLER.md](BUILD-INSTALLER.md) for detailed instructions
+   - Use `build-installer-admin.ps1` or `build-installer-admin.bat`
+   - Or run `npm run electron:build` as Administrator
+
 ## Build Scripts
 
 ### Main Build Commands

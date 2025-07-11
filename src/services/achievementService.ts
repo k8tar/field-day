@@ -202,7 +202,7 @@ class AchievementService {
 
         // Get station designator for the announcement
         this.getStationDesignator().then(designator => {
-          this.sendNotification('announcement', `❗ ${designator} just completed out ${divisionName} Division!`);
+          this.sendNotification('announcement', `${designator} just completed out ${divisionName} Division!`);
         });
       }
     });

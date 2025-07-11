@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg width="180" height="40" viewBox="0 0 180 40" xmlns="http://www.w3.org/2000/svg">
+<svg width="120" height="32" viewBox="0 0 120 32" xmlns="http://www.w3.org/2000/svg">
   <defs>
     <linearGradient id="bgGradient" x1="0%" y1="0%" x2="100%" y2="100%">
       <stop offset="0%" style="stop-color:#2563eb;stop-opacity:1" />
@@ -13,40 +13,40 @@
   </defs>
   
   <!-- Background rounded rectangle -->
-  <rect x="2" y="2" width="176" height="36" rx="8" ry="8" fill="url(#bgGradient)" stroke="#1e40af" stroke-width="1"/>
+  <rect x="1" y="1" width="118" height="30" rx="6" ry="6" fill="url(#bgGradient)" stroke="#1e40af" stroke-width="1"/>
   
   <!-- Radio waves (positioned on left side) -->
   <g stroke="url(#waveGradient)" stroke-width="1" fill="none">
-    <circle cx="20" cy="20" r="6" opacity="0.8"/>
-    <circle cx="20" cy="20" r="9" opacity="0.6"/>
-    <circle cx="20" cy="20" r="12" opacity="0.4"/>
+    <circle cx="16" cy="16" r="5" opacity="0.8"/>
+    <circle cx="16" cy="16" r="8" opacity="0.6"/>
+    <circle cx="16" cy="16" r="11" opacity="0.4"/>
   </g>
   
   <!-- Central antenna/tower (left side) -->
   <g fill="#ffffff">
     <!-- Base -->
-    <rect x="18" y="30" width="4" height="2" rx="1"/>
+    <rect x="14" y="24" width="4" height="2" rx="1"/>
     <!-- Main tower -->
-    <rect x="19" y="12" width="2" height="18" rx="0.5"/>
+    <rect x="15" y="8" width="2" height="16" rx="0.5"/>
     <!-- Top element -->
-    <rect x="16" y="10" width="8" height="1" rx="0.5"/>
+    <rect x="12" y="6" width="8" height="1" rx="0.5"/>
     <!-- Cross elements -->
-    <rect x="15" y="18" width="10" height="0.5" rx="0.25"/>
-    <rect x="15" y="24" width="10" height="0.5" rx="0.25"/>
+    <rect x="11" y="13" width="10" height="0.5" rx="0.25"/>
+    <rect x="11" y="19" width="10" height="0.5" rx="0.25"/>
   </g>
   
   <!-- Main Title Text -->
-  <text x="90" y="17" text-anchor="middle" fill="#ffffff" font-family="Arial, sans-serif" font-size="11" font-weight="bold">K8TAR</text>
+  <text x="60" y="14" text-anchor="middle" fill="#ffffff" font-family="Arial, sans-serif" font-size="9" font-weight="bold">K8TAR</text>
   
   <!-- Field Day Text -->
-  <text x="90" y="29" text-anchor="middle" fill="#60a5fa" font-family="Arial, sans-serif" font-size="9" font-weight="600">FIELD DAY</text>
+  <text x="60" y="23" text-anchor="middle" fill="#60a5fa" font-family="Arial, sans-serif" font-size="7" font-weight="600">FIELD DAY</text>
   
   <!-- Right side signal indicator -->
   <g>
-    <circle cx="165" cy="12" r="1.5" fill="#00ff00" opacity="0.8">
+    <circle cx="105" cy="10" r="1.2" fill="#00ff00" opacity="0.8">
       <animate attributeName="opacity" values="0.3;1;0.3" dur="2s" repeatCount="indefinite"/>
     </circle>
-    <circle cx="170" cy="15" r="1" fill="#00ff00" opacity="0.6">
+    <circle cx="109" cy="12" r="0.8" fill="#00ff00" opacity="0.6">
       <animate attributeName="opacity" values="0.2;0.8;0.2" dur="2.5s" repeatCount="indefinite"/>
     </circle>
   </g>

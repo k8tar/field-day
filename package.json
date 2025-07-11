@@ -1,9 +1,14 @@
 {
   "name": "k8tar-fieldday",
   "version": "2.0.0",
+  "description": "Field Day Logger - ARRL Field Day Logging Application",
   "private": true,
   "type": "module",
   "main": "electron-main.js",
+  "author": {
+    "name": "K8TAR",
+    "email": "support@k8tar.com"
+  },
   "scripts": {
     "dev": "vite",
     "build": "vite build",
@@ -20,7 +25,6 @@
     "electron:build": "npm run build && electron-builder"
   },
   "dependencies": {
-    "electron": "^37.2.0",
     "marked": "^16.0.0",
     "node-fetch": "^3.3.2",
     "vue": "^3.2.13",
@@ -28,6 +32,8 @@
     "vuex": "^4.0.0"
   },
   "devDependencies": {
+    "electron": "^37.2.0",
+    "electron-builder": "^26.0.12",
     "@types/chai": "^4.2.15",
     "@types/jest": "^30.0.0",
     "@types/mocha": "^8.2.3",
@@ -53,5 +59,56 @@
     "sass-loader": "^12.0.0",
     "typescript": "~4.5.5",
     "vite": "^7.0.3"
+  },
+  "build": {
+    "appId": "com.k8tar.fieldday",
+    "productName": "Field Day Logger",
+    "directories": {
+      "output": "dist-electron"
+    },
+    "files": [
+      "dist/**/*",
+      "electron-main.js",
+      "src/preload.js",
+      "package.json",
+      "public/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "public",
+        "to": "public"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        },
+        {
+          "target": "portable", 
+          "arch": ["x64"]
+        }
+      ],
+      "publisherName": "K8TAR Amateur Radio",
+      "verifyUpdateCodeSignature": false,
+      "requestedExecutionLevel": "asInvoker"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "allowElevation": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "runAfterFinish": true,
+      "menuCategory": "Amateur Radio",
+      "license": "LICENSE",
+      "installerHeaderIcon": "public/favicon.ico",
+      "installerIcon": "public/favicon.ico",
+      "uninstallerIcon": "public/favicon.ico"
+    },
+    "portable": {
+      "artifactName": "${productName}-${version}-portable.exe"
+    }
   }
 }

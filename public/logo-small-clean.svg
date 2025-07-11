@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="64" height="64" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bgGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#2563eb;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#1d4ed8;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Background circle -->
+  <circle cx="32" cy="32" r="30" fill="url(#bgGradient)" stroke="#1e40af" stroke-width="2"/>
+  
+  <!-- Simple radio waves -->
+  <g stroke="#60a5fa" stroke-width="2" fill="none">
+    <circle cx="32" cy="32" r="14" opacity="0.8"/>
+    <circle cx="32" cy="32" r="20" opacity="0.6"/>
+  </g>
+  
+  <!-- Simple antenna -->
+  <g fill="#ffffff">
+    <!-- Base -->
+    <rect x="30" y="50" width="4" height="3" rx="1"/>
+    <!-- Tower -->
+    <rect x="31" y="25" width="2" height="25" rx="0.5"/>
+    <!-- Top -->
+    <rect x="28" y="23" width="8" height="2" rx="1"/>
+    <!-- Cross -->
+    <rect x="27" y="35" width="10" height="1" rx="0.5"/>
+  </g>
+  
+  <!-- Minimal text -->
+  <text x="32" y="15" text-anchor="middle" fill="#ffffff" font-family="Arial, sans-serif" font-size="8" font-weight="bold">FD</text>
+</svg>

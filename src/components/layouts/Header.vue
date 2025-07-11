@@ -288,9 +288,18 @@ onBeforeUnmount(() => {
   height: 40px;
   width: auto;
   transition: opacity 0.2s ease;
+  max-width: 180px; /* Prevent logo from getting too large on wide screens */
   
   &:hover {
     opacity: 0.8;
+  }
+}
+
+/* Responsive logo - use compact version on smaller screens */
+@media (max-width: 768px) {
+  .app-logo {
+    height: 32px;
+    max-width: 120px;
   }
 }
 

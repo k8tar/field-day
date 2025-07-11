@@ -42,7 +42,40 @@ function createWindow() {
     mainWindow.loadURL('https://localhost:8080');
     mainWindow.webContents.openDevTools();
   } else {
-    mainWindow.loadFile(path.join(__dirname, 'dist/index.html'));
+    // In production, load the built HTML file
+    const indexPath = app.isPackaged 
+      ? path.join(process.resourcesPath, 'dist/index.html')
+      : path.join(__dirname, 'dist/index.html');
+    
+    console.log('Loading from:', indexPath);
+    console.log('App is packaged:', app.isPackaged);
+    console.log('__dirname:', __dirname);
+    console.log('process.resourcesPath:', process.resourcesPath);
+    
+    mainWindow.loadFile(indexPath).catch(err => {
+      console.error('Failed to load index.html:', err);
+      // Fallback: try different paths
+      const fallbackPaths = [
+        path.join(__dirname, 'dist/index.html'),
+        path.join(process.resourcesPath, 'app/dist/index.html'),
+        path.join(__dirname, '../dist/index.html')
+      ];
+      
+      for (const fallbackPath of fallbackPaths) {
+        console.log('Trying fallback path:', fallbackPath);
+        try {
+          mainWindow.loadFile(fallbackPath);
+          break;
+        } catch (fallbackErr) {
+          console.error('Fallback failed:', fallbackPath, fallbackErr);
+        }
+      }
+    });
+    
+    // Enable dev tools in development builds for debugging
+    if (!app.isPackaged) {
+      mainWindow.webContents.openDevTools();
+    }
   }
 }
 
