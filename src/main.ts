@@ -2,12 +2,8 @@ import { createApp } from 'vue'
 import App from './App.vue'
 import router from './router'
 import store from './store'
-import { setupStationInfoAPI } from './api/stationInfo'
 import { networkService } from './services/networkService'
 import { apiServer } from './api/apiServer'
-
-// Setup station info API for network discovery
-setupStationInfoAPI();
 
 // Expose networkService and apiServer globally for debugging
 if (typeof window !== 'undefined') {
