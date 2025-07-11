@@ -66,14 +66,49 @@ class FieldDayApiServer {
   }
 
   private isApiRequest(url: string): boolean {
-    return url.includes('/api/station-info') || 
+    // Only intercept requests to the current host (localhost, 127.0.0.1, or current hostname)
+    // Don't intercept requests to remote stations
+    const currentHost = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
+    const currentPort = typeof window !== 'undefined' ? window.location.port : '8080';
+    
+    // Parse the URL to check if it's for the current host
+    let targetHost = '';
+    let targetPort = '';
+    
+    try {
+      const parsedUrl = new URL(url);
+      targetHost = parsedUrl.hostname;
+      targetPort = parsedUrl.port || '8080';
+    } catch (e) {
+      // If it's a relative URL, it's for the current host
+      if (!url.startsWith('http')) {
+        targetHost = currentHost;
+        targetPort = currentPort;
+      }
+    }
+    
+    // Only intercept if it's for the current host and contains API endpoints
+    const isCurrentHost = targetHost === currentHost || 
+                          targetHost === 'localhost' || 
+                          targetHost === '127.0.0.1' ||
+                          (targetHost === '' && !url.startsWith('http')); // relative URLs
+    
+    const hasApiEndpoint = url.includes('/api/station-info') || 
            url.includes('/api/qsos') || 
            url.includes('/station-info') ||
            url.includes('/api/status') ||
-           url.includes('/mesh/discovery') ||
+           url.includes('/api/mesh/discovery') ||
            url.includes('/api/files/') ||
            url.includes('/debug/config') ||
            url.includes('/debug/network');
+    
+    const shouldIntercept = isCurrentHost && hasApiEndpoint;
+    
+    if (hasApiEndpoint && !isCurrentHost) {
+      console.log(`🌐 Allowing remote API request to ${targetHost}:${targetPort} - NOT intercepting`);
+    }
+    
+    return shouldIntercept;
   }
 
   private async handleApiRequest(url: string, init?: RequestInit): Promise<Response> {
@@ -98,7 +133,7 @@ class FieldDayApiServer {
 
       if (pathname.includes('/station-info') || pathname.includes('/status')) {
         response = await this.handleStationInfo();
-      } else if (pathname.includes('/mesh/discovery')) {
+      } else if (pathname.includes('/api/mesh/discovery')) {
         response = await this.handleMeshDiscovery(init);
       } else if (pathname.includes('/debug/config')) {
         response = await this.handleDebugConfig();
