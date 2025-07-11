@@ -63,12 +63,14 @@ class NetworkService {
     isHost: boolean;
     hostPort: number;
     lastHostAddress?: string;
+    lastNetworkMode?: 'host' | 'join' | 'auto' | 'mesh';
     autoReconnect: boolean;
     lastConnectedStations: NetworkStation[];
   } = {
     isHost: false,
     hostPort: 8080, // Hardcoded to 8080 for all instances
-    autoReconnect: false,
+    lastNetworkMode: 'mesh', // Default to mesh mode
+    autoReconnect: true, // Enable auto-reconnect by default for mesh mode
     lastConnectedStations: []
   };
 
@@ -1020,6 +1022,7 @@ class NetworkService {
     
     console.log('🔄 Checking auto-reconnect...', {
       autoReconnect: this.networkSettings.autoReconnect,
+      lastNetworkMode: this.networkSettings.lastNetworkMode,
       isHost: this.networkSettings.isHost,
       lastHostAddress: this.networkSettings.lastHostAddress,
       hostPort: this.networkSettings.hostPort
@@ -1032,14 +1035,21 @@ class NetworkService {
     
     console.log('🔄 Auto-reconnect enabled, attempting to restore connection...');
     
-    if (this.networkSettings.isHost) {
+    // Check the last network mode first, defaulting to mesh
+    const lastMode = this.networkSettings.lastNetworkMode || 'mesh';
+    
+    if (lastMode === 'mesh') {
+      console.log(`🕸️ Auto-starting mesh network...`);
+      this.startMesh();
+    } else if (this.networkSettings.isHost) {
       console.log(`🏠 Auto-starting host on port 8080 (hardcoded)...`);
       this.startHost();
     } else if (this.networkSettings.lastHostAddress) {
       console.log(`🔗 Auto-connecting to host at ${this.networkSettings.lastHostAddress}...`);
       this.connectToHost(this.networkSettings.lastHostAddress);
     } else {
-      console.log('ℹ️ No previous connection to restore');
+      console.log('🕸️ No previous connection to restore, defaulting to mesh network...');
+      this.startMesh();
     }
   }
 
@@ -1123,6 +1133,9 @@ class NetworkService {
 
   // Public method to update network mode settings
   updateNetworkMode(mode: 'host' | 'join' | 'auto' | 'mesh', options: { hostPort?: number; hostAddress?: string } = {}): void {
+    // Save the last network mode
+    this.networkSettings.lastNetworkMode = mode;
+    
     if (mode === 'host') {
       this.networkSettings.isHost = true;
       this.networkSettings.hostPort = options.hostPort || 8080;
@@ -1646,7 +1659,8 @@ class NetworkService {
     } else if (this.networkSettings.lastHostAddress) {
       return 'join';
     } else {
-      return 'auto';
+      // Return the last saved mode, defaulting to mesh
+      return this.networkSettings.lastNetworkMode || 'mesh';
     }
   }
 
@@ -1669,30 +1683,41 @@ class NetworkService {
     }
 
     try {
-      console.log('🕸️ Starting mesh network...');
+      console.log('🕸️ NetworkService: Starting mesh network...');
+      console.log('🔍 NetworkService: meshNetworkService available:', !!meshNetworkService);
       
       // Stop any existing connections first
+      console.log('🛑 NetworkService: Disconnecting existing connections...');
       this.disconnect();
       
       // Start mesh network
+      console.log('🚀 NetworkService: Calling meshNetworkService.startMesh()...');
       const success = await meshNetworkService.startMesh();
+      console.log('🎯 NetworkService: startMesh result:', success);
       
       if (success) {
+        console.log('✅ NetworkService: Mesh started, updating network status...');
+        
         // Update network status to reflect mesh mode
         this.status.isConnected = true;
         this.status.networkId = `MESH-${meshNetworkService.getMeshStatus().nodeId}`;
         this.status.lastSync = Date.now();
         
         // Set up mesh event handlers
+        console.log('🔧 NetworkService: Setting up mesh event handlers...');
         this.setupMeshEventHandlers();
         
         this.emit('network:connected', { type: 'mesh' });
-        console.log('✅ Mesh network started successfully');
+        console.log('✅ NetworkService: Mesh network started successfully');
+      } else {
+        console.log('❌ NetworkService: Mesh network failed to start');
       }
       
       return success;
     } catch (error) {
-      console.error('❌ Failed to start mesh network:', error);
+      console.error('❌ NetworkService: Failed to start mesh network:', error);
+      console.error('❌ NetworkService: Error details:', error instanceof Error ? error.message : 'Unknown error');
+      console.error('❌ NetworkService: Error stack:', error instanceof Error ? error.stack : 'No stack trace');
       this.emit('network:error', { message: 'Failed to start mesh network', error });
       return false;
     }

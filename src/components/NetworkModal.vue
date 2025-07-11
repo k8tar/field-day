@@ -117,27 +117,7 @@
           </div>
         </div>
 
-        <!-- QSO File Storage -->
-        <div class="file-storage-section">
-          <h3>QSO File Storage</h3>
-          <div class="storage-info">
-            <p>Local QSOs: <strong>{{ localQsoCount }}</strong></p>
-            <p class="help-text">Upload your local QSOs to the shared file storage for multi-station access</p>
-          </div>
-          <div class="storage-actions">
-            <button 
-              @click="uploadLocalQsos" 
-              :disabled="isUploading || localQsoCount === 0"
-              class="upload-button"
-            >
-              <span v-if="isUploading">📤 Uploading...</span>
-              <span v-else>📁 Upload {{ localQsoCount }} QSOs to File Storage</span>
-            </button>
-            <div v-if="uploadStatus" class="upload-status" :class="uploadStatus.type">
-              {{ uploadStatus.message }}
-            </div>
-          </div>
-        </div>
+
 
         <!-- Connected Stations -->
         <div v-if="connectedStations.length > 0" class="connected-stations">
@@ -368,31 +348,14 @@ const emit = defineEmits<{
 
 // Connection state - use network service
 const isConnected = computed(() => networkService.status.isConnected);
-const networkMode = ref<'auto' | 'mesh' | 'host' | 'join'>('auto');
+const networkMode = ref<'auto' | 'mesh' | 'host' | 'join'>('mesh'); // Default to mesh
 const networkId = computed(() => networkService.status.networkId);
 const hostPort = ref(8080); // Hardcoded - all Field Day instances use port 8080
 const hostAddress = ref('');
 const localIP = ref('192.168.1.100'); // This would be detected
 const autoReconnect = ref(false);
 
-// QSO upload state
-const isUploading = ref(false);
-const uploadStatus = ref<{ type: 'success' | 'error'; message: string } | null>(null);
 
-// Get local QSO count - reactive property that will be updated
-const localQsoCount = ref(0);
-
-// Function to update QSO count from file storage
-async function updateLocalQsoCount() {
-  try {
-    const qsos = await fileStorage.getQsoData();
-    localQsoCount.value = qsos.length;
-  } catch (error) {
-    console.error('Error reading QSOs from file storage:', error);
-    // Initialize with zero instead of localStorage fallback
-    localQsoCount.value = 0;
-  }
-}
 
 // Station information - reactive to config changes
 const localStationInfo = ref({
@@ -678,66 +641,7 @@ function formatLastSync(timestamp: number): string {
   return new Date(timestamp).toLocaleTimeString();
 }
 
-async function uploadLocalQsos() {
-  if (localQsoCount.value === 0) {
-    uploadStatus.value = { type: 'error', message: 'No local QSOs to upload' };
-    return;
-  }
-  
-  isUploading.value = true;
-  uploadStatus.value = null;
-  
-  try {
-    console.log(`📤 Manually uploading ${localQsoCount.value} local QSOs to file storage...`);
-    
-    // Get QSOs from file storage
-    const qsos = await fileStorage.getQsoData();
-    if (qsos.length === 0) {
-      throw new Error('No QSOs found in file storage');
-    }
-    
-    const response = await fetch('/api/qsos/bulk', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        qsos: qsos
-      })
-    });
-    
-    if (response.ok) {
-      const result = await response.json();
-      uploadStatus.value = { 
-        type: 'success', 
-        message: `Successfully uploaded ${result.added} new QSOs (${result.total} total on server)` 
-      };
-      console.log(`✅ Manual upload successful: ${result.added} new QSOs, ${result.total} total`);
-      
-      // Clear the status after 5 seconds
-      setTimeout(() => {
-        uploadStatus.value = null;
-      }, 5000);
-      
-    } else {
-      throw new Error(`Server responded with ${response.status}: ${response.statusText}`);
-    }
-    
-  } catch (error) {
-    console.error('❌ Manual upload failed:', error);
-    uploadStatus.value = { 
-      type: 'error', 
-      message: `Upload failed: ${error instanceof Error ? error.message : 'Unknown error'}` 
-    };
-    
-    // Clear the error after 10 seconds
-    setTimeout(() => {
-      uploadStatus.value = null;
-    }, 10000);
-  } finally {
-    isUploading.value = false;
-  }
-}
+
 
 // Auto-scan on mount if in auto mode
 onMounted(async () => {
@@ -768,7 +672,6 @@ onMounted(async () => {
   
   // Load initial data from file storage
   await refreshStationInfo();
-  await updateLocalQsoCount();
   
   // Listen for station info updates from config modal
   window.addEventListener('stationInfoUpdate', refreshStationInfo);
@@ -808,6 +711,8 @@ async function saveNetworkSettings() {
       networkService.updateNetworkMode('host', { hostPort: hostPort.value });
     } else if (networkMode.value === 'join' && hostAddress.value) {
       networkService.updateNetworkMode('join', { hostAddress: hostAddress.value });
+    } else if (networkMode.value === 'mesh') {
+      networkService.updateNetworkMode('mesh');
     } else {
       networkService.updateNetworkMode('auto');
     }

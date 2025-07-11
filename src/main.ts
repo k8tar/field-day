@@ -4,13 +4,15 @@ import router from './router'
 import store from './store'
 import { setupStationInfoAPI } from './api/stationInfo'
 import { networkService } from './services/networkService'
+import { apiServer } from './api/apiServer'
 
 // Setup station info API for network discovery
 setupStationInfoAPI();
 
-// Expose networkService globally for debugging
+// Expose networkService and apiServer globally for debugging
 if (typeof window !== 'undefined') {
   (window as any).networkService = networkService;
+  (window as any).apiServer = apiServer;
 }
 
 // If you need to access Electron's ipcRenderer, do so via preload.js and window.electron
