@@ -18,7 +18,7 @@
               <div class="message-text">{{ message.text }}</div>
               <div class="message-meta">
                 <span class="message-time">{{ formatTime(message.timestamp) }}</span>
-                <span v-if="message.from" class="message-from">from {{ message.from }}</span>
+                <span v-if="message.from" class="message-from">from {{ getStationDesignator(message.from) }}</span>
                 <span v-if="message.target && message.target !== 'all'" class="message-target">to {{ message.target }}</span>
               </div>
             </div>
@@ -66,14 +66,14 @@
             No messages yet
           </div>
           <div v-else class="messages-list">
-            <div v-for="message in messages" :key="message.id" 
+            <div v-for="message in allMessagesReversed" :key="message.id" 
                  class="message" :class="`message-${message.type}`">
               <div class="message-icon">{{ getIconForType(message.type) }}</div>
               <div class="message-content">
                 <div class="message-text">{{ message.text }}</div>
                 <div class="message-meta">
                   <span class="message-time">{{ formatFullTime(message.timestamp) }}</span>
-                  <span v-if="message.from" class="message-from">from {{ message.from }}</span>
+                  <span v-if="message.from" class="message-from">from {{ getStationDesignator(message.from) }}</span>
                   <span v-if="message.target && message.target !== 'all'" class="message-target">to {{ message.target }}</span>
                 </div>
               </div>
@@ -113,6 +113,15 @@ import { useStore } from 'vuex';
 import { networkService } from '@/services/networkService';
 import { fileStorage } from '@/services/fileStorage';
 
+// Generate a GUID for message IDs
+function generateGUID(): string {
+  return 'msg-' + 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+    const r = Math.random() * 16 | 0;
+    const v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+}
+
 interface Message {
   id: string;
   type: 'bonus' | 'section' | 'multiplier' | 'network' | 'info' | 'chat';
@@ -145,9 +154,14 @@ const latestMessage = computed(() => {
   return messages.value[messages.value.length - 1];
 });
 
-// Get the recent messages (latest 5)
+// Get the recent messages (latest 5) in reverse chronological order (newest first)
 const recentMessages = computed(() => {
-  return messages.value.slice(-5);
+  return messages.value.slice(-5).reverse();
+});
+
+// Get all messages in reverse chronological order (newest first) for modal
+const allMessagesReversed = computed(() => {
+  return [...messages.value].reverse();
 });
 
 // Compute CSS class for message type
@@ -181,6 +195,13 @@ function getIconForType(type: Message['type']): string {
   }
 }
 
+// Extract station designator from station ID (e.g., "K8TAR-PHONE" -> "PHONE")
+function getStationDesignator(stationId: string): string {
+  if (!stationId) return '';
+  const parts = stationId.split('-');
+  return parts.length > 1 ? parts[parts.length - 1] : stationId;
+}
+
 // Format timestamp for display
 function formatTime(timestamp: number): string {
   const date = new Date(timestamp);
@@ -200,9 +221,18 @@ function formatFullTime(timestamp: number): string {
 }
 
 // Add a new message
-function addMessage(type: Message['type'], text: string, from?: string, target?: string) {
+function addMessage(type: Message['type'], text: string, from?: string, target?: string, messageId?: string) {
+  const id = messageId || generateGUID();
+  
+  // Check if message already exists to prevent duplicates
+  const existingMessage = messages.value.find(m => m.id === id);
+  if (existingMessage) {
+    console.log(`⚠️ Duplicate message prevented: ${id}`);
+    return;
+  }
+  
   const message: Message = {
-    id: Date.now().toString(),
+    id,
     type,
     text,
     timestamp: Date.now(),
@@ -211,10 +241,11 @@ function addMessage(type: Message['type'], text: string, from?: string, target?:
   };
   
   messages.value.push(message);
+  console.log(`📨 Added message: ${id} - ${text.substring(0, 50)}${text.length > 50 ? '...' : ''}`);
   
-  // Keep only the last 10 messages to prevent memory buildup
-  if (messages.value.length > 10) {
-    messages.value = messages.value.slice(-10);
+  // Keep only the last 20 messages to prevent memory buildup
+  if (messages.value.length > 20) {
+    messages.value = messages.value.slice(-20);
   }
 }
 
@@ -225,19 +256,20 @@ async function sendMessage() {
   try {
     const messageText = newMessage.value.trim();
     const target = selectedTarget.value;
+    const messageId = generateGUID();
     
     // Get current station info
     const stationConfig = await fileStorage.getStationConfig();
     const stationId = `${stationConfig.callsign}-${stationConfig.designator}`;
     
-    // Add message locally first with sender information
-    addMessage('chat', messageText, stationId, target);
+    // Add message locally first with sender information and generated ID
+    addMessage('chat', messageText, stationId, target, messageId);
     
     // Send to network if connected
     if (networkService.status.isConnected) {
       try {
-        await networkService.sendMessage(messageText, target);
-        console.log(`✅ Message sent from ${stationId} to ${target}: ${messageText}`);
+        await networkService.sendMessage(messageText, target, messageId);
+        console.log(`✅ Message sent from ${stationId} to ${target}: ${messageText} (ID: ${messageId})`);
       } catch (error) {
         console.error('Failed to send message to network:', error);
         addMessage('info', 'Failed to send message to network');
@@ -251,16 +283,18 @@ async function sendMessage() {
             'Content-Type': 'application/json'
           },
           body: JSON.stringify({
+            id: messageId,
             type: 'chat',
             text: messageText,
             from: stationId,
             target,
+            timestamp: Date.now(),
             stationId
           })
         });
         
         if (response.ok) {
-          console.log('✅ Message stored locally');
+          console.log(`✅ Message stored locally (ID: ${messageId})`);
         }
       } catch (error) {
         console.error('Failed to store message locally:', error);
@@ -282,19 +316,20 @@ async function sendModalMessage() {
   try {
     const messageText = modalNewMessage.value.trim();
     const target = modalSelectedTarget.value;
+    const messageId = generateGUID();
     
     // Get current station info
     const stationConfig = await fileStorage.getStationConfig();
     const stationId = `${stationConfig.callsign}-${stationConfig.designator}`;
     
-    // Add message locally first with sender information
-    addMessage('chat', messageText, stationId, target);
+    // Add message locally first with sender information and generated ID
+    addMessage('chat', messageText, stationId, target, messageId);
     
     // Send to network if connected
     if (networkService.status.isConnected) {
       try {
-        await networkService.sendMessage(messageText, target);
-        console.log(`✅ Message sent from ${stationId} to ${target}: ${messageText}`);
+        await networkService.sendMessage(messageText, target, messageId);
+        console.log(`✅ Message sent from ${stationId} to ${target}: ${messageText} (ID: ${messageId})`);
       } catch (error) {
         console.error('Failed to send message to network:', error);
         addMessage('info', 'Failed to send message to network');
@@ -308,16 +343,18 @@ async function sendModalMessage() {
             'Content-Type': 'application/json'
           },
           body: JSON.stringify({
+            id: messageId,
             type: 'chat',
             text: messageText,
             from: stationId,
             target,
+            timestamp: Date.now(),
             stationId
           })
         });
         
         if (response.ok) {
-          console.log('✅ Message stored locally');
+          console.log(`✅ Message stored locally (ID: ${messageId})`);
         }
       } catch (error) {
         console.error('Failed to store message locally:', error);
@@ -333,6 +370,7 @@ async function sendModalMessage() {
 }
 
 
+networkService.getConnectedStations()
 // Network event handlers
 function handleNetworkConnected(event: any) {
   if (event.type === 'host') {
@@ -382,11 +420,8 @@ function handleNetworkMessage(event: any) {
   const message = event;
   console.log('📨 Received network message:', message);
   
-  // Add the message if it's not already in our list (avoid duplicates)
-  const existingMessage = messages.value.find(m => m.id === message.id);
-  if (!existingMessage) {
-    addMessage(message.type, message.text, message.from, message.target);
-  }
+  // Add the message using the ID from the network to prevent duplicates
+  addMessage(message.type, message.text, message.from, message.target, message.id);
 }
 
 // Sync messages from the API (for network and standalone mode)
@@ -397,20 +432,11 @@ async function syncMessages() {
       const data = await response.json();
       const remoteMessages = data.messages || [];
       
-      // Add any new messages we don't have locally
+      // Add any new messages we don't have locally using their existing IDs
       remoteMessages.forEach((remoteMessage: any) => {
-        const existingMessage = messages.value.find(m => m.id === remoteMessage.id);
-        if (!existingMessage) {
-          const message: Message = {
-            id: remoteMessage.id,
-            type: remoteMessage.type,
-            text: remoteMessage.text,
-            timestamp: remoteMessage.timestamp,
-            from: remoteMessage.from,
-            target: remoteMessage.target
-          };
-          messages.value.push(message);
-        }
+        // Use the ID from the remote message to check for duplicates
+        const messageId = remoteMessage.id || generateGUID(); // Fallback to GUID if no ID
+        addMessage(remoteMessage.type, remoteMessage.text, remoteMessage.from, remoteMessage.target, messageId);
       });
       
       // Sort messages by timestamp and keep only the latest 20

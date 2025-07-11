@@ -715,11 +715,29 @@ export default defineConfig({
               try {
                 const messageData = JSON.parse(body);
                 
+                // Use provided ID or generate one if missing
+                const messageId = messageData.id || `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+                
+                // Check for duplicate messages by ID
+                const existingMessage = stationMessages.find(msg => msg.id === messageId);
+                if (existingMessage) {
+                  console.log(`⚠️ Duplicate message prevented: ${messageId}`);
+                  res.setHeader('Content-Type', 'application/json');
+                  res.setHeader('Access-Control-Allow-Origin', '*');
+                  res.end(JSON.stringify({ 
+                    success: true, 
+                    message: existingMessage,
+                    duplicate: true,
+                    timestamp: Date.now()
+                  }));
+                  return;
+                }
+                
                 const newMessage: NetworkMessage = {
-                  id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                  id: messageId,
                   type: messageData.type || 'chat',
                   text: messageData.text,
-                  timestamp: Date.now(),
+                  timestamp: messageData.timestamp || Date.now(),
                   from: messageData.from,
                   target: messageData.target || 'all',
                   stationId: messageData.stationId || 'unknown'
@@ -728,7 +746,7 @@ export default defineConfig({
                 stationMessages.push(newMessage);
                 saveMessagesToFile(stationMessages);
                 
-                console.log(`📨 Added message from ${newMessage.from}: ${newMessage.text}`);
+                console.log(`📨 Added message ${newMessage.id} from ${newMessage.from}: ${newMessage.text}`);
                 
                 res.setHeader('Content-Type', 'application/json');
                 res.setHeader('Access-Control-Allow-Origin', '*');

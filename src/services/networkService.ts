@@ -1187,7 +1187,16 @@ class NetworkService {
   }
 
   // Send a chat message across the network
-  async sendMessage(text: string, target: string = 'all'): Promise<void> {
+  // Generate a GUID for message IDs
+  private generateMessageId(): string {
+    return 'msg-' + 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+      const r = Math.random() * 16 | 0;
+      const v = c === 'x' ? r : (r & 0x3 | 0x8);
+      return v.toString(16);
+    });
+  }
+
+  async sendMessage(text: string, target: string = 'all', messageId?: string): Promise<void> {
     if (!this.status.isConnected) {
       console.log('📨 Not sending message - network not connected');
       return;
@@ -1198,14 +1207,16 @@ class NetworkService {
       const stationId = `${stationConfig.callsign}-${stationConfig.designator}`;
       
       const message = {
+        id: messageId || this.generateMessageId(),
         type: 'chat',
         text,
         from: stationId,
         target,
+        timestamp: Date.now(),
         stationId
       };
 
-      console.log(`📨 Sending message from ${stationId} to ${target}: ${text}`);
+      console.log(`📨 Sending message from ${stationId} to ${target}: ${text} (ID: ${message.id})`);
       
       if (this.isHost) {
         // Host: Add to local storage and broadcast to clients
@@ -1218,7 +1229,7 @@ class NetworkService {
         });
         
         if (response.ok) {
-          console.log(`✅ Host: Message stored locally`);
+          console.log(`✅ Host: Message stored locally (ID: ${message.id})`);
           
           // Broadcast to connected clients
           if (target === 'all') {
@@ -1233,9 +1244,9 @@ class NetworkService {
                 });
                 
                 if (clientResponse.ok) {
-                  console.log(`✅ Host->Client: Message sent to ${station.callsign}-${station.designator}`);
+                  console.log(`✅ Host->Client: Message sent to ${station.callsign}-${station.designator} (ID: ${message.id})`);
                 } else {
-                  console.log(`❌ Host->Client: Failed to send message to ${station.callsign}-${station.designator}`);
+                  console.log(`❌ Host->Client: Failed to send message to ${station.callsign}-${station.designator} (ID: ${message.id})`);
                 }
               } catch (error) {
                 console.log(`⚠️ Host->Client: Error sending message to ${station.callsign}-${station.designator}:`, error);
@@ -1255,9 +1266,9 @@ class NetworkService {
                 });
                 
                 if (clientResponse.ok) {
-                  console.log(`✅ Host->Client: Message sent to ${target}`);
+                  console.log(`✅ Host->Client: Message sent to ${target} (ID: ${message.id})`);
                 } else {
-                  console.log(`❌ Host->Client: Failed to send message to ${target}`);
+                  console.log(`❌ Host->Client: Failed to send message to ${target} (ID: ${message.id})`);
                 }
               } catch (error) {
                 console.log(`⚠️ Host->Client: Error sending message to ${target}:`, error);
@@ -1283,9 +1294,9 @@ class NetworkService {
         });
         
         if (response.ok) {
-          console.log(`✅ Client->Host: Message sent to host`);
+          console.log(`✅ Client->Host: Message sent to host (ID: ${message.id})`);
         } else {
-          console.log(`❌ Client->Host: Failed to send message to host`);
+          console.log(`❌ Client->Host: Failed to send message to host (ID: ${message.id})`);
         }
       }
     } catch (error) {
