@@ -90,15 +90,27 @@ class MeshNetworkService {
   private eventCallbacks: { [event: string]: Array<(...args: any[]) => void> } = {};
 
   constructor() {
-    this.generateNodeId();
+    this.initializeNodeId();
   }
 
-  private generateNodeId(): void {
-    // Generate a unique node ID based on station info and timestamp
-    const timestamp = Date.now().toString(36);
-    const random = Math.random().toString(36).substr(2, 5);
-    this.nodeId = `node-${timestamp}-${random}`;
-    this.status.nodeId = this.nodeId;
+  private async initializeNodeId(): Promise<void> {
+    await this.generateNodeId();
+  }
+
+  private async generateNodeId(): Promise<void> {
+    // Use the persistent network ID from file storage
+    try {
+      this.nodeId = await fileStorage.getNetworkId();
+      this.status.nodeId = this.nodeId;
+      console.log(`🆔 Mesh network using persistent network ID: ${this.nodeId}`);
+    } catch (error) {
+      console.error('❌ Failed to get persistent network ID, using fallback:', error);
+      // Fallback to old method
+      const timestamp = Date.now().toString(36);
+      const random = Math.random().toString(36).substr(2, 5);
+      this.nodeId = `MESH-node-${timestamp}-${random}`;
+      this.status.nodeId = this.nodeId;
+    }
   }
 
   // Event system
@@ -263,6 +275,15 @@ class MeshNetworkService {
     try {
       console.log('🔍 Detecting local IP address...');
       
+      // First, try to get IP from browser's current URL if available
+      if (typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+        const browserIP = window.location.hostname;
+        if (this.isValidPrivateIP(browserIP)) {
+          console.log(`✅ Using browser IP: ${browserIP}`);
+          return browserIP;
+        }
+      }
+      
       // Try to detect via WebRTC (works in browsers)
       return new Promise((resolve) => {
         try {
@@ -280,27 +301,56 @@ class MeshNetworkService {
               resolve('192.168.1.100');
             });
           
+          const foundIPs = new Set<string>();
+          
           pc.onicecandidate = (ice) => {
             if (ice && ice.candidate && ice.candidate.candidate) {
               const match = ice.candidate.candidate.match(/candidate:\d+ \d+ udp \d+ ([\d.]+)/);
-              if (match && match[1] && (
-                match[1].startsWith('192.168.') || 
-                match[1].startsWith('10.') || 
-                match[1].startsWith('172.')
-              ) && !this.isLocalhost(match[1])) { // Exclude localhost IPs
-                pc.close();
-                console.log(`✅ Local IP detected: ${match[1]}`);
-                resolve(match[1]);
-                return;
+              if (match && match[1] && this.isValidPrivateIP(match[1]) && !this.isLocalhost(match[1])) {
+                foundIPs.add(match[1]);
+                console.log(`🔍 Found candidate IP: ${match[1]}`);
+                
+                // If we find a preferred physical network IP (192.168.1.x or 192.168.0.x), use it immediately
+                if (match[1].startsWith('192.168.1.') || match[1].startsWith('192.168.0.')) {
+                  pc.close();
+                  console.log(`✅ Found preferred physical network IP: ${match[1]}`);
+                  resolve(match[1]);
+                  return;
+                }
               }
             }
           };
           
-          // Fallback after timeout
+          // Fallback after timeout - use best available IP
           setTimeout(() => {
             pc.close();
-            console.log('⏱️ IP detection timeout, using fallback');
-            resolve('192.168.1.100');
+            if (foundIPs.size > 0) {
+              // Sort IPs by preference: 192.168.1.x > 192.168.0.x > other 192.168.x.x > 10.x.x.x > 172.x.x.x
+              const sortedIPs = Array.from(foundIPs).sort((a, b) => {
+                // Highest priority: 192.168.1.x (most common physical network)
+                if (a.startsWith('192.168.1.') && !b.startsWith('192.168.1.')) return -1;
+                if (!a.startsWith('192.168.1.') && b.startsWith('192.168.1.')) return 1;
+                
+                // Second priority: 192.168.0.x (second most common)
+                if (a.startsWith('192.168.0.') && !b.startsWith('192.168.0.')) return -1;
+                if (!a.startsWith('192.168.0.') && b.startsWith('192.168.0.')) return 1;
+                
+                // Third priority: other 192.168.x.x
+                if (a.startsWith('192.168.') && !b.startsWith('192.168.')) return -1;
+                if (!a.startsWith('192.168.') && b.startsWith('192.168.')) return 1;
+                
+                // Fourth priority: 10.x.x.x (but not common virtual ranges)
+                if (a.startsWith('10.') && !b.startsWith('10.')) return -1;
+                if (!a.startsWith('10.') && b.startsWith('10.')) return 1;
+                
+                return 0;
+              });
+              console.log(`✅ Selected best physical IP from candidates: ${sortedIPs[0]} (from ${Array.from(foundIPs).join(', ')})`);
+              resolve(sortedIPs[0]);
+            } else {
+              console.log('⏱️ No valid IPs found, using fallback');
+              resolve('192.168.1.100');
+            }
           }, 3000); // Increased timeout
           
         } catch (error) {
@@ -312,6 +362,68 @@ class MeshNetworkService {
       console.log('❌ IP detection failed, using fallback:', error instanceof Error ? error.message : 'Unknown error');
       return '192.168.1.100'; // Fallback
     }
+  }
+
+  // Helper method to check if an IP is a valid private network IP (excluding virtual interfaces)
+  private isValidPrivateIP(ip: string): boolean {
+    if (!ip) return false;
+    
+    // First check if it's in private ranges
+    const isPrivate = ip.startsWith('192.168.') || 
+           ip.startsWith('10.') || 
+           (ip.startsWith('172.') && parseInt(ip.split('.')[1]) >= 16 && parseInt(ip.split('.')[1]) <= 31);
+    
+    if (!isPrivate) return false;
+    
+    // Now exclude known virtual interface ranges
+    const virtualPatterns = [
+      /^172\.1[6-9]\./,     // Docker default range 172.16-19.x.x
+      /^172\.2[0-9]\./,     // Docker custom ranges 172.20-29.x.x  
+      /^172\.3[0-1]\./,     // Docker custom ranges 172.30-31.x.x
+      /^10\.0\.2\./,        // VirtualBox default
+      /^192\.168\.56\./,    // VirtualBox host-only
+      /^192\.168\.57\./,    // VirtualBox host-only  
+      /^192\.168\.99\./,    // Docker Machine
+      /^192\.168\.122\./,   // libvirt/KVM default
+      /^169\.254\./,        // Link-local addresses
+      /^10\.8\./,           // OpenVPN common range
+      /^10\.9\./,           // OpenVPN common range
+      /^172\.16\.0\./,      // Common VPN range
+      /^172\.24\./,         // VMware Workstation
+      /^172\.16\.1\./,      // VMware Workstation
+      /^192\.168\.200\./,   // Often used for VPN/virtual (like your 192.168.200.254)
+      /^10\.120\./,         // Your internal network 10.120.121.2
+      /^172\.16\.2\./,      // Your internal network 172.16.2.1
+      /^172\.16\.229\./,    // Your internal network 172.16.229.1
+    ];
+
+    // Check if IP matches any virtual pattern
+    for (const pattern of virtualPatterns) {
+      if (pattern.test(ip)) {
+        console.log(`⚠️ IP ${ip} appears to be virtual interface - excluding`);
+        return false;
+      }
+    }
+
+    // Prefer main physical network ranges
+    const physicalPreferred = [
+      /^192\.168\.1\./,     // Most common home/office router range
+      /^192\.168\.0\./,     // Second most common
+      /^192\.168\.2\./,     // Common alternative
+      /^10\.1\./,           // Common enterprise range  
+      /^10\.10\./,          // Common enterprise range
+    ];
+
+    for (const pattern of physicalPreferred) {
+      if (pattern.test(ip)) {
+        console.log(`✅ IP ${ip} appears to be preferred physical interface`);
+        return true;
+      }
+    }
+
+    // For other private IPs, be conservative
+    console.log(`⚠️ IP ${ip} is private but not in preferred ranges - treating as secondary`);
+    return true;
   }
 
   // Helper method to check if an IP is localhost
@@ -431,6 +543,13 @@ class MeshNetworkService {
       results.forEach(result => {
         if (result.status === 'fulfilled' && result.value) {
           const node = result.value;
+          
+          // Filter out our own node (don't discover ourselves)
+          if (node.id === this.nodeId) {
+            console.log(`🔍 Filtered out self-discovery: ${node.id} (this is our own node)`);
+            return;
+          }
+          
           if (!this.discoveredNodes.has(node.id)) {
             newNodes++;
             this.addDiscoveredNode(node);
@@ -672,28 +791,63 @@ class MeshNetworkService {
   // Synchronize with a specific node
   private async syncWithNode(node: MeshNode): Promise<void> {
     try {
+      console.log(`🔄 Starting QSO sync with ${node.callsign} at ${node.ip}:${node.port}`);
+      
       // Get local QSO data
       const localQsos = await fileStorage.getQsoData();
-      const localChecksum = this.calculateChecksum(localQsos);
+      console.log(`📊 Local QSOs: ${localQsos.length}`);
       
-      // Simulate requesting QSO data from the node
-      // In a real implementation, this would be a network request
-      const syncMessage: MeshMessage = {
-        type: 'qso-sync',
-        data: {
-          action: 'request',
-          lastUpdate: this.status.lastSync,
-          checksum: localChecksum,
-          qsoCount: localQsos.length
-        },
-        timestamp: Date.now(),
-        nodeId: this.nodeId,
-        messageId: this.generateMessageId(),
-        ttl: 1
-      };
+      // Request QSO data from the remote node
+      const response = await fetch(`https://${node.ip}:${node.port}/api/qsos`, {
+        method: 'GET',
+        headers: {
+          'Accept': 'application/json',
+          'X-Mesh-Node-ID': this.nodeId
+        }
+      });
       
-      // Simulate sync response (in real implementation, this would come from the other node)
-      this.handleSyncResponse(node, localQsos);
+      if (response.ok) {
+        const remoteData = await response.json();
+        const remoteQsos = remoteData.qsos || [];
+        console.log(`📡 Remote QSOs from ${node.callsign}: ${remoteQsos.length}`);
+        
+        // Find QSOs that exist on remote but not locally
+        const newQsos = remoteQsos.filter((remoteQso: any) => 
+          !localQsos.some(localQso => 
+            localQso.id === remoteQso.id || 
+            (localQso.callsign === remoteQso.callsign && 
+             localQso.timestamp === remoteQso.timestamp)
+          )
+        );
+        
+        if (newQsos.length > 0) {
+          console.log(`📥 Found ${newQsos.length} new QSOs from ${node.callsign}`);
+          
+          // Add new QSOs to local storage using the QSO store
+          const { logQso } = await import('@/store/qso');
+          for (const newQso of newQsos) {
+            await logQso({
+              ...newQso,
+              syncedFrom: node.callsign // Mark where this QSO came from
+            });
+          }
+          
+          this.status.syncedQsos += newQsos.length;
+          console.log(`✅ Synced ${newQsos.length} new QSOs from ${node.callsign}`);
+          
+          // Emit sync completion event
+          this.emit('mesh:sync-completed', {
+            node: node,
+            newQsos: newQsos.length,
+            totalLocal: localQsos.length + newQsos.length
+          });
+        } else {
+          console.log(`✅ No new QSOs from ${node.callsign} - already in sync`);
+        }
+        
+      } else {
+        console.warn(`⚠️ Failed to fetch QSOs from ${node.callsign}: HTTP ${response.status}`);
+      }
       
     } catch (error) {
       console.error(`❌ Sync failed with node ${node.callsign}:`, error);

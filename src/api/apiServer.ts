@@ -71,7 +71,9 @@ class FieldDayApiServer {
            url.includes('/station-info') ||
            url.includes('/api/status') ||
            url.includes('/mesh/discovery') ||
-           url.includes('/api/files/');
+           url.includes('/api/files/') ||
+           url.includes('/debug/config') ||
+           url.includes('/debug/network');
   }
 
   private async handleApiRequest(url: string, init?: RequestInit): Promise<Response> {
@@ -98,6 +100,10 @@ class FieldDayApiServer {
         response = await this.handleStationInfo();
       } else if (pathname.includes('/mesh/discovery')) {
         response = await this.handleMeshDiscovery(init);
+      } else if (pathname.includes('/debug/config')) {
+        response = await this.handleDebugConfig();
+      } else if (pathname.includes('/debug/network')) {
+        response = await this.handleDebugNetwork();
       } else if (pathname.includes('/api/files/')) {
         response = await this.handleFileOperations(pathname, method, init, searchParams);
       } else if (pathname.includes('/qsos')) {
@@ -159,12 +165,13 @@ class FieldDayApiServer {
   private async handleMeshDiscovery(init?: RequestInit): Promise<ApiResponse> {
     try {
       const stationConfig = await fileStorage.getStationConfig();
+      console.log(`🔍 Mesh Discovery - Station Config:`, stationConfig);
       
-      // Generate a consistent node ID based on station info (not random each time!)
-      const nodeId = `node-${stationConfig.callsign}-${stationConfig.designator}`.toLowerCase();
+      // Use the persistent network ID from file storage
+      const networkId = await fileStorage.getNetworkId();
       
       const meshNodeInfo = {
-        nodeId: nodeId,
+        nodeId: networkId,
         callsign: stationConfig.callsign,
         designator: stationConfig.designator,
         qsoCount: this.qsoStore.length,
@@ -173,10 +180,11 @@ class FieldDayApiServer {
         version: '2.0.0',
         capabilities: ['qso-sync', 'heartbeat', 'conflict-resolution'],
         timestamp: Date.now(),
-        online: true
+        online: true,
+        port: stationConfig.port || 8080
       };
 
-      console.log(`🕸️ Mesh discovery request: ${meshNodeInfo.callsign}-${meshNodeInfo.designator} (Node: ${nodeId})`);
+      console.log(`🕸️ Mesh discovery request: ${meshNodeInfo.callsign}-${meshNodeInfo.designator} (Node: ${networkId}) from port ${stationConfig.port}`);
       
       return {
         status: 200,
@@ -547,6 +555,63 @@ class FieldDayApiServer {
       clearInterval(this.syncInterval);
       this.syncInterval = null;
       console.log('🛑 Auto sync stopped');
+    }
+  }
+
+  private async handleDebugConfig(): Promise<ApiResponse> {
+    try {
+      const stationConfig = await fileStorage.getStationConfig();
+      const operators = await fileStorage.getOperators();
+      const qsoData = await fileStorage.getQsoData();
+      
+      const debugInfo = {
+        stationConfig: stationConfig,
+        operators: operators,
+        qsoCount: qsoData.length,
+        currentPort: typeof window !== 'undefined' ? window.location.port : '8080',
+        localStorage: typeof window !== 'undefined' ? {
+          stationDesignator: localStorage.getItem('stationDesignator'),
+          stationCallsign: localStorage.getItem('stationCallsign'),
+          stationClass: localStorage.getItem('stationClass'),
+          stationSection: localStorage.getItem('stationSection')
+        } : null,
+        timestamp: Date.now()
+      };
+
+      return {
+        status: 200,
+        data: debugInfo
+      };
+    } catch (error) {
+      console.error('❌ Error handling debug config:', error);
+      return {
+        status: 500,
+        data: { error: 'Failed to get debug config', details: error instanceof Error ? error.message : String(error) }
+      };
+    }
+  }
+
+  private async handleDebugNetwork(): Promise<ApiResponse> {
+    try {
+      const networkInfo = {
+        currentURL: typeof window !== 'undefined' ? window.location.href : 'N/A',
+        hostname: typeof window !== 'undefined' ? window.location.hostname : 'N/A',
+        port: typeof window !== 'undefined' ? window.location.port : 'N/A',
+        protocol: typeof window !== 'undefined' ? window.location.protocol : 'N/A',
+        userAgent: typeof window !== 'undefined' ? navigator.userAgent : 'N/A',
+        timestamp: Date.now()
+      };
+
+      return {
+        status: 200,
+        data: networkInfo
+      };
+    } catch (error) {
+      console.error('❌ Error handling debug network:', error);
+      return {
+        status: 500,
+        data: { error: 'Failed to get debug network info', details: error instanceof Error ? error.message : String(error) }
+      };
     }
   }
 }

@@ -10,6 +10,7 @@ export interface StationConfig {
   lastUpdated: number;
   stationClass?: string;
   stationSection?: string;
+  networkId?: string; // Fixed network ID for this station instance
 }
 
 export interface QsoData {
@@ -320,6 +321,34 @@ class FileStorageService {
 
     console.log(`📝 Using default settings for port ${this.port}:`, defaultSettings);
     return defaultSettings;
+  }
+
+  // Get or generate a persistent network ID for this station
+  async getNetworkId(): Promise<string> {
+    try {
+      const config = await this.getStationConfig();
+      
+      // If we already have a network ID, return it
+      if (config.networkId) {
+        console.log(`📡 Using existing network ID: ${config.networkId}`);
+        return config.networkId;
+      }
+      
+      // Generate a new unique network ID in the format MESH-node-xxxxx-xxxxx
+      const timestamp = Date.now().toString(36);
+      const random = Math.random().toString(36).substr(2, 5);
+      const networkId = `MESH-node-${timestamp}-${random}`;
+      
+      // Save it to the station config
+      await this.saveStationConfig({ networkId });
+      
+      console.log(`🆔 Generated new network ID: ${networkId}`);
+      return networkId;
+    } catch (error) {
+      console.error('❌ Failed to get/generate network ID:', error);
+      // Fallback to a simple ID
+      return `MESH-node-fallback-${Date.now().toString(36)}`;
+    }
   }
 
   // File operations for Electron

@@ -58,31 +58,61 @@ class NetworkService {
   // Network settings storage keys
   private readonly NETWORK_SETTINGS_KEY = 'fieldday_network_settings';
   
-  // Network settings interface
-  private networkSettings: {
-    isHost: boolean;
-    hostPort: number;
-    lastHostAddress?: string;
-    lastNetworkMode?: 'host' | 'join' | 'auto' | 'mesh';
-    autoReconnect: boolean;
-    lastConnectedStations: NetworkStation[];
-  } = {
+  // Persistent network identifier for this instance
+  private networkInstanceId: string = '';
+  
+  // Network settings object
+  private networkSettings = {
+    autoReconnect: true,
+    lastNetworkMode: 'mesh',
     isHost: false,
-    hostPort: 8080, // Hardcoded to 8080 for all instances
-    lastNetworkMode: 'mesh', // Default to mesh mode
-    autoReconnect: true, // Enable auto-reconnect by default for mesh mode
-    lastConnectedStations: []
+    hostPort: 8080,
+    lastHostAddress: '',
+    lastConnectedStations: [] as any[],
+    networkInstanceId: ''
   };
 
-  // Reconnection state
-  private reconnectAttempts = 0;
-  private maxReconnectAttempts = 5;
-  private reconnectDelay = 5000; // Start with 5 seconds
-  private reconnectTimer: number | null = null;
-
   constructor() {
+    this.initializeNetworkId();
     // Load saved network settings and attempt reconnection
     this.initializeNetwork();
+  }
+
+  // Initialize or load persistent network ID
+  private async initializeNetworkId(): Promise<void> {
+    try {
+      const settings = await this.getNetworkSettings();
+      
+      if (settings.networkInstanceId) {
+        // Use existing network ID
+        this.networkInstanceId = settings.networkInstanceId;
+        console.log(`🆔 Loaded existing network ID: ${this.networkInstanceId}`);
+      } else {
+        // Generate new network ID based on station config (consistent format)
+        const stationConfig = await fileStorage.getStationConfig();
+        this.networkInstanceId = `FD-${stationConfig.callsign}-${stationConfig.designator}`.toUpperCase();
+        
+        // Save the new network ID to the networkSettings
+        this.networkSettings.networkInstanceId = this.networkInstanceId;
+        await this.saveNetworkSettings();
+        
+        console.log(`🆔 Generated new network ID: ${this.networkInstanceId}`);
+      }
+      
+      // Update the status with the persistent ID
+      this.status.networkId = this.networkInstanceId;
+      
+    } catch (error) {
+      console.error('❌ Failed to initialize network ID:', error);
+      // Fallback to a simple ID
+      this.networkInstanceId = `FD-UNKNOWN-${Date.now()}`;
+      this.status.networkId = this.networkInstanceId;
+    }
+  }
+
+  // Get the persistent network ID
+  getNetworkInstanceId(): string {
+    return this.networkInstanceId;
   }
 
   private async initializeNetwork(): Promise<void> {
@@ -1708,9 +1738,9 @@ class NetworkService {
         console.log('🧹 Cleaning up existing duplicate stations...');
         this.removeDuplicateStations();
         
-        // Update network status to reflect mesh mode
+        // Update network status to reflect mesh mode (use the persistent network ID directly)
         this.status.isConnected = true;
-        this.status.networkId = `MESH-${meshNetworkService.getMeshStatus().nodeId}`;
+        this.status.networkId = meshNetworkService.getMeshStatus().nodeId;
         this.status.lastSync = Date.now();
         
         // Set up mesh event handlers
@@ -1758,6 +1788,12 @@ class NetworkService {
     // Handle mesh node discovery
     meshNetworkService.on('mesh:node-discovered', (node: MeshNode) => {
       console.log(`📡 Mesh node discovered: ${node.callsign} (${node.designator}) at ${node.ip}:${node.port}`);
+      
+      // Skip our own node by comparing network instance IDs
+      if (node.id === this.networkInstanceId) {
+        console.log(`⚠️ Skipping self-discovery: ${node.callsign} (${node.designator}) - same network ID`);
+        return;
+      }
       
       // Convert mesh node to network station format
       const station: NetworkStation = {
@@ -1832,9 +1868,9 @@ class NetworkService {
     meshNetworkService.on('mesh:health-changed', (health: string) => {
       console.log(`💊 Mesh health changed: ${health}`);
       
-      // Update network ID to reflect health
+      // Keep the same network ID regardless of health (no more degraded suffix)
       const meshStatus = meshNetworkService.getMeshStatus();
-      this.status.networkId = `MESH-${meshStatus.nodeId}-${health.toUpperCase()}`;
+      this.status.networkId = meshStatus.nodeId;
     });
   }
 
