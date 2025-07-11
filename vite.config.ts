@@ -131,25 +131,14 @@ export default defineConfig({
                 console.log(`❌ Error reading station config for port ${port}:`, error);
               }
               
-              // Read QSO data from port-specific directory
-              let qsoData: any[] = [];
-              try {
-                const qsoPath = path.join(dataDir, 'qso-data.json');
-                if (fs.existsSync(qsoPath)) {
-                  const qsoContent = fs.readFileSync(qsoPath, 'utf8');
-                  qsoData = JSON.parse(qsoContent);
-                  console.log(`📊 Read ${qsoData.length} QSOs for port ${port} from ${qsoPath}`);
-                } else {
-                  console.log(`⚠️ No QSO data found at ${qsoPath}`);
-                }
-              } catch (error) {
-                console.log(`❌ Error reading QSO data for port ${port}:`, error);
-              }
+              // Use the same QSO data as the QSOs endpoint (from stationQsos)
+              const qsoData = stationQsos || [];
+              console.log(`📊 Using shared QSO data: ${qsoData.length} QSOs`);
               
               // Calculate score
-              const score = qsoData.reduce((sum: number, qso: any) => {
+              const score = Array.isArray(qsoData) ? qsoData.reduce((sum: number, qso: any) => {
                 return sum + ((qso.mode === 'CW' || qso.mode === 'DIG') ? 2 : 1);
-              }, 0);
+              }, 0) : 0;
               
               const stationInfo = {
                 callsign: stationConfig.callsign,
@@ -171,8 +160,18 @@ export default defineConfig({
               res.end(JSON.stringify(stationInfo));
             } catch (error) {
               console.error('❌ Error getting station info:', error);
+              console.error('❌ Error stack:', error.stack);
+              console.error('❌ Error details:', {
+                message: error.message,
+                name: error.name,
+                code: error.code
+              });
               res.statusCode = 500;
-              res.end(JSON.stringify({ error: 'Failed to get station info' }));
+              res.end(JSON.stringify({ 
+                error: 'Failed to get station info',
+                details: error.message,
+                stack: error.stack
+              }));
             }
           } else if (req.method === 'OPTIONS') {
             res.setHeader('Access-Control-Allow-Origin', '*');
