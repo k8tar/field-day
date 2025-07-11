@@ -2,29 +2,32 @@
 <template>
   <div class="messages-container">
     <div class="messages-header">
-      <h3>Latest Message</h3>
+      <h3>Recent Messages</h3>
       <button class="view-all-button" @click="showAllMessages = true" title="View All Messages">
         <span class="material-icons">chat</span>
       </button>
     </div>
     
     <div class="messages-content">
-      <transition name="fade">
-        <div v-if="latestMessage" class="message" :class="messageTypeClass">
-          <div class="message-icon">{{ messageIcon }}</div>
-          <div class="message-content">
-            <div class="message-text">{{ latestMessage.text }}</div>
-            <div class="message-meta">
-              <span class="message-time">{{ formatTime(latestMessage.timestamp) }}</span>
-              <span v-if="latestMessage.from" class="message-from">from {{ latestMessage.from }}</span>
-              <span v-if="latestMessage.target && latestMessage.target !== 'all'" class="message-target">to {{ latestMessage.target }}</span>
+      <div v-if="recentMessages.length > 0" class="recent-messages-list">
+        <transition-group name="fade" tag="div">
+          <div v-for="message in recentMessages" :key="message.id" 
+               class="message" :class="`message-${message.type}`">
+            <div class="message-icon">{{ getIconForType(message.type) }}</div>
+            <div class="message-content">
+              <div class="message-text">{{ message.text }}</div>
+              <div class="message-meta">
+                <span class="message-time">{{ formatTime(message.timestamp) }}</span>
+                <span v-if="message.from" class="message-from">from {{ message.from }}</span>
+                <span v-if="message.target && message.target !== 'all'" class="message-target">to {{ message.target }}</span>
+              </div>
             </div>
           </div>
-        </div>
-        <div v-else class="no-messages">
-          No recent messages
-        </div>
-      </transition>
+        </transition-group>
+      </div>
+      <div v-else class="no-messages">
+        No recent messages
+      </div>
     </div>
 
     <!-- Send Message Form -->
@@ -78,10 +81,26 @@
           </div>
         </div>
         <div class="modal-footer">
-          <button @click="clearAllMessages" class="clear-button">
-            <span class="material-icons">clear_all</span>
-            Clear All
-          </button>
+          <!-- Send Message Form in Modal -->
+          <div class="modal-message-form">
+            <select v-model="modalSelectedTarget" class="modal-target-select">
+              <option value="all">All Stations</option>
+              <option v-for="station in connectedStations" :key="station.id" :value="station.id">
+                {{ station.callsign }}-{{ station.designator }}
+              </option>
+            </select>
+            <input 
+              v-model="modalNewMessage" 
+              @keyup.enter="sendModalMessage"
+              placeholder="Type message..." 
+              class="modal-message-input"
+              maxlength="200"
+            />
+            <button @click="sendModalMessage" :disabled="!modalNewMessage.trim()" class="modal-send-button">
+              <span class="material-icons">send</span>
+              Send
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -111,6 +130,10 @@ const showAllMessages = ref(false);
 const newMessage = ref('');
 const selectedTarget = ref('all');
 
+// Modal message sending state
+const modalNewMessage = ref('');
+const modalSelectedTarget = ref('all');
+
 // Get connected stations from network service
 const connectedStations = computed(() => {
   return networkService.getConnectedStations();
@@ -120,6 +143,11 @@ const connectedStations = computed(() => {
 const latestMessage = computed(() => {
   if (messages.value.length === 0) return null;
   return messages.value[messages.value.length - 1];
+});
+
+// Get the recent messages (latest 5)
+const recentMessages = computed(() => {
+  return messages.value.slice(-5);
 });
 
 // Compute CSS class for message type
@@ -207,9 +235,36 @@ async function sendMessage() {
     
     // Send to network if connected
     if (networkService.status.isConnected) {
-      // For now, just log that we would send the message
-      // We'll implement the actual network message sending later
-      console.log(`Would send message from ${stationId} to ${target}: ${messageText}`);
+      try {
+        await networkService.sendMessage(messageText, target);
+        console.log(`✅ Message sent from ${stationId} to ${target}: ${messageText}`);
+      } catch (error) {
+        console.error('Failed to send message to network:', error);
+        addMessage('info', 'Failed to send message to network');
+      }
+    } else {
+      // Store locally via API for standalone operation
+      try {
+        const response = await fetch('/api/messages', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            type: 'chat',
+            text: messageText,
+            from: stationId,
+            target,
+            stationId
+          })
+        });
+        
+        if (response.ok) {
+          console.log('✅ Message stored locally');
+        }
+      } catch (error) {
+        console.error('Failed to store message locally:', error);
+      }
     }
     
     // Clear input
@@ -220,11 +275,63 @@ async function sendMessage() {
   }
 }
 
-// Clear all messages
-function clearAllMessages() {
-  messages.value = [];
-  showAllMessages.value = false;
+// Send a message from the modal
+async function sendModalMessage() {
+  if (!modalNewMessage.value.trim()) return;
+  
+  try {
+    const messageText = modalNewMessage.value.trim();
+    const target = modalSelectedTarget.value;
+    
+    // Get current station info
+    const stationConfig = await fileStorage.getStationConfig();
+    const stationId = `${stationConfig.callsign}-${stationConfig.designator}`;
+    
+    // Add message locally first with sender information
+    addMessage('chat', messageText, stationId, target);
+    
+    // Send to network if connected
+    if (networkService.status.isConnected) {
+      try {
+        await networkService.sendMessage(messageText, target);
+        console.log(`✅ Message sent from ${stationId} to ${target}: ${messageText}`);
+      } catch (error) {
+        console.error('Failed to send message to network:', error);
+        addMessage('info', 'Failed to send message to network');
+      }
+    } else {
+      // Store locally via API for standalone operation
+      try {
+        const response = await fetch('/api/messages', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            type: 'chat',
+            text: messageText,
+            from: stationId,
+            target,
+            stationId
+          })
+        });
+        
+        if (response.ok) {
+          console.log('✅ Message stored locally');
+        }
+      } catch (error) {
+        console.error('Failed to store message locally:', error);
+      }
+    }
+    
+    // Clear modal input
+    modalNewMessage.value = '';
+  } catch (error) {
+    console.error('Failed to send message from modal:', error);
+    addMessage('info', 'Failed to send message');
+  }
 }
+
 
 // Network event handlers
 function handleNetworkConnected(event: any) {
@@ -270,7 +377,56 @@ function handleQsoSynced(event: any) {
   }
 }
 
+// Handle incoming network messages
+function handleNetworkMessage(event: any) {
+  const message = event;
+  console.log('📨 Received network message:', message);
+  
+  // Add the message if it's not already in our list (avoid duplicates)
+  const existingMessage = messages.value.find(m => m.id === message.id);
+  if (!existingMessage) {
+    addMessage(message.type, message.text, message.from, message.target);
+  }
+}
+
+// Sync messages from the API (for network and standalone mode)
+async function syncMessages() {
+  try {
+    const response = await fetch('/api/messages?limit=20');
+    if (response.ok) {
+      const data = await response.json();
+      const remoteMessages = data.messages || [];
+      
+      // Add any new messages we don't have locally
+      remoteMessages.forEach((remoteMessage: any) => {
+        const existingMessage = messages.value.find(m => m.id === remoteMessage.id);
+        if (!existingMessage) {
+          const message: Message = {
+            id: remoteMessage.id,
+            type: remoteMessage.type,
+            text: remoteMessage.text,
+            timestamp: remoteMessage.timestamp,
+            from: remoteMessage.from,
+            target: remoteMessage.target
+          };
+          messages.value.push(message);
+        }
+      });
+      
+      // Sort messages by timestamp and keep only the latest 20
+      messages.value.sort((a, b) => a.timestamp - b.timestamp);
+      if (messages.value.length > 20) {
+        messages.value = messages.value.slice(-20);
+      }
+    }
+  } catch (error) {
+    console.error('Error syncing messages:', error);
+  }
+}
+
 // Set up network event listeners
+let messageSyncInterval: number | null = null;
+
 onMounted(() => {
   networkService.on('network:connected', handleNetworkConnected);
   networkService.on('network:disconnected', handleNetworkDisconnected);
@@ -280,6 +436,13 @@ onMounted(() => {
   networkService.on('network:reconnect-exhausted', handleNetworkReconnectExhausted);
   networkService.on('network:initial-sync-complete', handleInitialSyncComplete);
   networkService.on('qso:synced', handleQsoSynced);
+  networkService.on('message:received', handleNetworkMessage);
+  
+  // Start periodic message sync (every 10 seconds)
+  messageSyncInterval = window.setInterval(syncMessages, 10000);
+  
+  // Initial message sync
+  syncMessages();
 });
 
 onUnmounted(() => {
@@ -291,6 +454,12 @@ onUnmounted(() => {
   networkService.off('network:reconnect-exhausted', handleNetworkReconnectExhausted);
   networkService.off('network:initial-sync-complete', handleInitialSyncComplete);
   networkService.off('qso:synced', handleQsoSynced);
+  networkService.off('message:received', handleNetworkMessage);
+  
+  // Clear message sync interval
+  if (messageSyncInterval) {
+    clearInterval(messageSyncInterval);
+  }
 });
 
 // Expose the addMessage function to parent components
@@ -358,29 +527,38 @@ h3 {
   min-height: 0;
 }
 
+.recent-messages-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
 .message {
   display: flex;
   align-items: flex-start;
   gap: 0.5rem;
-  padding: 0.5rem;
+  padding: 0.4rem;
   border-radius: 4px;
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.25rem;
   background-color: var(--bg-color);
   border: 1px solid var(--border-color);
   transition: all 0.3s ease;
+  font-size: 0.85rem;
 }
 
 .message-icon {
-  font-size: 1.2rem;
+  font-size: 1rem;
   flex-shrink: 0;
   margin-top: 0.1rem;
 }
 
 .message-text {
-  font-size: 0.9rem;
-  line-height: 1.3;
+  font-size: 0.85rem;
+  line-height: 1.2;
   word-wrap: break-word;
-  margin-bottom: 0.25rem;
+  margin-bottom: 0.15rem;
 }
 
 .message-time {
@@ -591,20 +769,19 @@ h3 {
   justify-content: center;
   align-items: center;
   z-index: 1000;
-  padding: 2rem;
+  padding: 0;
   box-sizing: border-box;
 }
 
 .messages-modal-content {
   background: var(--modal-content);
-  border-radius: 12px;
+  border-radius: 0;
   width: 100%;
-  max-width: 800px;
-  height: 80vh;
+  height: 100%;
   display: flex;
   flex-direction: column;
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
-  border: 1px solid var(--border-color);
+  box-shadow: none;
+  border: none;
 }
 
 .modal-header {
@@ -615,7 +792,7 @@ h3 {
   border-bottom: 1px solid var(--border-color);
   background: var(--primary-color);
   color: white;
-  border-radius: 12px 12px 0 0;
+  border-radius: 0;
 
   h3 {
     margin: 0;
@@ -663,12 +840,55 @@ h3 {
 .modal-footer {
   padding: 1rem 2rem;
   border-top: 1px solid var(--border-color);
-  display: flex;
-  justify-content: flex-end;
+  background: var(--form-bg);
 }
 
-.clear-button {
-  background: #dc3545;
+.modal-message-form {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  width: 100%;
+}
+
+.modal-target-select {
+  flex: 0 0 auto;
+  min-width: 140px;
+  padding: 0.5rem;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background-color: var(--input-bg);
+  color: var(--text-color);
+  font-size: 0.9rem;
+
+  &:focus {
+    outline: none;
+    border-color: var(--primary-color);
+  }
+}
+
+.modal-message-input {
+  flex: 1;
+  padding: 0.5rem;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background-color: var(--input-bg);
+  color: var(--text-color);
+  font-size: 0.9rem;
+
+  &:focus {
+    outline: none;
+    border-color: var(--primary-color);
+  }
+
+  &::placeholder {
+    color: var(--text-color);
+    opacity: 0.6;
+  }
+}
+
+.modal-send-button {
+  flex: 0 0 auto;
+  background: var(--primary-color);
   color: white;
   border: none;
   border-radius: 4px;
@@ -678,13 +898,19 @@ h3 {
   gap: 0.5rem;
   cursor: pointer;
   transition: background-color 0.2s;
+  font-size: 0.9rem;
 
-  &:hover {
-    background: #c82333;
+  &:hover:not(:disabled) {
+    background: var(--accent-color);
+  }
+
+  &:disabled {
+    background: var(--border-color);
+    cursor: not-allowed;
   }
 
   .material-icons {
-    font-size: 18px;
+    font-size: 16px;
   }
 }
 </style>

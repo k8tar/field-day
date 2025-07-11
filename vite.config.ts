@@ -31,6 +31,50 @@ function saveQsosToFile(qsos: any[]): void {
   }
 }
 
+// Message storage functions
+const MESSAGE_STORAGE_FILE = path.join(__dirname, 'fieldday-data', 'messages.json');
+
+interface NetworkMessage {
+  id: string;
+  type: 'bonus' | 'section' | 'multiplier' | 'network' | 'info' | 'chat';
+  text: string;
+  timestamp: number;
+  from?: string;
+  target?: string;
+  stationId: string;
+}
+
+function loadMessagesFromFile(): NetworkMessage[] {
+  try {
+    if (!fs.existsSync(MESSAGE_STORAGE_FILE)) {
+      return [];
+    }
+    const data = JSON.parse(fs.readFileSync(MESSAGE_STORAGE_FILE, 'utf8'));
+    console.log(`📨 Loaded ${data.length} messages from file`);
+    return data;
+  } catch (error) {
+    console.error('❌ Error loading messages from file:', error);
+  }
+  return [];
+}
+
+function saveMessagesToFile(messages: NetworkMessage[]): void {
+  try {
+    // Ensure directory exists
+    const dir = path.dirname(MESSAGE_STORAGE_FILE);
+    if (!fs.existsSync(dir)) {
+      fs.mkdirSync(dir, { recursive: true });
+    }
+    
+    // Keep only the latest 100 messages to prevent file from growing too large
+    const recentMessages = messages.slice(-100);
+    fs.writeFileSync(MESSAGE_STORAGE_FILE, JSON.stringify(recentMessages, null, 2));
+    console.log(`💾 Saved ${recentMessages.length} messages to file`);
+  } catch (error) {
+    console.error('❌ Error saving messages to file:', error);
+  }
+}
+
 export default defineConfig({
   plugins: [
     vue(),
@@ -41,6 +85,9 @@ export default defineConfig({
       configureServer(server) {
         // Load QSOs from shared file on server start
         let stationQsos: any[] = loadQsosFromFile();
+        
+        // Load messages from shared file on server start
+        let stationMessages: NetworkMessage[] = loadMessagesFromFile();
         
         // Also check port-specific files and merge if they have more recent data
         try {
@@ -80,6 +127,14 @@ export default defineConfig({
           fs.watchFile(QSO_STORAGE_FILE, () => {
             console.log('📄 QSO file changed, reloading...');
             stationQsos = loadQsosFromFile();
+          });
+        }
+        
+        // Watch for message file changes
+        if (fs.existsSync(MESSAGE_STORAGE_FILE)) {
+          fs.watchFile(MESSAGE_STORAGE_FILE, () => {
+            console.log('📨 Message file changed, reloading...');
+            stationMessages = loadMessagesFromFile();
           });
         }
         
@@ -626,7 +681,97 @@ export default defineConfig({
           }
         });
 
-        // ...existing middleware...
+        // Message API endpoints
+        server.middlewares.use('/api/messages', (req, res, next) => {
+          if (req.method === 'GET') {
+            // Get recent messages (latest 5 by default, or specify with ?limit=N)
+            const url = new URL(req.url || '', 'http://localhost');
+            const limit = parseInt(url.searchParams.get('limit') || '5');
+            const since = parseInt(url.searchParams.get('since') || '0');
+            
+            // Filter messages newer than 'since' timestamp if provided
+            let filteredMessages = stationMessages;
+            if (since > 0) {
+              filteredMessages = stationMessages.filter(msg => msg.timestamp > since);
+            }
+            
+            // Get the most recent messages up to the limit
+            const recentMessages = filteredMessages.slice(-limit);
+            
+            console.log(`📨 Serving ${recentMessages.length} messages (limit: ${limit}, since: ${since})`);
+            
+            res.setHeader('Content-Type', 'application/json');
+            res.setHeader('Access-Control-Allow-Origin', '*');
+            res.end(JSON.stringify({
+              messages: recentMessages,
+              timestamp: Date.now(),
+              total: stationMessages.length
+            }));
+          } else if (req.method === 'POST') {
+            // Add a new message
+            let body = '';
+            req.on('data', chunk => body += chunk);
+            req.on('end', () => {
+              try {
+                const messageData = JSON.parse(body);
+                
+                const newMessage: NetworkMessage = {
+                  id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                  type: messageData.type || 'chat',
+                  text: messageData.text,
+                  timestamp: Date.now(),
+                  from: messageData.from,
+                  target: messageData.target || 'all',
+                  stationId: messageData.stationId || 'unknown'
+                };
+                
+                stationMessages.push(newMessage);
+                saveMessagesToFile(stationMessages);
+                
+                console.log(`📨 Added message from ${newMessage.from}: ${newMessage.text}`);
+                
+                res.setHeader('Content-Type', 'application/json');
+                res.setHeader('Access-Control-Allow-Origin', '*');
+                res.end(JSON.stringify({ 
+                  success: true, 
+                  message: newMessage,
+                  timestamp: Date.now()
+                }));
+              } catch (error) {
+                console.error('❌ Error adding message:', error);
+                res.statusCode = 500;
+                res.end(JSON.stringify({ error: 'Failed to add message' }));
+              }
+            });
+          } else if (req.method === 'OPTIONS') {
+            res.setHeader('Access-Control-Allow-Origin', '*');
+            res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+            res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+            res.end();
+          } else {
+            next();
+          }
+        });
+
+        server.middlewares.use('/api/messages/clear', (req, res, next) => {
+          if (req.method === 'POST') {
+            stationMessages = [];
+            saveMessagesToFile(stationMessages);
+            
+            console.log('🗑️ Cleared all messages');
+            
+            res.setHeader('Content-Type', 'application/json');
+            res.setHeader('Access-Control-Allow-Origin', '*');
+            res.end(JSON.stringify({ success: true, timestamp: Date.now() }));
+          } else if (req.method === 'OPTIONS') {
+            res.setHeader('Access-Control-Allow-Origin', '*');
+            res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+            res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+            res.end();
+          } else {
+            next();
+          }
+        });
       }
     }
   ],

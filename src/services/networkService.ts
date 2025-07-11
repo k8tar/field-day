@@ -500,6 +500,23 @@ class NetworkService {
           
           console.log(`💓 [HEARTBEAT] Local QSO count: ${localQsoCount}`);
           
+          // Check for new messages from host
+          try {
+            const messageResponse = await fetch(`https://${ip}:${port}/api/messages?limit=20`);
+            if (messageResponse.ok) {
+              const messageData = await messageResponse.json();
+              const remoteMessages = messageData.messages || [];
+              console.log(`💬 [HEARTBEAT] Found ${remoteMessages.length} messages on host`);
+              
+              // Emit new messages to the local message component
+              remoteMessages.forEach((message: any) => {
+                this.emit('message:received', message);
+              });
+            }
+          } catch (messageError) {
+            console.log(`⚠️ [HEARTBEAT] Could not sync messages:`, messageError);
+          }
+          
           // Get remote QSO count from host
           let remoteQsoCount = 0;
           let remoteQsos = [];
@@ -1166,6 +1183,114 @@ class NetworkService {
       } catch (error) {
         console.log(`⚠️ Client->Host: Network error sending QSO ${action} to host:`, error);
       }
+    }
+  }
+
+  // Send a chat message across the network
+  async sendMessage(text: string, target: string = 'all'): Promise<void> {
+    if (!this.status.isConnected) {
+      console.log('📨 Not sending message - network not connected');
+      return;
+    }
+    
+    try {
+      const stationConfig = await fileStorage.getStationConfig();
+      const stationId = `${stationConfig.callsign}-${stationConfig.designator}`;
+      
+      const message = {
+        type: 'chat',
+        text,
+        from: stationId,
+        target,
+        stationId
+      };
+
+      console.log(`📨 Sending message from ${stationId} to ${target}: ${text}`);
+      
+      if (this.isHost) {
+        // Host: Add to local storage and broadcast to clients
+        const response = await fetch(`https://localhost:8080/api/messages`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(message)
+        });
+        
+        if (response.ok) {
+          console.log(`✅ Host: Message stored locally`);
+          
+          // Broadcast to connected clients
+          if (target === 'all') {
+            this.connectedStations.forEach(async (station) => {
+              try {
+                const clientResponse = await fetch(`https://${station.ip}:${station.port}/api/messages`, {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json'
+                  },
+                  body: JSON.stringify(message)
+                });
+                
+                if (clientResponse.ok) {
+                  console.log(`✅ Host->Client: Message sent to ${station.callsign}-${station.designator}`);
+                } else {
+                  console.log(`❌ Host->Client: Failed to send message to ${station.callsign}-${station.designator}`);
+                }
+              } catch (error) {
+                console.log(`⚠️ Host->Client: Error sending message to ${station.callsign}-${station.designator}:`, error);
+              }
+            });
+          } else {
+            // Send to specific station
+            const targetStation = this.connectedStations.find(s => `${s.callsign}-${s.designator}` === target);
+            if (targetStation) {
+              try {
+                const clientResponse = await fetch(`https://${targetStation.ip}:${targetStation.port}/api/messages`, {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json'
+                  },
+                  body: JSON.stringify(message)
+                });
+                
+                if (clientResponse.ok) {
+                  console.log(`✅ Host->Client: Message sent to ${target}`);
+                } else {
+                  console.log(`❌ Host->Client: Failed to send message to ${target}`);
+                }
+              } catch (error) {
+                console.log(`⚠️ Host->Client: Error sending message to ${target}:`, error);
+              }
+            } else {
+              console.log(`⚠️ Host: Target station ${target} not found`);
+            }
+          }
+        }
+      } else {
+        // Client: Send to host
+        if (!this.networkSettings.lastHostAddress) {
+          console.log('📨 Client: No host address available to send message');
+          return;
+        }
+        
+        const response = await fetch(`https://${this.networkSettings.lastHostAddress}/api/messages`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(message)
+        });
+        
+        if (response.ok) {
+          console.log(`✅ Client->Host: Message sent to host`);
+        } else {
+          console.log(`❌ Client->Host: Failed to send message to host`);
+        }
+      }
+    } catch (error) {
+      console.error('❌ Error sending message:', error);
+      throw error;
     }
   }
 
