@@ -32,8 +32,6 @@
     "vuex": "^4.0.0"
   },
   "devDependencies": {
-    "electron": "^37.2.0",
-    "electron-builder": "^26.0.12",
     "@types/chai": "^4.2.15",
     "@types/jest": "^30.0.0",
     "@types/mocha": "^8.2.3",
@@ -52,18 +50,19 @@
     "@vue/eslint-config-typescript": "^9.1.0",
     "@vue/test-utils": "^2.0.0-alpha.1",
     "chai": "^4.2.0",
+    "electron": "^37.2.0",
+    "electron-builder": "^26.0.12",
     "eslint": "^7.32.0",
     "eslint-plugin-vue": "^8.0.3",
     "puppeteer": "^24.12.1",
     "sass": "^1.32.7",
     "sass-loader": "^12.0.0",
-    "typescript": "~4.5.5",
+    "typescript": "^5.8.3",
     "vite": "^7.0.3"
   },
   "build": {
     "appId": "com.k8tar.fieldday",
     "productName": "Field Day Logger",
-    "icon": "public/app-icon.ico",
     "directories": {
       "output": "dist-electron"
     },
@@ -84,11 +83,15 @@
       "target": [
         {
           "target": "nsis",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         },
         {
-          "target": "portable", 
-          "arch": ["x64"]
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
         }
       ],
       "verifyUpdateCodeSignature": false,

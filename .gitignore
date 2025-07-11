@@ -54,6 +54,9 @@ header-*.png
 # Test scripts (separated from unit tests)
 test-scripts/
 
+# Archived test files
+tests/archive/
+
 # Electron build artifacts
 /out/
 /app/
