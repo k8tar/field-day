@@ -396,12 +396,54 @@ class NetworkService {
                     
                     if (remoteQsoCount > localQsoCount) {
                       console.log(`🔄 [HOST-MONITOR] Remote has more QSOs, pulling from client...`);
-                      // Import the refresh function dynamically to avoid circular imports
-                      const { refreshQsosFromServer } = await import('@/store/qso');
-                      await refreshQsosFromServer();
+                      
+                      // Fetch QSOs directly from the remote client
+                      try {
+                        const clientQsoResponse = await fetch(`https://${station.ip}:${station.port}/api/qsos`);
+                        if (clientQsoResponse.ok) {
+                          const clientQsoData = await clientQsoResponse.json();
+                          const clientQsos = clientQsoData.qsos || [];
+                          
+                          console.log(`📥 [HOST-MONITOR] Retrieved ${clientQsos.length} QSOs from ${station.callsign}-${station.designator}`);
+                          
+                          // Merge client QSOs with local QSOs
+                          const { qsos } = await import('@/store/qso');
+                          const currentQsos = [...qsos.value];
+                          
+                          // Create a map of existing QSOs by ID for quick lookup
+                          const existingQsoMap = new Map();
+                          currentQsos.forEach(qso => {
+                            if (qso.id) {
+                              existingQsoMap.set(qso.id, qso);
+                            }
+                          });
+                          
+                          // Add client QSOs that don't exist locally
+                          let newQsosAdded = 0;
+                          clientQsos.forEach((clientQso: any) => {
+                            if (clientQso.id && !existingQsoMap.has(clientQso.id)) {
+                              currentQsos.push(clientQso);
+                              newQsosAdded++;
+                              console.log(`➕ [HOST-MONITOR] Added client QSO: ${clientQso.call} (ID: ${clientQso.id})`);
+                            }
+                          });
+                          
+                          if (newQsosAdded > 0) {
+                            console.log(`✅ [HOST-MONITOR] Added ${newQsosAdded} new QSOs from ${station.callsign}-${station.designator}`);
+                            qsos.value = currentQsos;
+                            
+                            // Save to local file storage
+                            const { fileStorage } = await import('@/services/fileStorage');
+                            await fileStorage.saveQsoData(currentQsos);
+                            console.log(`💾 [HOST-MONITOR] Saved ${currentQsos.length} QSOs to local file storage`);
+                          }
+                        }
+                      } catch (clientQsoError) {
+                        console.log(`❌ [HOST-MONITOR] Failed to fetch QSOs from ${station.callsign}-${station.designator}:`, clientQsoError);
+                      }
                     } else if (localQsoCount > remoteQsoCount) {
-                      console.log(`🔄 [HOST-MONITOR] Local has more QSOs, will be pushed to client via broadcast...`);
-                      // The client will pick this up via its own refresh cycle
+                      console.log(`🔄 [HOST-MONITOR] Local has more QSOs, client should sync from host via its heartbeat...`);
+                      // The client will pick this up via its own heartbeat cycle
                     }
                   } else {
                     console.log(`✅ [HOST-MONITOR] QSO counts match with ${station.callsign}-${station.designator} (${localQsoCount})`);
@@ -460,21 +502,54 @@ class NetworkService {
           
           // Get remote QSO count from host
           let remoteQsoCount = 0;
+          let remoteQsos = [];
           try {
             const qsoResponse = await fetch(`https://${ip}:${port}/api/qsos`);
             if (qsoResponse.ok) {
               const qsoData = await qsoResponse.json();
-              remoteQsoCount = qsoData.qsos ? qsoData.qsos.length : 0;
+              remoteQsos = qsoData.qsos || [];
+              remoteQsoCount = remoteQsos.length;
               console.log(`💓 [HEARTBEAT] Remote QSO count: ${remoteQsoCount}`);
               
               // Check if counts differ and trigger sync if needed
               if (localQsoCount !== remoteQsoCount) {
                 console.log(`🔄 [HEARTBEAT] QSO count mismatch detected! Local: ${localQsoCount}, Remote: ${remoteQsoCount}`);
-                console.log(`🔄 [HEARTBEAT] Triggering QSO refresh to sync...`);
+                console.log(`🔄 [HEARTBEAT] Syncing QSOs from remote server...`);
                 
-                // Import the refresh function dynamically to avoid circular imports
-                const { refreshQsosFromServer } = await import('@/store/qso');
-                await refreshQsosFromServer();
+                // Instead of using refreshQsosFromServer (which only gets local server data),
+                // directly merge the remote QSOs with local ones
+                const { qsos } = await import('@/store/qso');
+                const currentQsos = [...qsos.value];
+                
+                // Create a map of existing QSOs by ID for quick lookup
+                const existingQsoMap = new Map();
+                currentQsos.forEach(qso => {
+                  if (qso.id) {
+                    existingQsoMap.set(qso.id, qso);
+                  }
+                });
+                
+                // Add remote QSOs that don't exist locally
+                let newQsosAdded = 0;
+                remoteQsos.forEach((remoteQso: any) => {
+                  if (remoteQso.id && !existingQsoMap.has(remoteQso.id)) {
+                    currentQsos.push(remoteQso);
+                    newQsosAdded++;
+                    console.log(`➕ [HEARTBEAT] Added remote QSO: ${remoteQso.call} (ID: ${remoteQso.id})`);
+                  }
+                });
+                
+                if (newQsosAdded > 0) {
+                  console.log(`✅ [HEARTBEAT] Added ${newQsosAdded} new QSOs from remote server`);
+                  qsos.value = currentQsos;
+                  
+                  // Save to local file storage
+                  const { fileStorage } = await import('@/services/fileStorage');
+                  await fileStorage.saveQsoData(currentQsos);
+                  console.log(`💾 [HEARTBEAT] Saved ${currentQsos.length} QSOs to local file storage`);
+                } else {
+                  console.log(`📋 [HEARTBEAT] No new QSOs from remote server`);
+                }
               } else {
                 console.log(`✅ [HEARTBEAT] QSO counts match (${localQsoCount})`);
               }
