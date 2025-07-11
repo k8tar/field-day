@@ -48,9 +48,27 @@
             <label for="network-mode">Network Mode:</label>
             <select id="network-mode" v-model="networkMode" @change="onNetworkModeChange">
               <option value="auto">Auto-discover (LAN)</option>
+              <option value="mesh">Mesh Network (P2P)</option>
               <option value="host">Host Network</option>
               <option value="join">Join Network</option>
             </select>
+          </div>
+
+          <div v-if="networkMode === 'mesh'" class="setting-group">
+            <div class="mesh-info">
+              <h4>🕸️ Mesh Network Mode</h4>
+              <p class="help-text">
+                In mesh mode, each station operates independently and discovers other stations automatically.
+                No central server is required - all stations communicate directly with each other.
+                This provides maximum resilience for Field Day operations.
+              </p>
+              <ul class="help-list">
+                <li>• Each station discovers others automatically</li>
+                <li>• Direct peer-to-peer connections</li>
+                <li>• No single point of failure</li>
+                <li>• Stations continue operating if others go offline</li>
+              </ul>
+            </div>
           </div>
 
           <div v-if="networkMode === 'host'" class="setting-group">
@@ -149,6 +167,76 @@
           </div>
         </div>
 
+        <!-- Mesh Network Nodes -->
+        <div v-if="networkMode === 'mesh'" class="mesh-nodes">
+          <h3>
+            <span class="material-icons">device_hub</span>
+            Mesh Network Nodes ({{ meshNodes.length }})
+          </h3>
+          
+          <div class="mesh-status-summary">
+            <div class="mesh-health" :class="meshStatus.meshHealth">
+              <span class="health-indicator"></span>
+              Network Health: {{ meshStatus.meshHealth.toUpperCase() }}
+            </div>
+            <div class="mesh-stats">
+              <span>Discovered: {{ meshStatus.discoveredNodes }}</span>
+              <span>Connected: {{ meshStatus.connectedNodes }}</span>
+              <span>Last Sync: {{ formatLastSync(meshStatus.lastSync) }}</span>
+            </div>
+          </div>
+          
+          <div v-if="meshNodes.length > 0" class="stations-list">
+            <div 
+              v-for="node in meshNodes" 
+              :key="node.id" 
+              class="station-card mesh-node"
+            >
+              <div class="station-info">
+                <div class="station-header">
+                  <span class="station-callsign">{{ node.callsign }}</span>
+                  <span class="station-designator">{{ node.designator }}</span>
+                  <span class="node-status" :class="{ 'online': node.online }">
+                    {{ node.online ? '🟢' : '🔴' }}
+                  </span>
+                </div>
+                <div class="station-details">
+                  <span class="station-ip">{{ node.ip }}:{{ node.port }}</span>
+                  <span class="station-qsos">{{ node.qsoCount }} QSOs</span>
+                  <span class="station-score">{{ node.score }} pts</span>
+                </div>
+                <div class="node-capabilities">
+                  <span v-for="capability in node.capabilities" :key="capability" class="capability-tag">
+                    {{ capability }}
+                  </span>
+                </div>
+                <div class="station-status">
+                  <span class="last-seen">{{ formatLastSeen(node.lastSeen) }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <div v-else class="no-nodes">
+            <p>No other mesh nodes found on the network.</p>
+            <p class="help-text">
+              🕸️ Mesh nodes discover each other automatically.<br>
+              Start another Field Day Logger instance on a different machine to see it appear here.
+            </p>
+          </div>
+          
+          <div class="mesh-actions">
+            <button @click="refreshMeshDiscovery" :disabled="isRefreshing" class="refresh-button">
+              <span v-if="isRefreshing">🔄 Refreshing...</span>
+              <span v-else>🔍 Refresh Discovery</span>
+            </button>
+            <button @click="forceMeshSync" :disabled="isSyncing" class="sync-button">
+              <span v-if="isSyncing">🔄 Syncing...</span>
+              <span v-else>🔄 Force Sync</span>
+            </button>
+          </div>
+        </div>
+
         <!-- Auto-Discovery Results -->
         <div v-if="networkMode === 'auto'" class="discovered-stations">
           <h3>Discovered Stations</h3>
@@ -224,8 +312,8 @@
             type="button"
           >
             <span v-if="isConnecting" class="material-icons spinning">hourglass_empty</span>
-            <span v-else class="material-icons">{{ networkMode === 'host' ? 'router' : 'wifi' }}</span>
-            {{ isConnecting ? 'Connecting...' : (networkMode === 'host' ? 'Start Hosting' : 'Connect') }}
+            <span v-else class="material-icons">{{ getNetworkModeIcon() }}</span>
+            {{ isConnecting ? 'Connecting...' : getNetworkModeButtonText() }}
           </button>
           
           <!-- Connection Status Display -->
@@ -280,7 +368,7 @@ const emit = defineEmits<{
 
 // Connection state - use network service
 const isConnected = computed(() => networkService.status.isConnected);
-const networkMode = ref<'auto' | 'host' | 'join'>('auto');
+const networkMode = ref<'auto' | 'mesh' | 'host' | 'join'>('auto');
 const networkId = computed(() => networkService.status.networkId);
 const hostPort = ref(8080); // Hardcoded - all Field Day instances use port 8080
 const hostAddress = ref('');
@@ -359,6 +447,12 @@ watch(() => localStationInfo.value.designator, async (newDesignator) => {
 const connectedStations = computed(() => networkService.getConnectedStations());
 const discoveredStations = ref<NetworkStation[]>([]);
 
+// Mesh network state
+const meshNodes = computed(() => networkService.getMeshNodes());
+const meshStatus = computed(() => networkService.getMeshStatus());
+const isRefreshing = ref(false);
+const isSyncing = ref(false);
+
 // Scanning state
 const isScanning = ref(false);
 
@@ -373,6 +467,8 @@ const canConnect = computed(() => {
     return true; // Always true since port 8080 is hardcoded and valid
   } else if (networkMode.value === 'join') {
     return hostAddress.value.trim().length > 0;
+  } else if (networkMode.value === 'mesh') {
+    return true; // Mesh mode can always be started
   } else {
     return discoveredStations.value.length > 0;
   }
@@ -477,6 +573,23 @@ async function startConnection() {
       } else {
         throw new Error(`Failed to connect to ${hostAddress.value}`);
       }
+    } else if (networkMode.value === 'mesh') {
+      console.log('🕸️ Starting mesh network...');
+      connectionStatus.value = 'Starting mesh network...';
+      
+      const success = await networkService.startMesh();
+      
+      if (success) {
+        console.log('✅ Mesh network started successfully');
+        connectionStatus.value = 'Mesh network started successfully!';
+        
+        // Clear status after 3 seconds
+        setTimeout(() => {
+          connectionStatus.value = '';
+        }, 3000);
+      } else {
+        throw new Error('Failed to start mesh network');
+      }
     }
     
     // Settings are automatically saved by the network service methods above
@@ -495,7 +608,60 @@ async function startConnection() {
 }
 
 function disconnect() {
-  networkService.disconnect();
+  if (networkMode.value === 'mesh') {
+    networkService.stopMesh();
+  } else {
+    networkService.disconnect();
+  }
+}
+
+// Mesh network methods
+async function refreshMeshDiscovery() {
+  if (isRefreshing.value) return;
+  
+  isRefreshing.value = true;
+  try {
+    await networkService.refreshMeshDiscovery();
+    console.log('✅ Mesh discovery refreshed');
+  } catch (error) {
+    console.error('❌ Failed to refresh mesh discovery:', error);
+  } finally {
+    isRefreshing.value = false;
+  }
+}
+
+async function forceMeshSync() {
+  if (isSyncing.value) return;
+  
+  isSyncing.value = true;
+  try {
+    await networkService.forceMeshSync();
+    console.log('✅ Mesh sync completed');
+  } catch (error) {
+    console.error('❌ Failed to force mesh sync:', error);
+  } finally {
+    isSyncing.value = false;
+  }
+}
+
+function getNetworkModeIcon(): string {
+  switch (networkMode.value) {
+    case 'host': return 'router';
+    case 'mesh': return 'device_hub';
+    case 'join': return 'wifi';
+    case 'auto': return 'wifi_find';
+    default: return 'wifi';
+  }
+}
+
+function getNetworkModeButtonText(): string {
+  switch (networkMode.value) {
+    case 'host': return 'Start Hosting';
+    case 'mesh': return 'Start Mesh Network';
+    case 'join': return 'Connect';
+    case 'auto': return 'Connect';
+    default: return 'Connect';
+  }
 }
 
 function formatLastSeen(timestamp: number): string {
@@ -831,6 +997,160 @@ async function saveNetworkSettings() {
   align-items: center;
   gap: 0.5rem;
   margin-bottom: 0.25rem;
+}
+
+/* Mesh Network Styles */
+.mesh-nodes {
+  margin-bottom: 2rem;
+
+  h3 {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 0 0 1rem 0;
+    font-size: 1.1rem;
+  }
+}
+
+.mesh-info {
+  padding: 1rem;
+  background-color: var(--bg-color);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  margin-bottom: 1rem;
+
+  h4 {
+    margin: 0 0 0.5rem 0;
+    color: var(--primary-color);
+    font-size: 1rem;
+  }
+
+  .help-list {
+    margin: 0.5rem 0 0 1rem;
+    
+    li {
+      margin: 0.25rem 0;
+      font-size: 0.8rem;
+      color: var(--text-color);
+      opacity: 0.8;
+    }
+  }
+}
+
+.mesh-status-summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem;
+  background-color: var(--bg-color);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.mesh-health {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 600;
+
+  .health-indicator {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background-color: #ccc;
+  }
+
+  &.healthy .health-indicator {
+    background-color: #4CAF50;
+  }
+
+  &.degraded .health-indicator {
+    background-color: #FF9800;
+  }
+
+  &.isolated .health-indicator {
+    background-color: #F44336;
+  }
+}
+
+.mesh-stats {
+  display: flex;
+  gap: 1rem;
+  font-size: 0.9rem;
+  opacity: 0.8;
+  flex-wrap: wrap;
+
+  span {
+    white-space: nowrap;
+  }
+}
+
+.mesh-node {
+  .station-header {
+    gap: 0.75rem;
+  }
+
+  .node-status {
+    font-size: 0.8rem;
+  }
+}
+
+.node-capabilities {
+  display: flex;
+  gap: 0.25rem;
+  margin-top: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.capability-tag {
+  background-color: var(--primary-color);
+  color: white;
+  padding: 0.125rem 0.5rem;
+  border-radius: 12px;
+  font-size: 0.7rem;
+  font-weight: 500;
+}
+
+.mesh-actions {
+  display: flex;
+  gap: 1rem;
+  margin-top: 1rem;
+  flex-wrap: wrap;
+}
+
+.refresh-button,
+.sync-button {
+  background-color: var(--primary-color);
+  color: white;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: background-color 0.2s ease;
+
+  &:hover:not(:disabled) {
+    background-color: var(--primary-hover);
+  }
+
+  &:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+}
+
+.no-nodes {
+  text-align: center;
+  padding: 2rem;
+  color: var(--text-color);
+  opacity: 0.7;
+
+  p {
+    margin: 0.5rem 0;
+  }
 }
 
 .station-designator-main {

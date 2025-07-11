@@ -1,6 +1,7 @@
 import { ref, reactive, nextTick } from 'vue';
 import { fileStorage } from './fileStorage';
 import { startPeriodicQsoRefresh, stopPeriodicQsoRefresh } from '@/store/qso';
+import { meshNetworkService, type MeshNode } from './meshNetworkService';
 
 export interface NetworkStation {
   id: string;
@@ -1121,7 +1122,7 @@ class NetworkService {
   }
 
   // Public method to update network mode settings
-  updateNetworkMode(mode: 'host' | 'join' | 'auto', options: { hostPort?: number; hostAddress?: string } = {}): void {
+  updateNetworkMode(mode: 'host' | 'join' | 'auto' | 'mesh', options: { hostPort?: number; hostAddress?: string } = {}): void {
     if (mode === 'host') {
       this.networkSettings.isHost = true;
       this.networkSettings.hostPort = options.hostPort || 8080;
@@ -1129,6 +1130,10 @@ class NetworkService {
     } else if (mode === 'join' && options.hostAddress) {
       this.networkSettings.isHost = false;
       this.networkSettings.lastHostAddress = options.hostAddress;
+    } else if (mode === 'mesh') {
+      // Mesh mode - decentralized network
+      this.networkSettings.isHost = false;
+      this.networkSettings.lastHostAddress = '';
     } else {
       // Auto mode - clear both
       this.networkSettings.isHost = false;
@@ -1633,8 +1638,10 @@ class NetworkService {
   }
 
   // Public method to get current network mode for UI
-  getCurrentNetworkMode(): 'host' | 'join' | 'auto' {
-    if (this.networkSettings.isHost) {
+  getCurrentNetworkMode(): 'host' | 'join' | 'auto' | 'mesh' {
+    if (meshNetworkService.isMeshActive()) {
+      return 'mesh';
+    } else if (this.networkSettings.isHost) {
       return 'host';
     } else if (this.networkSettings.lastHostAddress) {
       return 'join';
@@ -1651,6 +1658,141 @@ class NetworkService {
   // Public method to get host port for UI
   getHostPort(): number {
     return 8080; // Hardcoded port for all Field Day instances
+  }
+
+  // Mesh network methods
+  async startMesh(): Promise<boolean> {
+    // In Electron, skip mesh networking
+    if (this.isElectron()) {
+      console.log('🖥️ Running in Electron - skipping mesh network');
+      return false;
+    }
+
+    try {
+      console.log('🕸️ Starting mesh network...');
+      
+      // Stop any existing connections first
+      this.disconnect();
+      
+      // Start mesh network
+      const success = await meshNetworkService.startMesh();
+      
+      if (success) {
+        // Update network status to reflect mesh mode
+        this.status.isConnected = true;
+        this.status.networkId = `MESH-${meshNetworkService.getMeshStatus().nodeId}`;
+        this.status.lastSync = Date.now();
+        
+        // Set up mesh event handlers
+        this.setupMeshEventHandlers();
+        
+        this.emit('network:connected', { type: 'mesh' });
+        console.log('✅ Mesh network started successfully');
+      }
+      
+      return success;
+    } catch (error) {
+      console.error('❌ Failed to start mesh network:', error);
+      this.emit('network:error', { message: 'Failed to start mesh network', error });
+      return false;
+    }
+  }
+
+  async stopMesh(): Promise<void> {
+    try {
+      console.log('🛑 Stopping mesh network...');
+      
+      await meshNetworkService.stopMesh();
+      
+      // Update network status
+      this.status.isConnected = false;
+      this.status.networkId = '';
+      
+      this.emit('network:disconnected', { type: 'mesh' });
+      console.log('✅ Mesh network stopped');
+    } catch (error) {
+      console.error('❌ Failed to stop mesh network:', error);
+    }
+  }
+
+  private setupMeshEventHandlers(): void {
+    // Handle mesh node discovery
+    meshNetworkService.on('mesh:node-discovered', (node: MeshNode) => {
+      console.log(`📡 Mesh node discovered: ${node.callsign} (${node.designator})`);
+      
+      // Convert mesh node to network station format
+      const station: NetworkStation = {
+        id: node.id,
+        callsign: node.callsign,
+        designator: node.designator,
+        ip: node.ip,
+        port: node.port,
+        qsoCount: node.qsoCount,
+        score: node.score,
+        online: node.online,
+        lastSeen: node.lastSeen
+      };
+      
+      // Add to connected stations list
+      const existingIndex = this.connectedStations.findIndex(s => s.id === station.id);
+      if (existingIndex >= 0) {
+        Object.assign(this.connectedStations[existingIndex], station);
+      } else {
+        this.connectedStations.push(station);
+      }
+      
+      this.triggerStationUpdate();
+    });
+
+    // Handle mesh node removal
+    meshNetworkService.on('mesh:node-removed', (node: MeshNode) => {
+      console.log(`🗑️ Mesh node removed: ${node.callsign} (${node.designator})`);
+      
+      const index = this.connectedStations.findIndex(s => s.id === node.id);
+      if (index >= 0) {
+        this.connectedStations.splice(index, 1);
+        this.triggerStationUpdate();
+      }
+    });
+
+    // Handle mesh sync completion
+    meshNetworkService.on('mesh:sync-completed', (data: any) => {
+      console.log('🔄 Mesh sync completed:', data);
+      
+      const meshStatus = meshNetworkService.getMeshStatus();
+      this.status.lastSync = meshStatus.lastSync;
+      this.status.syncedQsos = meshStatus.syncedQsos;
+      this.status.conflictsResolved = meshStatus.conflictsResolved;
+    });
+
+    // Handle mesh health changes
+    meshNetworkService.on('mesh:health-changed', (health: string) => {
+      console.log(`💊 Mesh health changed: ${health}`);
+      
+      // Update network ID to reflect health
+      const meshStatus = meshNetworkService.getMeshStatus();
+      this.status.networkId = `MESH-${meshStatus.nodeId}-${health.toUpperCase()}`;
+    });
+  }
+
+  // Get mesh nodes for UI
+  getMeshNodes(): MeshNode[] {
+    return meshNetworkService.getDiscoveredNodes();
+  }
+
+  // Get mesh status for UI
+  getMeshStatus() {
+    return meshNetworkService.getMeshStatus();
+  }
+
+  // Force mesh discovery refresh
+  async refreshMeshDiscovery(): Promise<void> {
+    await meshNetworkService.refreshDiscovery();
+  }
+
+  // Force mesh sync
+  async forceMeshSync(): Promise<void> {
+    await meshNetworkService.forceMeshSync();
   }
 }
 

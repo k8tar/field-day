@@ -80,3 +80,6 @@ coverage/
 yarn.lock
 pnpm-lock.yaml
 test-anchor-ids.js
+test-mesh-network.js
+debug-mesh.js
+browser-test.js

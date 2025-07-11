@@ -69,7 +69,8 @@ class FieldDayApiServer {
     return url.includes('/api/station-info') || 
            url.includes('/api/qsos') || 
            url.includes('/station-info') ||
-           url.includes('/api/status');
+           url.includes('/api/status') ||
+           url.includes('/mesh/discovery');
   }
 
   private async handleApiRequest(url: string, init?: RequestInit): Promise<Response> {
@@ -85,6 +86,8 @@ class FieldDayApiServer {
 
       if (pathname.includes('/station-info') || pathname.includes('/status')) {
         response = await this.handleStationInfo();
+      } else if (pathname.includes('/mesh/discovery')) {
+        response = await this.handleMeshDiscovery(init);
       } else if (pathname.includes('/qsos')) {
         if (method === 'GET') {
           response = this.handleGetQsos(searchParams);
@@ -139,6 +142,41 @@ class FieldDayApiServer {
       status: 200,
       data: stationInfo
     };
+  }
+
+  private async handleMeshDiscovery(init?: RequestInit): Promise<ApiResponse> {
+    try {
+      const stationConfig = await fileStorage.getStationConfig();
+      
+      // Generate a unique node ID for this session
+      const nodeId = `node-${Date.now().toString(36)}-${Math.random().toString(36).substr(2, 5)}`;
+      
+      const meshNodeInfo = {
+        nodeId: nodeId,
+        callsign: stationConfig.callsign,
+        designator: stationConfig.designator,
+        qsoCount: this.qsoStore.length,
+        score: this.calculateTotalScore(),
+        software: 'K8TAR Field Day Logger',
+        version: '2.0.0',
+        capabilities: ['qso-sync', 'heartbeat', 'conflict-resolution'],
+        timestamp: Date.now(),
+        online: true
+      };
+
+      console.log(`🕸️ Mesh discovery request: ${meshNodeInfo.callsign}-${meshNodeInfo.designator} (Node: ${nodeId})`);
+      
+      return {
+        status: 200,
+        data: meshNodeInfo
+      };
+    } catch (error) {
+      console.error('❌ Error handling mesh discovery:', error);
+      return {
+        status: 500,
+        data: { error: 'Failed to process mesh discovery request' }
+      };
+    }
   }
 
   private handleGetQsos(searchParams: URLSearchParams): ApiResponse {
