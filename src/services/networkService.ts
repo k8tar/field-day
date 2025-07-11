@@ -1704,6 +1704,10 @@ class NetworkService {
       if (success) {
         console.log('✅ NetworkService: Mesh started, updating network status...');
         
+        // Clean up any existing duplicates before starting fresh
+        console.log('🧹 Cleaning up existing duplicate stations...');
+        this.removeDuplicateStations();
+        
         // Update network status to reflect mesh mode
         this.status.isConnected = true;
         this.status.networkId = `MESH-${meshNetworkService.getMeshStatus().nodeId}`;
@@ -1735,6 +1739,10 @@ class NetworkService {
       
       await meshNetworkService.stopMesh();
       
+      // Clear all connected stations when mesh stops
+      console.log('🧹 Clearing all connected stations...');
+      this.connectedStations.splice(0);
+      
       // Update network status
       this.status.isConnected = false;
       this.status.networkId = '';
@@ -1764,22 +1772,36 @@ class NetworkService {
         lastSeen: node.lastSeen
       };
       
-      // Check for existing station using multiple criteria to prevent duplicates
-      const existingIndex = this.connectedStations.findIndex(s => 
-        s.id === station.id || 
-        (s.ip === station.ip && s.port === station.port) ||
-        (s.callsign === station.callsign && s.designator === station.designator)
+      // More robust duplicate check - check by station identity (callsign+designator), not IP
+      // Same station can have multiple IPs (localhost + local network), so dedupe by station identity only
+      const stationKey = `${station.callsign}-${station.designator}`;
+      const existingStationIndex = this.connectedStations.findIndex(s => 
+        `${s.callsign}-${s.designator}` === stationKey
       );
       
-      if (existingIndex >= 0) {
-        // Update existing station instead of adding duplicate
+      if (existingStationIndex >= 0) {
+        // Update existing station with new info, prefer non-localhost IP
+        const existing = this.connectedStations[existingStationIndex];
         console.log(`🔄 Updating existing station: ${station.callsign} (${station.designator})`);
-        Object.assign(this.connectedStations[existingIndex], station);
-      } else {
-        // Only add if truly new
-        console.log(`➕ Adding new station: ${station.callsign} (${station.designator})`);
-        this.connectedStations.push(station);
+        
+        // Prefer non-localhost IP for display
+        if (existing.ip === '127.0.0.1' && station.ip !== '127.0.0.1') {
+          existing.ip = station.ip;
+          existing.id = station.id;
+        }
+        
+        // Update other fields
+        existing.qsoCount = station.qsoCount;
+        existing.score = station.score;
+        existing.online = station.online;
+        existing.lastSeen = station.lastSeen;
+        
+        return; // Skip adding duplicate
       }
+      
+      // Only add if truly new
+      console.log(`➕ Adding new station: ${station.callsign} (${station.designator})`);
+      this.connectedStations.push(station);
       
       console.log(`📊 Total connected stations: ${this.connectedStations.length}`);
       this.triggerStationUpdate();

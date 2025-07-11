@@ -160,8 +160,8 @@ class FieldDayApiServer {
     try {
       const stationConfig = await fileStorage.getStationConfig();
       
-      // Generate a unique node ID for this session
-      const nodeId = `node-${Date.now().toString(36)}-${Math.random().toString(36).substr(2, 5)}`;
+      // Generate a consistent node ID based on station info (not random each time!)
+      const nodeId = `node-${stationConfig.callsign}-${stationConfig.designator}`.toLowerCase();
       
       const meshNodeInfo = {
         nodeId: nodeId,

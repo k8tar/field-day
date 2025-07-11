@@ -152,6 +152,7 @@ async function loadOperators() {
 async function loadStationInfo() {
   try {
     const config = await fileStorage.getStationConfig();
+    console.log('Header: Loaded station config:', config); // Debug log
     stationDesignator.value = config.designator || '';
   } catch (error) {
     console.error('Error loading station info:', error);

@@ -356,13 +356,14 @@ class FileStorageService {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          filename: this.getFilePath(filename),
+          filename: filename, // Use just the filename, not the full path
           content: content
         })
       });
 
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        const errorText = await response.text();
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
       }
 
       console.log(`📁 Wrote file to server: ${filename}`);
@@ -374,7 +375,7 @@ class FileStorageService {
 
   private async readFileServer(filename: string): Promise<string | null> {
     try {
-      const response = await fetch(`/api/files/read?path=${encodeURIComponent(this.getFilePath(filename))}`);
+      const response = await fetch(`/api/files/read?filename=${encodeURIComponent(filename)}`);
       
       if (response.status === 404) {
         return null; // File doesn't exist
@@ -384,9 +385,14 @@ class FileStorageService {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
 
-      const content = await response.text();
-      console.log(`📂 Read file from server: ${filename}`);
-      return content;
+      const result = await response.json();
+      if (result.content !== undefined) {
+        console.log(`📂 Read file from server: ${filename}`);
+        return result.content;
+      } else {
+        console.log(`📂 File not found on server: ${filename}`);
+        return null;
+      }
     } catch (error) {
       console.error(`❌ Failed to read file from server: ${filename}`, error);
       return null;

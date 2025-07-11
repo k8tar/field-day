@@ -287,7 +287,7 @@ class MeshNetworkService {
                 match[1].startsWith('192.168.') || 
                 match[1].startsWith('10.') || 
                 match[1].startsWith('172.')
-              )) {
+              ) && !this.isLocalhost(match[1])) { // Exclude localhost IPs
                 pc.close();
                 console.log(`✅ Local IP detected: ${match[1]}`);
                 resolve(match[1]);
@@ -314,6 +314,76 @@ class MeshNetworkService {
     }
   }
 
+  // Helper method to check if an IP is localhost
+  private isLocalhost(ip: string): boolean {
+    return ip === '127.0.0.1' || 
+           ip === '::1' || 
+           ip === 'localhost' ||
+           ip.startsWith('127.');
+  }
+
+  // Helper method to get valid network IPs to scan
+  private async getValidNetworkIPs(): Promise<string[]> {
+    const validIPs: string[] = [];
+    
+    // Get the current local IP to determine the network range
+    const localIP = this.localNode?.ip || '192.168.1.100';
+    
+    // If we have a valid private IP, scan that network range
+    if (this.isPrivateIP(localIP)) {
+      const networkBase = this.getNetworkBase(localIP);
+      
+      // Scan common Field Day station IPs in the same network
+      const commonStationNumbers = [10, 11, 12, 13, 14, 15, 20, 25, 30, 50, 100];
+      
+      for (const num of commonStationNumbers) {
+        const testIP = `${networkBase}.${num}`;
+        if (testIP !== localIP) {
+          validIPs.push(testIP);
+        }
+      }
+    }
+    
+    // Also add some specific known Field Day station IPs if they're in different networks
+    const knownStationIPs = [
+      '192.168.1.14',
+      '192.168.1.30',
+      '10.0.0.14',
+      '10.0.0.30'
+    ];
+    
+    for (const knownIP of knownStationIPs) {
+      if (!validIPs.includes(knownIP) && knownIP !== localIP && !this.isLocalhost(knownIP)) {
+        validIPs.push(knownIP);
+      }
+    }
+    
+    return validIPs;
+  }
+
+  // Helper method to check if an IP is in a private network range
+  private isPrivateIP(ip: string): boolean {
+    const parts = ip.split('.').map(Number);
+    if (parts.length !== 4) return false;
+    
+    // 10.0.0.0/8
+    if (parts[0] === 10) return true;
+    
+    // 172.16.0.0/12
+    if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) return true;
+    
+    // 192.168.0.0/16
+    if (parts[0] === 192 && parts[1] === 168) return true;
+    
+    return false;
+  }
+
+  // Helper method to get network base (first 3 octets)
+  private getNetworkBase(ip: string): string {
+    const parts = ip.split('.');
+    return `${parts[0]}.${parts[1]}.${parts[2]}`;
+  }
+
   // Start peer discovery process
   private startPeerDiscovery(): void {
     console.log('🔍 Starting peer discovery...');
@@ -334,19 +404,16 @@ class MeshNetworkService {
     console.log('🔎 Discovering mesh peers...');
     
     try {
-      // For mesh network discovery, we only check specific known Field Day station IPs
-      // to avoid overwhelming the network and finding false positives
-      const specificIPs = [
-        '192.168.1.14',  // Known Field Day station IP
-        '192.168.1.30',  // Known Field Day station IP
-        '127.0.0.1'      // Localhost for testing
-      ];
+      // Get valid network IPs to scan (exclude localhost)
+      const networkIPs = await this.getValidNetworkIPs();
+      
+      console.log(`🌐 Scanning ${networkIPs.length} network IPs:`, networkIPs);
       
       const scanPromises: Promise<MeshNode | null>[] = [];
       const localIP = this.localNode.ip;
       
-      for (const testIP of specificIPs) {
-        if (testIP !== localIP) { // Don't scan ourselves
+      for (const testIP of networkIPs) {
+        if (testIP !== localIP && !this.isLocalhost(testIP)) {
           scanPromises.push(this.checkForMeshNode(testIP));
         }
       }

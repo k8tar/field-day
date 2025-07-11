@@ -87,3 +87,4 @@ verify-*.js
 public/diagnose*.html
 test*.html
 mesh-autostart-verification.html
+debug-station-info.html
