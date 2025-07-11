@@ -29,7 +29,10 @@
           :key="divisionName" 
           class="division-card"
         >
-          <h3 class="division-title">{{ divisionName }}</h3>
+          <h3 class="division-title">
+            {{ divisionName }}
+            <span v-if="isDivisionComplete(division.sections)" class="trophy-icon" title="Division Complete!">🏆</span>
+          </h3>
           <div class="sections-grid">
             <span 
               v-for="section in division.sections" 
@@ -130,6 +133,11 @@ const getLoggedCount = (sections: string[]): number => {
 const getDivisionProgress = (sections: string[]): number => {
   const logged = getLoggedCount(sections);
   return sections.length > 0 ? Math.round((logged / sections.length) * 100) : 0;
+};
+
+// Check if a division is complete (all sections logged)
+const isDivisionComplete = (sections: string[]): boolean => {
+  return sections.length > 0 && sections.every(section => isLogged(section));
 };
 
 // Computed properties
@@ -253,6 +261,8 @@ const progressPercentage = computed(() => {
   border-radius: 8px;
   padding: 1rem;
   transition: box-shadow 0.2s ease;
+  display: flex;
+  flex-direction: column;
 }
 
 .division-card:hover {
@@ -264,8 +274,14 @@ const progressPercentage = computed(() => {
   font-size: 1.125rem;
   font-weight: 600;
   color: var(--text-color);
-  border-bottom: 2px solid #4caf50;
+  border-bottom: 2px solid var(--primary-color);
   padding-bottom: 0.5rem;
+}
+
+.trophy-icon {
+  margin-left: 0.5rem;
+  font-size: 1.125rem;
+  display: inline-block;
 }
 
 .sections-grid {
@@ -273,7 +289,9 @@ const progressPercentage = computed(() => {
   flex-wrap: wrap;
   gap: 0.5rem;
   margin-bottom: 0.75rem;
-  min-height: 80px;
+  align-items: flex-start;
+  flex: 1;
+  align-content: flex-start;
 }
 
 .section-tag {
@@ -287,6 +305,8 @@ const progressPercentage = computed(() => {
   color: var(--text-secondary);
   transition: all 0.2s ease;
   cursor: default;
+  height: auto;
+  flex-shrink: 0;
 }
 
 .section-tag.logged {
@@ -301,6 +321,7 @@ const progressPercentage = computed(() => {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
+  margin-top: auto;
 }
 
 .stats-text {

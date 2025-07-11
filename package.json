@@ -1,14 +1,22 @@
 {
   "name": "k8tar-fieldday",
-  "version": "0.1.0",
+  "version": "2.0.0",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "serve": "vite preview",
+    "test": "npm run test:unit && npm run test:ui",
     "test:unit": "vue-cli-service test:unit",
-    "lint": "vue-cli-service lint"
+    "test:ui": "node tests/test-release-validation.cjs",
+    "test:watch": "vue-cli-service test:unit --watch",
+    "test:pipeline": "bash test-pipeline.sh",
+    "test:pipeline:windows": "test-pipeline.bat",
+    "lint": "vue-cli-service lint",
+    "lint:fix": "vue-cli-service lint --fix",
+    "electron:dev": "electron .",
+    "electron:build": "npm run build && electron-builder"
   },
   "dependencies": {
     "electron": "^37.2.0",

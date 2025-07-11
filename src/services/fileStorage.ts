@@ -475,7 +475,7 @@ class FileStorageService {
   }
 
   // Set up specific configurations for testing
-  async setupTestConfiguration(callsign: string, designator: string, qsoCount: number = 0): Promise<void> {
+  async setupTestConfiguration(callsign: string, designator: string, qsoCount = 0): Promise<void> {
     console.log(`🧪 Setting up test configuration for port ${this.port}: ${callsign}-${designator}`);
     
     // Save station config

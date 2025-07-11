@@ -2,9 +2,9 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('electron', {
   ipcRenderer: {
-    send: (...args) => ipcRenderer.send(...args),
-    invoke: (...args) => ipcRenderer.invoke(...args),
-    on: (...args) => ipcRenderer.on(...args),
-    removeListener: (...args) => ipcRenderer.removeListener(...args)
+    send: (...args: any[]) => ipcRenderer.send(...args),
+    invoke: (...args: any[]) => ipcRenderer.invoke(...args),
+    on: (...args: any[]) => ipcRenderer.on(...args),
+    removeListener: (...args: any[]) => ipcRenderer.removeListener(...args)
   }
 });

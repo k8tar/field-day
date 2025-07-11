@@ -145,7 +145,7 @@ class AchievementService {
       // Find newly completed bonuses
       const recentBonus = completedBonuses[completedBonuses.length - 1];
       if (recentBonus) {
-        this.sendNotification('bonus', `⭐ Bonus completed: ${recentBonus.name} (+${recentBonus.points} points)`);
+        this.sendNotification('bonus', `Bonus completed: ${recentBonus.name} (+${recentBonus.points} points)`);
       }
 
       // Check if all bonuses completed

@@ -1,0 +1,153 @@
+{
+  "name": "k8tar-fieldday",
+  "version": "2.0.0",
+  "description": "Field Day Logger - ARRL Field Day Logging Application",
+  "main": "electron-main.js",
+  "homepage": "./",
+  "private": true,
+  "type": "module",
+  "author": {
+    "name": "K8TAR",
+    "email": "support@k8tar.com"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "serve": "vite preview",
+    "test:unit": "vue-cli-service test:unit",
+    "lint": "vue-cli-service lint",
+    "electron": "electron .",
+    "electron:dev": "concurrently \"npm run dev\" \"wait-on https://localhost:8080 && electron .\"",
+    "electron:pack": "electron-builder",
+    "electron:dist": "npm run build && electron-builder",
+    "dist": "npm run build && npm run electron:pack",
+    "dist:win": "npm run build && electron-builder --win",
+    "dist:mac": "npm run build && electron-builder --mac",
+    "dist:linux": "npm run build && electron-builder --linux",
+    "build:installer": "node build-pipeline.js",
+    "release": "npm run build && npm run electron:pack && npm run build:installer"
+  },
+  "build": {
+    "appId": "com.k8tar.fieldday",
+    "productName": "Field Day Logger",
+    "directories": {
+      "output": "dist-electron"
+    },
+    "files": [
+      "dist/**/*",
+      "electron-main.js",
+      "src/preload.js",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "public",
+        "to": "public"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64", "ia32"]
+        },
+        {
+          "target": "portable",
+          "arch": ["x64", "ia32"]
+        },
+        {
+          "target": "zip",
+          "arch": ["x64", "ia32"]
+        }
+      ],
+      "icon": "public/favicon.ico",
+      "publisherName": "K8TAR",
+      "verifyUpdateCodeSignature": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "installerIcon": "public/favicon.ico",
+      "uninstallerIcon": "public/favicon.ico",
+      "installerHeaderIcon": "public/favicon.ico",
+      "deleteAppDataOnUninstall": false,
+      "runAfterFinish": true,
+      "menuCategory": "Amateur Radio"
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": ["x64", "arm64"]
+        },
+        {
+          "target": "zip",
+          "arch": ["x64", "arm64"]
+        }
+      ],
+      "icon": "public/favicon.icns",
+      "category": "public.app-category.utilities"
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": ["x64"]
+        },
+        {
+          "target": "deb",
+          "arch": ["x64"]
+        },
+        {
+          "target": "rpm",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "public/favicon.png",
+      "category": "Utility"
+    },
+    "extraMetadata": {
+      "main": "electron-main.js"
+    }
+  },
+  "dependencies": {
+    "electron": "^37.2.0",
+    "marked": "^16.0.0",
+    "node-fetch": "^3.3.2",
+    "vue": "^3.2.13",
+    "vue-router": "^4.0.3",
+    "vuex": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/chai": "^4.2.15",
+    "@types/jest": "^30.0.0",
+    "@types/mocha": "^8.2.3",
+    "@types/node": "^24.0.12",
+    "@typescript-eslint/eslint-plugin": "^5.4.0",
+    "@typescript-eslint/parser": "^5.4.0",
+    "@vitejs/plugin-basic-ssl": "^2.1.0",
+    "@vitejs/plugin-vue": "^6.0.0",
+    "@vue/cli-plugin-eslint": "~5.0.0",
+    "@vue/cli-plugin-router": "~5.0.0",
+    "@vue/cli-plugin-typescript": "~5.0.0",
+    "@vue/cli-plugin-unit-mocha": "~5.0.0",
+    "@vue/cli-plugin-vuex": "~5.0.0",
+    "@vue/cli-service": "~5.0.0",
+    "@vue/compiler-sfc": "^3.0.0-beta.1",
+    "@vue/eslint-config-typescript": "^9.1.0",
+    "@vue/test-utils": "^2.0.0-alpha.1",
+    "chai": "^4.2.0",
+    "concurrently": "^9.0.0",
+    "electron-builder": "^25.0.0",
+    "eslint": "^7.32.0",
+    "eslint-plugin-vue": "^8.0.3",
+    "puppeteer": "^24.12.1",
+    "sass": "^1.32.7",
+    "sass-loader": "^12.0.0",
+    "typescript": "~4.5.5",
+    "vite": "^7.0.3",
+    "wait-on": "^8.0.0"
+  }
+}

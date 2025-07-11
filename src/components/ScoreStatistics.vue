@@ -1,19 +1,25 @@
-<!-- filepath: c:\git\k8tar-fieldday\src\components\ScoreStatistics.vue -->
+<!-- filepath: c:\git\k8tar-fieldday\src\components\ScoreStatistiimport { computed, ref } from 'vue';
+import { qsos, getTotalQsoPoints, getQsoPointsByMode } from '@/store/qso';
+import { bonuses, getTotalBonusPoints, getCompletedBonusCount } from '@/store/bonus';
+import BonusModal from './BonusModal.vue';
+import StatisticsModal from './StatisticsModal.vue';ue -->
 <template>
   <div class="score-statistics">
     <div class="stats-header">
       <h2>Score Statistics - {{ qsos.length }} Contacts, {{ totalScore }} Points</h2>
-      <button class="bonus-button" @click="showBonusModal = true" title="Field Day Bonuses">
-        <span class="material-icons">star</span>
-        Bonuses
-      </button>
+      <div class="header-buttons">
+        <button class="expand-button" @click="openStatsModal" title="View detailed QSO statistics">
+          <span class="material-icons">analytics</span>
+          Expand
+        </button>
+        <button class="bonus-button" @click="showBonusModal = true" title="Field Day Bonuses">
+          <span class="material-icons">star</span>
+          Bonuses
+        </button>
+      </div>
     </div>
     <div class="stats-content">
       <div class="stats-grid">
-        <div class="stat-item">
-          <label>Total Contacts ({{qsos.length}}):</label>
-          <span class="stat-value">{{ totalQsoPoints }}</span>
-        </div>
         <div class="stat-item">
           <label>CW Contacts ({{ cwCount }}):</label>
           <span class="stat-value">{{ qsoPointsByMode.cw }} pts</span>
@@ -34,8 +40,11 @@
           <label>QSOs/Hr (Last 30 min):</label>
           <span class="stat-value">{{ qsosPerHalfHour }}</span>
         </div>
-        <div class="stat-item bonus-item">
-          <label>Bonus Points:</label>
+        <div class="stat-item bonus-item clickable-bonus" @click="showBonusModal = true">
+          <label class="bonus-label">
+            Bonus Points
+            <span class="bonus-help-icon material-icons" title="Click to view and manage bonuses">help</span>
+          </label>
           <span class="stat-value">{{ totalBonusPoints }}</span>
         </div>
         <div class="stat-item bonus-item">
@@ -47,6 +56,13 @@
 
     <!-- Bonus Modal -->
     <BonusModal :isOpen="showBonusModal" @close="showBonusModal = false" />
+    
+    <!-- Statistics Modal -->
+    <StatisticsModal 
+      :is-open="statsModalOpen" 
+      :qsos="qsos" 
+      @close="closeStatsModal" 
+    />
   </div>
 </template>
 
@@ -55,9 +71,11 @@ import { computed, ref } from 'vue';
 import { qsos, getTotalQsoPoints, getQsoPointsByMode } from '@/store/qso';
 import { getTotalBonusPoints, getCompletedBonusCount } from '@/store/bonus';
 import BonusModal from './BonusModal.vue';
+import StatisticsModal from './StatisticsModal.vue';
 
 // Modal state
 const showBonusModal = ref(false);
+const statsModalOpen = ref(false);
 
 // QSO counts by mode
 const cwCount = computed(() => qsos.value.filter(q => q.mode === 'CW').length);
@@ -86,6 +104,15 @@ const qsosPerHalfHour = computed(() => {
   const halfHourAgo = new Date(Date.now() - 30 * 60 * 1000);
   return qsos.value.filter(q => new Date(q.datetime) > halfHourAgo).length;
 });
+
+// Statistics modal functions
+function openStatsModal() {
+  statsModalOpen.value = true;
+}
+
+function closeStatsModal() {
+  statsModalOpen.value = false;
+}
 </script>
 
 <style lang="scss" scoped>
@@ -116,7 +143,7 @@ h2 {
 .stats-header {
   background-color: var(--primary-color);
   color: white;
-  padding: 0.25rem 0.5rem;
+  padding: 0.5rem 1rem;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -128,24 +155,35 @@ h2 {
     border: none;
     margin: 0;
     font-size: 1rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex: 1;
   }
 }
 
+.header-buttons {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.expand-button,
 .bonus-button {
   background-color: rgba(255, 255, 255, 0.1);
   border: 1px solid rgba(255, 255, 255, 0.3);
   color: white;
-  padding: 0.15rem 0.3rem;
-  border-radius: 3px;
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
   cursor: pointer;
-  font-size: 0.7rem;
+  font-size: 0.9rem;
   display: flex;
   align-items: center;
-  gap: 0.15rem;
+  gap: 0.5rem;
   transition: all 0.2s ease;
 
   &:hover {
-    background-color: rgba(255, 255, 255, 0.2);
+    background-color: rgba(255, 255, 255, 0.3);
     border-color: rgba(255, 255, 255, 0.5);
   }
 
@@ -212,6 +250,33 @@ h2 {
   .stat-value {
     background-color: rgba(255, 193, 7, 0.15);
     color: #ff9800;
+  }
+}
+
+.clickable-bonus {
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+  
+  &:hover {
+    background-color: rgba(255, 193, 7, 0.1);
+  }
+}
+
+.bonus-label {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.bonus-help-icon {
+  font-size: 0.9rem !important;
+  color: var(--accent-color);
+  cursor: pointer;
+  opacity: 0.7;
+  transition: opacity 0.2s ease;
+  
+  &:hover {
+    opacity: 1;
   }
 }
 </style>

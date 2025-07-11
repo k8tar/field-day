@@ -35,7 +35,6 @@
               <label 
                 :for="bonus.id" 
                 class="checkbox-label"
-                @click="handleBonusToggle(bonus.id)"
               ></label>
             </div>
             

@@ -253,7 +253,7 @@ class FieldDayApiServer {
   }
 
   // Start the API server
-  start(port: number = 8080): void {
+  start(port = 8080): void {
     this.port = port;
     this.isRunning = true;
     console.log(`🚀 Field Day API server started on port ${port}`);

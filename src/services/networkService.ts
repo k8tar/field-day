@@ -1196,7 +1196,7 @@ class NetworkService {
     });
   }
 
-  async sendMessage(text: string, target: string = 'all', messageId?: string): Promise<void> {
+  async sendMessage(text: string, target = 'all', messageId?: string): Promise<void> {
     if (!this.status.isConnected) {
       console.log('📨 Not sending message - network not connected');
       return;
@@ -1572,7 +1572,7 @@ class NetworkService {
   }
 
   // Set up test data for specific ports
-  async setupTestStation(callsign: string, designator: string, qsoCount: number = 0): Promise<void> {
+  async setupTestStation(callsign: string, designator: string, qsoCount = 0): Promise<void> {
     console.log(`🧪 Setting up test station: ${callsign}-${designator} with ${qsoCount} QSOs`);
     
     await fileStorage.setupTestConfiguration(callsign, designator, qsoCount);

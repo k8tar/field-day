@@ -8,7 +8,7 @@ declare global {
 }
 
 // Initialize theme preference
-let darkModePreference = false;
+const darkModePreference = false;
 
 // Function to safely check theme storage
 async function getInitialTheme(): Promise<boolean> {

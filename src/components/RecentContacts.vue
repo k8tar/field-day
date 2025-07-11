@@ -4,10 +4,6 @@
     <div class="header-section">
       <h2>Recent Contacts ({{ qsos.length }})</h2>
       <div class="header-buttons">
-        <button class="btn btn-stats" @click="openStatsModal" title="View QSO Statistics">
-          <span class="material-icons">analytics</span>
-          Statistics
-        </button>
         <button class="btn btn-detailed" @click="openDetailedModal" title="Open detailed contacts view">
           <span class="material-icons">table_view</span>
           Detailed View
@@ -311,13 +307,6 @@
       </div>
     </div>
   </div>
-
-  <!-- Statistics Modal -->
-  <StatisticsModal 
-    :is-open="statsModalOpen" 
-    :qsos="qsos" 
-    @close="closeStatsModal" 
-  />
 </template>
 
 <script setup lang="ts">
@@ -325,7 +314,6 @@ import { computed, ref, onMounted, nextTick, watch } from 'vue';
 import { qsos, deleteQso, updateQso, QSO } from '@/store/qso';
 import { validateArrlSection, normalizeArrlSection, validateArrlClass, normalizeArrlClass } from '@/constants/arrl-sections';
 import { fileStorage } from '@/services/fileStorage';
-import StatisticsModal from './StatisticsModal.vue';
 
 // ARRL sections validation
 const isEditSectionValid = computed(() => {
@@ -540,9 +528,6 @@ const sortDirection = ref('desc');
 const currentPage = ref(1);
 const itemsPerPage = 50;
 
-// Statistics modal state
-const statsModalOpen = ref(false);
-
 // Available filter options
 const availableBands = computed(() => {
   const bandSet = new Set(qsos.value.map(qso => qso.band).filter(Boolean));
@@ -665,15 +650,6 @@ function closeDetailedModal() {
   filterMode.value = '';
   filterOperator.value = '';
   currentPage.value = 1;
-}
-
-// Statistics modal functions
-function openStatsModal() {
-  statsModalOpen.value = true;
-}
-
-function closeStatsModal() {
-  statsModalOpen.value = false;
 }
 
 function setSortField(field: string) {
@@ -987,6 +963,7 @@ button {
   background: none;
   padding: 0;
   margin: 0;
+  font-size: 1rem;
   flex: 1;
 }
 
@@ -996,9 +973,8 @@ button {
   align-items: center;
 }
 
-.btn-stats,
 .btn-detailed {
-  background-color: rgba(255, 255, 255, 0.2);
+  background-color: rgba(255, 255, 255, 0.1);
   color: white;
   border: 1px solid rgba(255, 255, 255, 0.3);
   padding: 0.5rem 1rem;
@@ -1011,12 +987,10 @@ button {
   transition: background-color 0.2s ease;
 }
 
-.btn-stats:hover,
 .btn-detailed:hover {
   background-color: rgba(255, 255, 255, 0.3);
 }
 
-.btn-stats .material-icons,
 .btn-detailed .material-icons {
   font-size: 18px;
 }

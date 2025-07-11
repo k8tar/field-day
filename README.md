@@ -1,163 +1,151 @@
-# k8tar-fieldday
+# Field Day Logger
 
-A Field Day logging application built with Vue.js that works completely offline.
+A modern, offline-capable Field Day logging application built with Vue.js, TypeScript, and Electron for ARRL Field Day operations.
 
-## Offline Capabilities
+## Key Features
 
-This application is designed to work without internet access, which is essential for Field Day operations in remote locations:
+- **🌐 Offline Operation**: Works completely without internet access for remote Field Day locations
+- **🔄 Multi-Station Sync**: Real-time QSO synchronization across multiple logging stations
+- **📊 Live Statistics**: Real-time scoring, progress tracking, and analytics
+- **💬 Station Messaging**: Send messages and announcements between all connected stations
+- **🏆 Achievement Tracking**: Automatic notifications for divisions, multipliers, and bonuses
+- **📁 File-Based Storage**: Robust data persistence with shared QSO files
+- **🔒 HTTPS Security**: Secure connections with self-signed certificates
+- **🎨 Modern UI**: Beautiful, responsive interface with light/dark theme support
+- **📱 Cross-Platform**: Runs as web app or standalone Electron application
 
-- **No external dependencies**: All resources (fonts, icons, scripts) are bundled locally
-- **Material Icons**: Downloaded and served locally from `/public/fonts/`
-- **All data stored locally**: Uses browser localStorage for persistence
-- **Works as standalone app**: Can be built and served from any local web server
+## Documentation
 
-## Project setup
-```
+- **[Build Instructions](BUILD.md)** - How to build and distribute the application
+- **[In-App Help](public/docs/README.md)** - User guide and feature documentation (accessible via F1 or ? button)
+- **[Release Notes](RELEASE-NOTES.md)** - Latest features, fixes, and changes
+
+## Quick Start
+
+### Development Setup
+```bash
 npm install
-```
-
-### Compiles and hot-reloads for development
-```
 npm run dev
 ```
 
-### Compiles and minifies for production
-```
-npm run build
-```
-
-### Run your unit tests
-```
-npm run test:unit
-```
-
-### Lints and fixes files
-```
-npm run lint
-```
-
-### Serving the built application offline
-
-After building, you can serve the app locally without internet:
-
+### Production Build
 ```bash
-# Using Python (if available)
-cd dist
-python -m http.server 8080
-
-# Using Node.js serve package
-npx serve dist
-
-# Using any other static file server
+npm run build
+npm run preview
 ```
 
-The built application in the `dist/` folder is completely self-contained and includes all necessary fonts and resources.
+### Electron App
+```bash
+npm run electron:dev    # Development
+npm run electron:build  # Build executable
+```
 
-### Customize configuration
-See [Configuration Reference](https://cli.vuejs.org/config/).
+### Testing
+```bash
+npm run test           # Run unit tests
+npm run test:ui        # Run UI automation tests
+npm run lint           # Check code style
+```
 
-## Network Synchronization
+## Network Setup for Field Day
 
-The application supports multi-station operation with real-time log synchronization:
+Field Day operations typically involve multiple logging stations. This application makes multi-station setup simple:
 
-### Testing Network Features
+### Single Station
+1. Start the application: `npm run dev`
+2. Access at `https://localhost:8080`
+3. Begin logging QSOs
 
-To test the network synchronization with multiple stations:
+### Multi-Station Network
+1. **Host Station**: Start app, click Network icon, select "Host"
+2. **Additional Stations**: Start app, click Network icon, select "Auto" for discovery
+3. All QSOs, messages, and scores sync automatically in real-time
 
-1. **Start the first station (default port 8080):**
-   ```bash
-   npm run dev
-   ```
+### Quick Scripts
+```bash
+# Windows
+start-station.bat "W3AO" "2A" 
 
-2. **Start a second station on port 4173:**
-   ```bash
-   npm run dev -- --port 4173
-   ```
+# Linux/Mac  
+./start-station.sh "W3AO" "2A"
+```
 
-3. **Or use the provided scripts:**
-   ```bash
-   # Windows
-   start-station.bat "W3AO" "2A" 4173
-   
-   # Linux/Mac
-   ./start-station.sh "W3AO" "2A" 4173
-   ```
+## Architecture
 
-### Using Network Features
+### Storage System
+- **File-Based Persistence**: QSOs stored in `shared-qsos.json` for cross-instance sharing
+- **Real-Time Sync**: Automatic file watching and synchronization
+- **No Browser Dependencies**: Eliminated localStorage for improved reliability
 
-1. **Click the network icon** (wifi symbol) in the header next to the settings icon
-2. **Auto-discovery mode**: Automatically scans for other stations on localhost
-3. **Host mode**: Start hosting for other stations to connect to
-4. **Join mode**: Manually connect to another station's IP and port
+### Network Protocol
+- **HTTPS Only**: Self-signed certificates for secure local network communication
+- **Port 8080**: Standardized port for all instances simplifies Field Day setup
+- **Auto-Discovery**: Scans local network to find other logging stations
+- **Heartbeat Sync**: Regular QSO and message synchronization between stations
 
-### Network Synchronization Features
+### Modern Stack
+- **Vue 3**: Modern reactive frontend framework
+- **TypeScript**: Type-safe development
+- **Vite**: Fast build system and dev server
+- **Electron**: Cross-platform desktop application
+- **SCSS**: Advanced styling with theme support
 
-- **Real-time QSO sync**: All contacts sync across connected stations
-- **Initial full sync**: When connecting, all QSOs from existing stations are synchronized
-- **Persistent file storage**: QSOs are stored in `shared-qsos.json` for persistence across server restarts
-- **Cross-instance sharing**: Multiple server instances share the same QSO file automatically
-- **Persistent connections**: Network settings are saved and auto-reconnect on app restart
-- **Auto-reconnect**: Automatic reconnection when network connections are lost
-- **Contact numbering**: Sequential numbers maintained across all stations  
-- **Score calculation**: Combined scoring from all connected stations
-- **Conflict resolution**: Automatic handling of simultaneous edits with timestamp-based resolution
-- **Station identification**: Each station maintains its identity while sharing logs
-- **Connection status**: Visual indicators and status messages for network events
+## Features in Detail
 
-### QSO Storage
+### QSO Management
+- **Smart Entry Forms**: Auto-complete for callsigns, sections, and exchanges
+- **Duplicate Detection**: Real-time checking across all connected stations
+- **Band/Mode Tracking**: Complete logging with power and antenna information
+- **Contact Numbering**: Sequential numbering maintained across all stations
 
-The application now uses file-based storage for QSO sharing:
-- **Shared file**: `shared-qsos.json` stores all QSOs locally on the server
-- **Automatic persistence**: QSOs are saved to file immediately when added/updated
-- **Multi-instance sync**: All server instances (different ports) share the same QSO file
-- **File watching**: Changes to the QSO file are automatically detected and loaded
-- **Development endpoints**: 
-  - `GET /api/qsos` - Retrieve QSOs
-  - `POST /api/qsos/bulk` - Upload QSOs to file
-  - `DELETE /api/qsos/clear` - Clear all QSOs (testing)
+### Scoring & Progress
+- **Live Scoring**: Real-time point calculation and multiplier tracking
+- **Section Progress**: Visual map showing contacted ARRL sections
+- **Statistics**: Comprehensive analytics with graphs and breakdowns
+- **Bonus Points**: Easy bonus claim tracking with validation
 
-### Network Settings
+### Station Messaging
+- **Broadcast Messages**: Send announcements to all connected stations
+- **Achievement Notifications**: Automatic alerts for milestones and completions
+- **Message History**: View latest messages with timestamps and sender info
+- **Real-Time Delivery**: Messages sync instantly across all stations
 
-- **Auto-reconnect**: Enable to automatically reconnect to the last network when the app starts or if connection is lost
-- **Connection persistence**: Network connection details are saved and restored across app restarts
-- **Robust reconnection**: Exponential backoff retry logic for handling temporary network issues
-- **Manual disconnect**: Disabling auto-reconnect when manually disconnecting from network
+### User Interface
+- **Responsive Design**: Works on desktop, tablet, and mobile screens
+- **Theme Support**: Light and dark modes with user preference
+- **Keyboard Shortcuts**: Efficient operation with hotkeys (F1 for help, etc.)
+- **Material Design**: Clean, modern interface following Material Design principles
 
-## Network Configuration (Updated)
+## Development
 
-This application now uses **hardcoded port 8080** for all instances to simplify Field Day operations:
+### Project Structure
+```
+src/
+├── components/          # Vue components
+├── services/           # Business logic and API clients  
+├── store/              # Pinia state management
+├── views/              # Page-level components
+├── assets/             # Static resources
+└── router/             # Vue Router configuration
 
-- **All instances use port 8080**: No need to configure different ports
-- **Automatic discovery**: Scans local network on port 8080 for other stations
-- **Simple setup**: Just start the app on different machines
-- **Fail-safe**: Server won't start if port 8080 is unavailable (strictPort: true)
+tests/                  # Test scripts and utilities
+public/                 # Static assets and documentation
+installer/              # Electron installer configuration
+```
 
-### Multi-Station Setup
+### Key Services
+- **FileStorageService**: Handles all data persistence
+- **NetworkService**: Manages station discovery and synchronization
+- **AchievementService**: Tracks and announces milestones
+- **WebSocketSync**: Real-time communication between stations
 
-For Field Day with multiple logging stations:
+### Contributing
+1. Fork the repository
+2. Create a feature branch: `git checkout -b feature-name`
+3. Make changes and add tests
+4. Run tests: `npm run test`
+5. Submit a pull request
 
-1. **Main Station (Host)**:
-   ```bash
-   npm run dev  # Automatically uses port 8080
-   ```
-   - Use "Host" mode in Network settings
-   - Other stations will discover this automatically
+## License
 
-2. **Additional Stations**:
-   ```bash
-   npm run dev  # Also uses port 8080 (on different machines)
-   ```
-   - Use "Auto" mode for automatic discovery
-   - Or use "Join" mode with host IP address
-
-3. **Testing on Same Machine**:
-   - Copy project to different directories
-   - Start separate dev servers (each will try port 8080)
-   - Use different IP addresses for testing
-
-### Network Discovery
-
-The app automatically scans for other Field Day stations:
-- Checks local network IPs on port 8080
-- Displays found stations in Network Modal
-- Shows real-time QSO counts and scores
+This project is open source and available under the MIT License.

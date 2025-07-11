@@ -9,7 +9,7 @@ socket.bind(PORT, () => {
   socket.setBroadcast(true);
 });
 
-let myQsoLog: any[] = [];
+const myQsoLog: any[] = [];
 const peers: { address: string, port: number }[] = [];
 
 function addPeer(address: string, port: number) {

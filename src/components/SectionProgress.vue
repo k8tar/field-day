@@ -2,29 +2,15 @@
 <template>
   <div class="section-progress-container">
     <div class="progress-header">
-      <h4>Section Progress</h4>
-      <div class="header-right">
-        <div class="header-progress">
-          <div class="header-stats">
-            <span class="header-stat">{{ totalLoggedSections }}/{{ totalSections }} sections</span>
-            <span class="header-percentage">{{ progressPercentage }}%</span>
-          </div>
-          <div class="header-progress-bar">
-            <div 
-              class="header-progress-fill" 
-              :style="{ width: progressPercentage + '%' }"
-            ></div>
-          </div>
-        </div>
-        <button 
-          class="btn btn-sm" 
-          @click="$emit('open-section-map')"
-          title="Open detailed section map"
-        >
-          <i class="material-icons">map</i>
-          Expand
-        </button>
-      </div>
+      <h2>Section Progress ({{ totalLoggedSections }}/{{ totalSections }} - {{ progressPercentage }}%)</h2>
+      <button 
+        class="expand-button" 
+        @click="$emit('open-section-map')"
+        title="Open detailed section map"
+      >
+        <span class="material-icons">map</span>
+        Expand
+      </button>
     </div>
 
     <div class="divisions-summary">
@@ -34,7 +20,10 @@
         class="division-summary"
       >
         <div class="division-header">
-          <span class="division-name">{{ divisionName }}</span>
+          <span class="division-name">
+            {{ divisionName }}
+            <span v-if="isDivisionComplete(division.sections)" class="trophy-icon" title="Division Complete!">🏆</span>
+          </span>
           <span class="division-progress">{{ getLoggedCount(division.sections) }}/{{ division.sections.length }}</span>
         </div>
         <div class="division-progress-bar">
@@ -133,6 +122,11 @@ const getDivisionProgress = (sections: string[]): number => {
   return sections.length > 0 ? Math.round((logged / sections.length) * 100) : 0;
 };
 
+// Check if a division is complete (all sections logged)
+const isDivisionComplete = (sections: string[]): boolean => {
+  return sections.length > 0 && sections.every(section => isLogged(section));
+};
+
 // Sort sections: numbers starting with 0 first, then alphabetically, DX last
 const getSortedSections = (sections: string[]): string[] => {
   return [...sections].sort((a, b) => {
@@ -185,74 +179,50 @@ const progressPercentage = computed(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 1rem;
-  padding-bottom: 0.75rem;
+  background-color: var(--primary-color);
+  color: white;
+  padding: 0.5rem 1rem;
   border-bottom: 1px solid var(--border-color);
 }
 
-.progress-header h4 {
+.progress-header h2 {
+  background: none;
+  padding: 0;
   margin: 0;
-  font-size: 1.1rem;
-  color: var(--text-color);
-  font-weight: 600;
-}
-
-.header-right {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-}
-
-.header-progress {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-  align-items: flex-end;
-}
-
-.header-stats {
-  display: flex;
-  gap: 1rem;
-  align-items: baseline;
-}
-
-.header-stat {
-  color: var(--text-color);
-  font-weight: 600;
-  font-size: 0.9rem;
-}
-
-.header-percentage {
-  color: var(--primary-color);
-  font-weight: 700;
   font-size: 1rem;
-}
-
-.header-progress-bar {
-  width: 150px;
-  height: 6px;
-  background-color: var(--border-color);
-  border-radius: 3px;
+  white-space: nowrap;
   overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
 }
 
-.header-progress-fill {
-  height: 100%;
-  background-color: var(--primary-color);
-  transition: width 0.3s ease;
-  border-radius: 3px;
-}
-
-.btn-sm {
-  padding: 0.25rem 0.5rem;
-  font-size: 0.75rem;
+.expand-button {
+  background-color: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  color: white;
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.9rem;
   display: flex;
   align-items: center;
-  gap: 0.25rem;
+  gap: 0.5rem;
+  transition: all 0.2s ease;
 }
 
-.btn-sm .material-icons {
-  font-size: 16px;
+.expand-button:hover {
+  background-color: rgba(255, 255, 255, 0.3);
+  border-color: rgba(255, 255, 255, 0.5);
+}
+
+.expand-button .material-icons {
+  font-size: 14px;
+}
+
+.trophy-icon {
+  margin-left: 0.5rem;
+  font-size: 1rem;
+  display: inline-block;
 }
 
 .divisions-summary {

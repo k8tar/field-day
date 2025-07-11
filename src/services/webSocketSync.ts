@@ -44,7 +44,7 @@ class WebSocketSyncService {
   }
 
   // Start hosting WebSocket server (simulated in browser)
-  async startHost(port: number = 9001): Promise<boolean> {
+  async startHost(port = 9001): Promise<boolean> {
     try {
       this.hostPort = port;
       this.isHost = true;
