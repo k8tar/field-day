@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <!-- Background circle -->
+  <circle cx="16" cy="16" r="15" fill="#4a90e2"/>
+  
+  <!-- Antenna tower -->
+  <rect x="15" y="8" width="2" height="16" fill="#ffffff"/>
+  
+  <!-- Antenna elements -->
+  <line x1="10" y1="10" x2="22" y2="10" stroke="#ffffff" stroke-width="1.5"/>
+  <line x1="12" y1="14" x2="20" y2="14" stroke="#ffffff" stroke-width="1"/>
+  
+  <!-- Radio waves -->
+  <path d="M 8 16 A 8 8 0 0 1 24 16" fill="none" stroke="#ffffff" stroke-width="1" opacity="0.6"/>
+  
+  <!-- Base -->
+  <rect x="14" y="24" width="4" height="2" fill="#ffffff"/>
+  
+  <!-- Activity indicator -->
+  <circle cx="24" cy="8" r="1.5" fill="#00ff00">
+    <animate attributeName="opacity" values="0.3;1;0.3" dur="2s" repeatCount="indefinite"/>
+  </circle>
+</svg>

@@ -1,6 +1,9 @@
 <template>
   <div class="header">
     <div class="header-left">
+      <div class="logo-section">
+        <img src="/logo-small.svg" alt="K8TAR Field Day Logger" class="app-logo" />
+      </div>
       <div class="station-info">
         <span class="station-designator">{{ stationDesignator || 'K8TAR' }}</span>
       </div>
@@ -39,6 +42,9 @@
 
     <div class="header-right">
       <div class="actions">
+        <button class="docs-button" @click="openDocsModal" title="Documentation">
+          <span class="material-icons">help</span>
+        </button>
         <button class="network-button" @click="openNetworkModal" :class="{ 'connected': networkConnected }">
           <span class="material-icons">{{ networkConnected ? 'wifi' : 'wifi_off' }}</span>
         </button>
@@ -65,6 +71,9 @@
     
     <!-- Network Modal -->
     <NetworkModal :is-open="networkModalOpen" @close="handleNetworkClose" />
+    
+    <!-- Documentation Modal -->
+    <DocsModal :is-open="docsModalOpen" @close="handleDocsClose" />
   </div>
 </template>
 
@@ -74,6 +83,7 @@ import { band as storeBand, operator as storeOperator, mode as storeMode } from 
 import { isDark, toggleTheme } from '@/store/theme';
 import ConfigModal from '@/components/ConfigModal.vue';
 import NetworkModal from '@/components/NetworkModal.vue';
+import DocsModal from '@/components/DocsModal.vue';
 import { networkService } from '@/services/networkService';
 import { fileStorage } from '@/services/fileStorage';
 
@@ -181,6 +191,17 @@ function handleNetworkClose() {
   networkModalOpen.value = false;
 }
 
+// Documentation modal
+const docsModalOpen = ref(false);
+
+function openDocsModal() {
+  docsModalOpen.value = true;
+}
+
+function handleDocsClose() {
+  docsModalOpen.value = false;
+}
+
 // Check for first-time setup using file storage
 async function checkFirstTimeSetup() {
   try {
@@ -206,6 +227,14 @@ async function checkFirstTimeSetup() {
   }
 }
 
+// Keyboard shortcuts
+function handleKeydown(event: KeyboardEvent) {
+  if (event.key === 'F1') {
+    event.preventDefault();
+    openDocsModal();
+  }
+}
+
 onMounted(async () => {
   // Load operators and station info
   await loadOperators();
@@ -213,6 +242,14 @@ onMounted(async () => {
   
   // Check for first-time setup
   await checkFirstTimeSetup();
+  
+  // Add keyboard event listener
+  document.addEventListener('keydown', handleKeydown);
+});
+
+onBeforeUnmount(() => {
+  // Remove keyboard event listener
+  document.removeEventListener('keydown', handleKeydown);
 });
 </script>
 
@@ -234,6 +271,22 @@ onMounted(async () => {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
+  gap: 1rem;
+}
+
+.logo-section {
+  display: flex;
+  align-items: center;
+}
+
+.app-logo {
+  height: 40px;
+  width: auto;
+  transition: opacity 0.2s ease;
+  
+  &:hover {
+    opacity: 0.8;
+  }
 }
 
 .header-center {
@@ -295,7 +348,8 @@ onMounted(async () => {
 }
 
 .network-button,
-.config-button {
+.config-button,
+.docs-button {
   // Uses global btn-icon styles
   @extend .btn-icon;
 }
@@ -311,6 +365,15 @@ onMounted(async () => {
 .config-button {
   // Uses global btn-icon styles
   @extend .btn-icon;
+}
+
+.docs-button {
+  color: var(--primary-color);
+  
+  &:hover {
+    color: var(--primary-dark);
+    background-color: rgba(var(--primary-color-rgb), 0.1);
+  }
 }
 
 .theme-toggle {

@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+  <!-- Background circle -->
+  <circle cx="100" cy="100" r="95" fill="#4a90e2" stroke="#2d5a8c" stroke-width="3"/>
+  
+  <!-- Radio waves (concentric arcs) -->
+  <path d="M 50 100 A 50 50 0 0 1 150 100" fill="none" stroke="#ffffff" stroke-width="2" opacity="0.7"/>
+  <path d="M 40 100 A 60 60 0 0 1 160 100" fill="none" stroke="#ffffff" stroke-width="2" opacity="0.5"/>
+  <path d="M 30 100 A 70 70 0 0 1 170 100" fill="none" stroke="#ffffff" stroke-width="2" opacity="0.3"/>
+  
+  <!-- Antenna tower -->
+  <rect x="97" y="60" width="6" height="80" fill="#ffffff"/>
+  
+  <!-- Antenna elements -->
+  <line x1="85" y1="70" x2="115" y2="70" stroke="#ffffff" stroke-width="3"/>
+  <line x1="90" y1="80" x2="110" y2="80" stroke="#ffffff" stroke-width="2"/>
+  <line x1="92" y1="90" x2="108" y2="90" stroke="#ffffff" stroke-width="2"/>
+  
+  <!-- Base -->
+  <rect x="90" y="140" width="20" height="8" fill="#ffffff"/>
+  
+  <!-- Field Day tent -->
+  <path d="M 60 130 L 80 115 L 100 130 Z" fill="#ffffff" opacity="0.8"/>
+  <path d="M 100 130 L 120 115 L 140 130 Z" fill="#ffffff" opacity="0.8"/>
+  
+  <!-- Callsign text -->
+  <text x="100" y="165" text-anchor="middle" font-family="Arial, sans-serif" font-size="16" font-weight="bold" fill="#ffffff">K8TAR</text>
+  
+  <!-- Field Day text -->
+  <text x="100" y="180" text-anchor="middle" font-family="Arial, sans-serif" font-size="10" fill="#ffffff" opacity="0.9">FIELD DAY</text>
+  <text x="100" y="192" text-anchor="middle" font-family="Arial, sans-serif" font-size="8" fill="#ffffff" opacity="0.8">LOGGER</text>
+  
+  <!-- Activity indicator dots -->
+  <circle cx="140" cy="40" r="3" fill="#00ff00" opacity="0.8">
+    <animate attributeName="opacity" values="0.3;1;0.3" dur="2s" repeatCount="indefinite"/>
+  </circle>
+  <circle cx="150" cy="45" r="2" fill="#00ff00" opacity="0.6">
+    <animate attributeName="opacity" values="0.2;0.8;0.2" dur="2.5s" repeatCount="indefinite"/>
+  </circle>
+  <circle cx="130" cy="50" r="2" fill="#00ff00" opacity="0.4">
+    <animate attributeName="opacity" values="0.1;0.6;0.1" dur="3s" repeatCount="indefinite"/>
+  </circle>
+</svg>

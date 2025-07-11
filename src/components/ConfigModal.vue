@@ -92,20 +92,17 @@
         </div>
         
         <div class="config-section">
-          <h3>Data Import/Export</h3>
+          <!-- System Data Section -->
+          <h3>💾 System Data</h3>
           <div class="import-export-container">
+            <p class="section-description">Backup and restore your complete station configuration and QSO data.</p>
             <div class="import-export-buttons">
-              <div class="config-option">
-                <button class="export-button" @click="exportAdif" :disabled="qsos.length === 0">
-                  <span class="material-icons">download</span>
-                  Export Log to ADIF
-                </button>
-              </div>
               <div class="config-option">
                 <button class="export-button" @click="exportJson">
                   <span class="material-icons">download</span>
-                  Backup Configuration & Contacts
+                  Create System Backup
                 </button>
+                <small>Complete backup including QSOs, settings, and operators</small>
               </div>
               <div class="config-option">
                 <div class="file-upload-container">
@@ -119,28 +116,61 @@
                   />
                   <button class="import-button" @click="triggerFileUpload">
                     <span class="material-icons">upload</span>
-                    Restore Configuration & Contacts
+                    Restore System Backup
                   </button>
-                  <span v-if="selectedFileName" class="selected-file">{{ selectedFileName }}</span>
+                  <small>Restore from a previous backup file</small>
                 </div>
               </div>
             </div>
-            
+          </div>
+
+          <!-- Reporting Section -->
+          <h3>📊 Contest & Logging Reports</h3>
+          <div class="import-export-container">
+            <p class="section-description">Export your QSO log in various formats for contest submission and logging software.</p>
+            <div class="import-export-buttons">
+              <div class="config-option">
+                <button class="export-button" @click="exportCabrillo" :disabled="qsos.length === 0">
+                  <span class="material-icons">download</span>
+                  Export Cabrillo Log
+                </button>
+                <small>Official ARRL Field Day contest submission format</small>
+              </div>
+              <div class="config-option">
+                <button class="export-button" @click="exportAdif" :disabled="qsos.length === 0">
+                  <span class="material-icons">download</span>
+                  Export ADIF Log
+                </button>
+                <small>Standard format for amateur radio logging software</small>
+              </div>
+              <div class="config-option">
+                <button class="export-button" @click="exportDupeSheet" :disabled="qsos.length === 0">
+                  <span class="material-icons">download</span>
+                  Export Duplicate Sheet
+                </button>
+                <small>CSV format for operator reference and duplicate checking</small>
+              </div>
+            </div>
+          </div>
+
+          <!-- Import Data Section (keep existing) -->
+          <h3>🔄 System Reset</h3>
+          <div class="import-export-container">
+            <p class="section-description">Reset or wipe station data. Use with caution!</p>
             <div class="reset-log-section">
-              <h4>Reset</h4>
               <div class="config-option">
                 <button class="wipe-qsos-button" @click="showWipeQsosConfirmModal" :disabled="qsos.length === 0">
                   <span class="material-icons">clear_all</span>
                   Wipe QSOs
                 </button>
-                <p class="reset-warning">This will permanently delete all QSOs only!</p>
+                <small>This will permanently delete all QSOs only!</small>
               </div>
               <div class="config-option">
                 <button class="reset-log-button" @click="showResetConfirmModal" :disabled="qsos.length === 0">
                   <span class="material-icons">delete_forever</span>
                   Wipe Data
                 </button>
-                <p class="reset-warning">This will permanently delete all data!</p>
+                <small>This will permanently delete all data!</small>
               </div>
             </div>
           </div>
@@ -553,6 +583,111 @@ function exportJson() {
   URL.revokeObjectURL(url);
 }
 
+// Cabrillo Export function
+function exportCabrillo() {
+  const stationCall = stationCallsign.value || 'K8TAR';
+  const stationCls = stationClass.value || '2A';
+  const stationSect = stationSection.value || 'OH';
+  
+  let cabrilloContent = `START-OF-LOG: 3.0
+CREATED-BY: K8TAR Field Day Logger
+CONTEST: ARRL-FIELD-DAY
+CALLSIGN: ${stationCall}
+CATEGORY-OPERATOR: MULTI-OP
+CATEGORY-ASSISTED: NON-ASSISTED
+CATEGORY-BAND: ALL
+CATEGORY-MODE: MIXED
+CATEGORY-POWER: HIGH
+CATEGORY-STATION: FIXED
+CATEGORY-TRANSMITTER: ONE
+CLAIMED-SCORE: ${calculateScore()}
+CLUB: 
+NAME: 
+ADDRESS: 
+ADDRESS-CITY: 
+ADDRESS-STATE-PROVINCE: 
+ADDRESS-POSTALCODE: 
+ADDRESS-COUNTRY: 
+EMAIL: 
+LOCATION: 
+ARRL-SECTION: ${stationSect}
+CLASS: ${stationCls}
+`;
+
+  // Add QSO lines
+  qsos.value.forEach(qso => {
+    const dateTime = new Date(qso.datetime);
+    const freq = getBandFrequency(qso.band);
+    const mode = qso.mode === 'PH' ? 'PH' : qso.mode === 'CW' ? 'CW' : 'DG';
+    const date = dateTime.toISOString().substring(0, 10);
+    const time = dateTime.toISOString().substring(11, 16).replace(':', '');
+    
+    cabrilloContent += `QSO: ${freq} ${mode} ${date} ${time} ${stationCall} ${stationCls} ${stationSect} ${qso.call} ${qso.class} ${qso.section}\n`;
+  });
+  
+  cabrilloContent += 'END-OF-LOG:\n';
+
+  // Create and download the file
+  const blob = new Blob([cabrilloContent], { type: 'text/plain' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `${stationCall}-fieldday-${new Date().toISOString().substring(0, 10)}.log`;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+// Duplicate format export function
+function exportDupeSheet() {
+  let dupeContent = `# K8TAR Field Day Logger - Duplicate Sheet
+# Generated: ${new Date().toISOString()}
+# Station: ${stationCallsign.value || 'K8TAR'}
+# QSOs: ${qsos.value.length}
+#
+# Format: CALL,BAND,MODE,DATE,TIME,CLASS,SECTION
+#
+`;
+
+  qsos.value.forEach(qso => {
+    const dateTime = new Date(qso.datetime);
+    const date = dateTime.toISOString().substring(0, 10);
+    const time = dateTime.toISOString().substring(11, 19);
+    
+    dupeContent += `${qso.call},${qso.band},${qso.mode},${date},${time},${qso.class},${qso.section}\n`;
+  });
+
+  // Create and download the file
+  const blob = new Blob([dupeContent], { type: 'text/plain' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `${stationCallsign.value || 'K8TAR'}-fieldday-dupes-${new Date().toISOString().substring(0, 10)}.csv`;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+// Helper function to get frequency for band (for Cabrillo)
+function getBandFrequency(band: string): string {
+  const frequencies: { [key: string]: string } = {
+    '160m': '1800',
+    '80m': '3500',
+    '40m': '7000',
+    '20m': '14000',
+    '15m': '21000',
+    '10m': '28000',
+    '6m': '50000',
+    '2m': '144000'
+  };
+  return frequencies[band] || '14000';
+}
+
+// Helper function to calculate score
+function calculateScore(): number {
+  return qsos.value.reduce((sum: number, qso: any) => {
+    return sum + ((qso.mode === 'CW' || qso.mode === 'DIG') ? 2 : 1);
+  }, 0);
+}
+
 // JSON Import functions
 function triggerFileUpload() {
   fileInput.value?.click();
@@ -894,6 +1029,22 @@ function cancelImport() {
   font-weight: 500;
 }
 
+/* Section Description Styles */
+.section-description {
+  margin: 0.5rem 0 1rem 0;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
+.config-option small {
+  display: block;
+  margin-top: 0.25rem;
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  line-height: 1.3;
+}
+
 @keyframes modal-appear {
   from {
     opacity: 0;
@@ -919,10 +1070,13 @@ function cancelImport() {
 
 /* Import/Export Styles */
 .import-export-container {
+  margin-bottom: 2rem;
+}
+
+.import-export-buttons {
   display: flex;
-  gap: 2rem;
-  align-items: flex-start;
-  justify-content: space-between; /* Push reset section to far right */
+  flex-direction: column;
+  gap: 1rem;
 }
 
 .export-button,

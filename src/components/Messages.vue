@@ -1,7 +1,13 @@
 <!-- filepath: c:\git\k8tar-fieldday\src\components\Messages.vue -->
 <template>
   <div class="messages-container">
-    <h3>Latest Message</h3>
+    <div class="messages-header">
+      <h3>Latest Message</h3>
+      <button class="view-all-button" @click="showAllMessages = true" title="View All Messages">
+        <span class="material-icons">chat</span>
+      </button>
+    </div>
+    
     <div class="messages-content">
       <transition name="fade">
         <div v-if="latestMessage" class="message" :class="messageTypeClass">
@@ -13,6 +19,65 @@
           No recent messages
         </div>
       </transition>
+    </div>
+
+    <!-- Send Message Form -->
+    <div class="send-message-form">
+      <div class="message-input-row">
+        <select v-model="selectedTarget" class="target-select">
+          <option value="all">All Stations</option>
+          <option v-for="station in connectedStations" :key="station.id" :value="station.id">
+            {{ station.callsign }}-{{ station.designator }}
+          </option>
+        </select>
+        <input 
+          v-model="newMessage" 
+          @keyup.enter="sendMessage"
+          placeholder="Type message..." 
+          class="message-input"
+          maxlength="200"
+        />
+        <button @click="sendMessage" :disabled="!newMessage.trim()" class="send-button">
+          <span class="material-icons">send</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- All Messages Modal -->
+    <div v-if="showAllMessages" class="messages-modal" @click.self="showAllMessages = false">
+      <div class="messages-modal-content">
+        <div class="modal-header">
+          <h3>All Messages</h3>
+          <button class="close-button" @click="showAllMessages = false">
+            <span class="material-icons">close</span>
+          </button>
+        </div>
+        <div class="modal-body">
+          <div v-if="messages.length === 0" class="no-messages">
+            No messages yet
+          </div>
+          <div v-else class="messages-list">
+            <div v-for="message in messages" :key="message.id" 
+                 class="message" :class="`message-${message.type}`">
+              <div class="message-icon">{{ getIconForType(message.type) }}</div>
+              <div class="message-content">
+                <div class="message-text">{{ message.text }}</div>
+                <div class="message-meta">
+                  <span class="message-time">{{ formatFullTime(message.timestamp) }}</span>
+                  <span v-if="message.from" class="message-from">from {{ message.from }}</span>
+                  <span v-if="message.target && message.target !== 'all'" class="message-target">to {{ message.target }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button @click="clearAllMessages" class="clear-button">
+            <span class="material-icons">clear_all</span>
+            Clear All
+          </button>
+        </div>
+      </div>
     </div>
   </div>
 </template>

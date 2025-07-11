@@ -16,30 +16,31 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount } from 'vue';
+import { fileStorage } from '@/services/fileStorage';
 
-const stationCallsign = ref(localStorage.getItem('stationCallsign') || '');
-const stationClass = ref(localStorage.getItem('stationClass') || '');
-const stationSection = ref(localStorage.getItem('stationSection') || '');
+const stationCallsign = ref('');
+const stationClass = ref('');
+const stationSection = ref('');
 
-// Function to refresh data from localStorage
-const refreshData = () => {
-  stationCallsign.value = localStorage.getItem('stationCallsign') || '';
-  stationClass.value = localStorage.getItem('stationClass') || '';
-  stationSection.value = localStorage.getItem('stationSection') || '';
-};
-
-// Function to handle storage changes
-const handleStorageChange = (e: StorageEvent) => {
-  if (e.key === 'stationCallsign') {
-    stationCallsign.value = e.newValue || '';
-  } else if (e.key === 'stationClass') {
-    stationClass.value = e.newValue || '';
-  } else if (e.key === 'stationSection') {
-    stationSection.value = e.newValue || '';
+// Function to refresh data from file storage
+const refreshData = async () => {
+  try {
+    const config = await fileStorage.getStationConfig();
+    stationCallsign.value = config.callsign || '';
+    stationClass.value = config.stationClass || '';
+    stationSection.value = config.stationSection || '';
+  } catch (error) {
+    console.error('Error loading station info:', error);
   }
 };
 
-// Custom event handler for same-window localStorage changes
+// Function to handle storage changes (for cross-tab updates)
+const handleStorageChange = (e: StorageEvent) => {
+  // Refresh from file storage when localStorage changes are detected
+  refreshData();
+};
+
+// Custom event handler for same-window updates
 const handleCustomUpdate = (e: CustomEvent) => {
   refreshData();
 };
