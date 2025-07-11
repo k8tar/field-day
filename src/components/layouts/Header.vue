@@ -47,6 +47,7 @@
         </button>
         <button class="network-button" @click="openNetworkModal" :class="{ 'connected': networkConnected }">
           <span class="material-icons">{{ networkConnected ? 'wifi' : 'wifi_off' }}</span>
+          <span v-if="connectedStationCount > 0" class="station-count">{{ connectedStationCount }}</span>
         </button>
         <button class="config-button" @click="openConfigModal">
           <span class="material-icons">settings</span>
@@ -182,6 +183,10 @@ function handleConfigClose() {
 // Network modal and status
 const networkModalOpen = ref(false);
 const networkConnected = computed(() => networkService.status.isConnected);
+const connectedStationCount = computed(() => {
+  const stations = networkService.getConnectedStations();
+  return stations.filter(station => station.online).length;
+});
 
 function openNetworkModal() {
   networkModalOpen.value = true;
@@ -352,6 +357,25 @@ onBeforeUnmount(() => {
 .docs-button {
   // Uses global btn-icon styles
   @extend .btn-icon;
+  position: relative;
+}
+
+.network-button .station-count {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  background: var(--accent-color);
+  color: white;
+  border-radius: 50%;
+  width: 20px;
+  height: 20px;
+  font-size: 0.7rem;
+  font-weight: bold;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
 .network-button.connected {

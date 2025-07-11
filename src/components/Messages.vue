@@ -33,16 +33,10 @@
     <!-- Send Message Form -->
     <div class="send-message-form">
       <div class="message-input-row">
-        <select v-model="selectedTarget" class="target-select">
-          <option value="all">All Stations</option>
-          <option v-for="station in connectedStations" :key="station.id" :value="station.id">
-            {{ station.callsign }}-{{ station.designator }}
-          </option>
-        </select>
         <input 
           v-model="newMessage" 
           @keyup.enter="sendMessage"
-          placeholder="Type message..." 
+          placeholder="Type message to all stations..." 
           class="message-input"
           maxlength="200"
         />
@@ -83,16 +77,10 @@
         <div class="modal-footer">
           <!-- Send Message Form in Modal -->
           <div class="modal-message-form">
-            <select v-model="modalSelectedTarget" class="modal-target-select">
-              <option value="all">All Stations</option>
-              <option v-for="station in connectedStations" :key="station.id" :value="station.id">
-                {{ station.callsign }}-{{ station.designator }}
-              </option>
-            </select>
             <input 
               v-model="modalNewMessage" 
               @keyup.enter="sendModalMessage"
-              placeholder="Type message..." 
+              placeholder="Type message to all stations..." 
               class="modal-message-input"
               maxlength="200"
             />
@@ -112,6 +100,7 @@ import { computed, ref, watch, onMounted, onUnmounted } from 'vue';
 import { useStore } from 'vuex';
 import { networkService } from '@/services/networkService';
 import { fileStorage } from '@/services/fileStorage';
+import { achievementService } from '@/services/achievementService';
 
 // Generate a GUID for message IDs
 function generateGUID(): string {
@@ -124,7 +113,7 @@ function generateGUID(): string {
 
 interface Message {
   id: string;
-  type: 'bonus' | 'section' | 'multiplier' | 'network' | 'info' | 'chat';
+  type: 'bonus' | 'section' | 'multiplier' | 'network' | 'info' | 'chat' | 'announcement';
   text: string;
   timestamp: number;
   from?: string;
@@ -137,16 +126,9 @@ const messages = ref<Message[]>([]);
 // UI state
 const showAllMessages = ref(false);
 const newMessage = ref('');
-const selectedTarget = ref('all');
 
 // Modal message sending state
 const modalNewMessage = ref('');
-const modalSelectedTarget = ref('all');
-
-// Get connected stations from network service
-const connectedStations = computed(() => {
-  return networkService.getConnectedStations();
-});
 
 // Get the latest message
 const latestMessage = computed(() => {
@@ -189,6 +171,8 @@ function getIconForType(type: Message['type']): string {
       return '🔄';
     case 'chat':
       return '💬';
+    case 'announcement':
+      return '❗';
     case 'info':
     default:
       return 'ℹ️';
@@ -255,7 +239,7 @@ async function sendMessage() {
   
   try {
     const messageText = newMessage.value.trim();
-    const target = selectedTarget.value;
+    const target = 'all'; // Always send to all stations
     const messageId = generateGUID();
     
     // Get current station info
@@ -315,7 +299,7 @@ async function sendModalMessage() {
   
   try {
     const messageText = modalNewMessage.value.trim();
-    const target = modalSelectedTarget.value;
+    const target = 'all'; // Always send to all stations
     const messageId = generateGUID();
     
     // Get current station info
@@ -464,6 +448,11 @@ onMounted(() => {
   networkService.on('qso:synced', handleQsoSynced);
   networkService.on('message:received', handleNetworkMessage);
   
+  // Set up achievement service to send notifications through this component
+  achievementService.setMessageCallback((type: string, message: string) => {
+    addMessage(type as any, message);
+  });
+  
   // Start periodic message sync (every 10 seconds)
   messageSyncInterval = window.setInterval(syncMessages, 10000);
   
@@ -481,6 +470,9 @@ onUnmounted(() => {
   networkService.off('network:initial-sync-complete', handleInitialSyncComplete);
   networkService.off('qso:synced', handleQsoSynced);
   networkService.off('message:received', handleNetworkMessage);
+  
+  // Clean up achievement service
+  achievementService.setMessageCallback(null);
   
   // Clear message sync interval
   if (messageSyncInterval) {
@@ -557,7 +549,7 @@ h3 {
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
-  max-height: 200px;
+  max-height: 300px;
   overflow-y: auto;
 }
 
@@ -685,6 +677,20 @@ h3 {
   color: #81d4fa;
 }
 
+.message-announcement {
+  background-color: rgba(255, 87, 51, 0.1);
+  border-color: #ff5733;
+  color: #d84315;
+  font-weight: 600;
+}
+
+[data-theme="dark"] .message-announcement {
+  background-color: rgba(255, 87, 51, 0.15);
+  border-color: #ff5733;
+  color: #ff8a65;
+  font-weight: 600;
+}
+
 .no-messages {
   font-style: italic;
   color: var(--text-color);
@@ -716,22 +722,6 @@ h3 {
   display: flex;
   gap: 0.5rem;
   align-items: center;
-}
-
-.target-select {
-  flex: 0 0 auto;
-  min-width: 120px;
-  padding: 0.3rem;
-  border: 1px solid var(--border-color);
-  border-radius: 4px;
-  background-color: var(--input-bg);
-  color: var(--text-color);
-  font-size: 0.8rem;
-
-  &:focus {
-    outline: none;
-    border-color: var(--primary-color);
-  }
 }
 
 .message-input {
@@ -874,22 +864,6 @@ h3 {
   gap: 0.75rem;
   align-items: center;
   width: 100%;
-}
-
-.modal-target-select {
-  flex: 0 0 auto;
-  min-width: 140px;
-  padding: 0.5rem;
-  border: 1px solid var(--border-color);
-  border-radius: 4px;
-  background-color: var(--input-bg);
-  color: var(--text-color);
-  font-size: 0.9rem;
-
-  &:focus {
-    outline: none;
-    border-color: var(--primary-color);
-  }
 }
 
 .modal-message-input {

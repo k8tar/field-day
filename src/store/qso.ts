@@ -337,6 +337,9 @@ export async function logQso(qso: any) {
   networkService.broadcastQsoUpdate(newQso, 'add').catch(error => {
     console.error('Failed to broadcast QSO update:', error);
   });
+  
+  // Trigger achievement check for new QSO
+  triggerAchievementCheck();
 }
 
 // Upload a single QSO to the server
@@ -544,4 +547,14 @@ export function stopPeriodicQsoRefresh(): void {
     clearInterval(refreshInterval);
     refreshInterval = null;
   }
+}
+
+// Trigger achievement check (lazy import to avoid circular dependencies)
+function triggerAchievementCheck(): void {
+  // Use dynamic import to avoid circular dependencies
+  import('@/services/achievementService').then(({ achievementService }) => {
+    achievementService.checkNow().catch(error => {
+      console.error('Error checking achievements:', error);
+    });
+  });
 }

@@ -119,6 +119,9 @@ export function toggleBonus(bonusId: string) {
   if (bonus) {
     bonus.completed = !bonus.completed;
     // No need to call saveBonuses() manually since we have a watcher
+    
+    // Trigger achievement check for bonus completion
+    triggerAchievementCheck();
   }
 }
 
@@ -127,6 +130,16 @@ export function resetAllBonuses() {
     bonus.completed = false;
   });
   // No need to call saveBonuses() manually since we have a watcher
+}
+
+// Trigger achievement check (lazy import to avoid circular dependencies)
+function triggerAchievementCheck(): void {
+  // Use dynamic import to avoid circular dependencies
+  import('@/services/achievementService').then(({ achievementService }) => {
+    achievementService.checkNow().catch(error => {
+      console.error('Error checking achievements:', error);
+    });
+  });
 }
 
 async function saveBonuses() {
