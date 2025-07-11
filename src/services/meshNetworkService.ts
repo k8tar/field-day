@@ -61,7 +61,7 @@ class MeshNetworkService {
   private nodeId = '';
   private localNode: MeshNode | null = null;
   private discoveredNodes = reactive<Map<string, MeshNode>>(new Map());
-  private connections = reactive<Map<string, WebSocket | 'simulated'>>(new Map());
+  private connections = reactive<Map<string, WebSocket | 'simulated' | 'http-api'>>(new Map());
   
   // Discovery and heartbeat timers
   private discoveryInterval: NodeJS.Timeout | null = null;
@@ -69,7 +69,7 @@ class MeshNetworkService {
   private syncInterval: NodeJS.Timeout | null = null;
   
   // Mesh network configuration
-  private readonly DISCOVERY_PORT = 8081; // Different from main app port
+  private readonly DISCOVERY_PORT = 8080; // Use same port as main app
   private readonly DISCOVERY_INTERVAL = 60000; // 60 seconds - less frequent to avoid spam
   private readonly HEARTBEAT_INTERVAL = 10000; // 10 seconds
   private readonly SYNC_INTERVAL = 30000; // 30 seconds
@@ -457,8 +457,8 @@ class MeshNetworkService {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 2000);
       
-      // Try to connect to potential mesh node
-      const response = await fetch(`https://${ip}:${this.DISCOVERY_PORT}/mesh/discovery`, {
+      // Try to connect to potential mesh node via the main app's API
+      const response = await fetch(`https://${ip}:${this.DISCOVERY_PORT}/api/mesh/discovery`, {
         method: 'GET',
         signal: controller.signal,
         headers: {
@@ -540,18 +540,28 @@ class MeshNetworkService {
     try {
       console.log(`🤝 Connecting to mesh node: ${node.callsign} at ${node.ip}:${node.port}`);
       
-      // In a real implementation, this would establish WebSocket connection
-      // For browser environment, we'll simulate the connection
-      this.connections.set(node.id, 'simulated');
-      this.status.connectedNodes = this.connections.size;
+      // Test connection to the node's API endpoint
+      const testResponse = await fetch(`https://${node.ip}:${node.port}/api/station-info`, {
+        method: 'GET',
+        headers: { 'Accept': 'application/json' }
+      });
       
-      this.emit('mesh:node-connected', node);
-      console.log(`✅ Connected to mesh node: ${node.callsign}`);
-      
-      // Start initial sync with this node
-      this.syncWithNode(node);
-      
-      return true;
+      if (testResponse.ok) {
+        // Mark as connected via HTTP API
+        this.connections.set(node.id, 'http-api');
+        this.status.connectedNodes = this.connections.size;
+        
+        this.emit('mesh:node-connected', node);
+        console.log(`✅ Connected to mesh node: ${node.callsign} via HTTP API`);
+        
+        // Start initial sync with this node
+        this.syncWithNode(node);
+        
+        return true;
+      } else {
+        console.warn(`⚠️ Failed to connect to mesh node ${node.callsign}: HTTP ${testResponse.status}`);
+        return false;
+      }
     } catch (error) {
       console.error(`❌ Failed to connect to mesh node ${node.callsign}:`, error);
       this.emit('mesh:connection-failed', { node, error });
