@@ -16,34 +16,45 @@ A modern, offline-capable Field Day logging application built with Vue.js, TypeS
 
 ## Documentation
 
-- **[Build Instructions](BUILD.md)** - How to build and distribute the application
-- **[In-App Help](public/docs/README.md)** - User guide and feature documentation (accessible via F1 or ? button)
-- **[Release Notes](RELEASE-NOTES.md)** - Latest features, fixes, and changes
+- **[Build Instructions](BUILD.md)** - Complete build and distribution guide
+- **[In-App Help](public/docs/README.md)** - User guide accessible via F1 or ? button
+- **[Release Notes](RELEASE-NOTES.md)** - Latest features, fixes, and version history
 
 ## Quick Start
 
 ### Development Setup
 ```bash
+# Clone the repository
+git clone <repository-url>
+cd field-day
+
+# Install dependencies
 npm install
+
+# Start development server
 npm run dev
 ```
 
+Access the application at `https://localhost:8080`
+
 ### Production Build
 ```bash
+# Build web application
 npm run build
-npm run preview
-```
 
-### Electron App
-```bash
-npm run electron:dev    # Development
-npm run electron:build  # Build executable
+# Preview production build
+npm run serve
+
+# Build Electron desktop app
+npm run electron:build
 ```
 
 ### Testing
 ```bash
-npm run test           # Run unit tests
-npm run test:ui        # Run UI automation tests
+npm run test           # Run all tests (unit + UI validation)
+npm run test:unit      # Run unit tests only
+npm run test:ui        # Run UI validation tests
+npm run test:pipeline  # Run complete test pipeline
 npm run lint           # Check code style
 ```
 
@@ -120,24 +131,42 @@ start-station.bat "W3AO" "2A"
 
 ### Project Structure
 ```
-src/
-├── components/          # Vue components
-├── services/           # Business logic and API clients  
-├── store/              # Pinia state management
-├── views/              # Page-level components
-├── assets/             # Static resources
-└── router/             # Vue Router configuration
-
-tests/                  # Test scripts and utilities
-public/                 # Static assets and documentation
-installer/              # Electron installer configuration
+field-day/
+├── src/                    # Source code
+│   ├── components/         # Vue components
+│   ├── services/          # Business logic and API clients
+│   ├── store/             # Pinia state management
+│   ├── views/             # Page-level components
+│   ├── assets/            # Static resources and styles
+│   ├── api/               # API server implementation
+│   ├── background/        # Background services
+│   ├── constants/         # Application constants
+│   └── router/            # Vue Router configuration
+├── public/                # Static assets
+│   ├── docs/              # User documentation
+│   └── fonts/             # Icon fonts and typography
+├── tests/                 # Test scripts and utilities
+│   └── unit/              # Unit test specifications
+├── installer/             # Electron installer configuration
+├── electron-main.js       # Electron main process
+├── package.json           # Dependencies and scripts
+├── BUILD.md              # Build and distribution guide
+└── README.md             # This file
 ```
 
 ### Key Services
-- **FileStorageService**: Handles all data persistence
-- **NetworkService**: Manages station discovery and synchronization
-- **AchievementService**: Tracks and announces milestones
-- **WebSocketSync**: Real-time communication between stations
+- **FileStorageService**: Handles all data persistence and file operations
+- **NetworkService**: Manages station discovery and QSO synchronization
+- **AchievementService**: Tracks and announces milestones and bonuses
+- **ApiServer**: Provides HTTP endpoints for network communication
+
+### Technology Stack
+- **Frontend**: Vue.js 3 with TypeScript and Composition API
+- **Build System**: Vite with hot module replacement
+- **Desktop**: Electron for cross-platform native applications
+- **Styling**: SCSS with Material Design principles
+- **Testing**: Mocha for unit tests, custom validation for integration
+- **Security**: HTTPS with self-signed certificates for network sync
 
 ### Contributing
 1. Fork the repository
