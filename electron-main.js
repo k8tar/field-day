@@ -1,6 +1,7 @@
-import { app, BrowserWindow, protocol } from 'electron';
+import { app, BrowserWindow, protocol, shell, ipcMain } from 'electron';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import fs from 'node:fs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -13,14 +14,18 @@ let mainWindow;
 
 function createWindow() {
   // Create the browser window
+  const preloadPath = path.join(__dirname, 'src', 'preload.js');
+  console.log('Preload script path:', preloadPath);
+  console.log('Preload script exists:', fs.existsSync(preloadPath));
+  
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 900,
     show: false,
     autoHideMenuBar: true,
-    icon: path.join(__dirname, 'public/favicon.ico'),
+    icon: path.join(__dirname, 'public', 'favicon.ico'),
     webPreferences: {
-      preload: path.join(__dirname, 'src/preload.js'),
+      preload: preloadPath,
       nodeIntegration: false,
       contextIsolation: true,
       webSecurity: true
@@ -32,8 +37,28 @@ function createWindow() {
   });
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
-    require('electron').shell.openExternal(details.url);
+    shell.openExternal(details.url);
     return { action: 'deny' };
+  });
+
+  // Add console logging listener to capture preload script output
+  mainWindow.webContents.on('console-message', (event, level, message, line, sourceId) => {
+    console.log(`[RENDERER] ${message}`);
+  });
+
+  // Listen for when the page finishes loading
+  mainWindow.webContents.on('did-finish-load', () => {
+    console.log('Page finished loading, checking if preload script worked...');
+    
+    // Test if preload script APIs are available
+    mainWindow.webContents.executeJavaScript(`
+      console.log('🧪 Testing preload APIs from main process...');
+      console.log('window.Electron:', typeof window.Electron);
+      console.log('window.electronFS:', typeof window.electronFS);
+      console.log('window.ElectronTest:', typeof window.ElectronTest);
+    `).catch(err => {
+      console.error('Failed to test preload APIs:', err);
+    });
   });
 
   // HMR for renderer base on electron-vite cli
@@ -43,9 +68,15 @@ function createWindow() {
     mainWindow.webContents.openDevTools();
   } else {
     // In production, load the built HTML file
-    const indexPath = app.isPackaged 
-      ? path.join(process.resourcesPath, 'dist/index.html')
-      : path.join(__dirname, 'dist/index.html');
+    let indexPath;
+    
+    if (app.isPackaged) {
+      // When packaged, files are in the asar or resources directory
+      indexPath = path.join(__dirname, 'dist/index.html');
+    } else {
+      // Development build
+      indexPath = path.join(__dirname, 'dist/index.html');
+    }
     
     console.log('Loading from:', indexPath);
     console.log('App is packaged:', app.isPackaged);
@@ -58,7 +89,8 @@ function createWindow() {
       const fallbackPaths = [
         path.join(__dirname, 'dist/index.html'),
         path.join(process.resourcesPath, 'app/dist/index.html'),
-        path.join(__dirname, '../dist/index.html')
+        path.join(__dirname, '../dist/index.html'),
+        path.join(process.resourcesPath, 'dist/index.html')
       ];
       
       for (const fallbackPath of fallbackPaths) {
@@ -85,6 +117,48 @@ app.whenReady().then(() => {
   if (process.platform === 'win32') {
     app.setAppUserModelId('com.k8tar.fieldday');
   }
+
+  // Setup IPC handlers for file operations
+  ipcMain.handle('fs-write', async (event, filePath, data) => {
+    try {
+      const fullPath = path.join(__dirname, 'data', filePath);
+      const dir = path.dirname(fullPath);
+      
+      console.log('📝 IPC fs-write:', fullPath);
+      
+      // Create directory if it doesn't exist
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+        console.log('📁 Created directory:', dir);
+      }
+      
+      fs.writeFileSync(fullPath, data, 'utf8');
+      console.log('✅ File written successfully');
+      return { success: true };
+    } catch (error) {
+      console.error('❌ IPC fs-write error:', error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle('fs-read', async (event, filePath) => {
+    try {
+      const fullPath = path.join(__dirname, 'data', filePath);
+      console.log('📖 IPC fs-read:', fullPath);
+      
+      if (fs.existsSync(fullPath)) {
+        const data = fs.readFileSync(fullPath, 'utf8');
+        console.log('✅ File read successfully, length:', data.length);
+        return data;
+      } else {
+        console.log('⚠️ File does not exist, returning null');
+        return null;
+      }
+    } catch (error) {
+      console.error('❌ IPC fs-read error:', error);
+      throw error;
+    }
+  });
 
   createWindow();
 
@@ -113,6 +187,6 @@ app.on('ready', () => {
 app.on('web-contents-created', (event, contents) => {
   contents.on('new-window', (event, navigationUrl) => {
     event.preventDefault();
-    require('electron').shell.openExternal(navigationUrl);
+    shell.openExternal(navigationUrl);
   });
 });

@@ -1,20 +1,17 @@
 @echo off
-REM Windows Firewall Configuration for Field Day Logger (Port 8080 Only)
-REM This script opens port 8080 for Field Day Logger communication
+REM Windows Firewall Configuration for Field Day Logger
+REM This script opens the necessary ports for multi-instance communication
 REM Run as Administrator
 
 echo ========================================
 echo Field Day Logger - Windows Firewall Setup
 echo ========================================
 echo.
-echo This script will open Windows Firewall port for Field Day Logger instances
+echo This script will open Windows Firewall ports for Field Day Logger instances
 echo to communicate with each other on the local network.
 echo.
 echo Port to be opened:
-echo - 8080 (TCP) - All Field Day instances (hardcoded, HTTPS enabled)
-echo.
-echo Note: All Field Day instances now use port 8080 exclusively with HTTPS.
-echo Multiple stations should run on different machines/IP addresses.
+echo - 8080 (TCP) - All Field Day instances (hardcoded)
 echo.
 
 REM Check if running as administrator
@@ -28,12 +25,12 @@ if %errorLevel% neq 0 (
     exit /b 1
 )
 
-echo Configuring Windows Firewall...
+echo Running as Administrator - proceeding with firewall configuration...
 echo.
 
-echo Adding inbound firewall rule...
+REM Add inbound rules for Field Day Logger ports
+echo Adding inbound firewall rules...
 
-REM Add inbound rule for Field Day Logger port 8080
 netsh advfirewall firewall add rule name="Field Day Logger - Port 8080" dir=in action=allow protocol=TCP localport=8080 profile=private,domain
 if %errorLevel% equ 0 (
     echo ✓ Port 8080 inbound rule added successfully
@@ -41,10 +38,31 @@ if %errorLevel% equ 0 (
     echo ✗ Failed to add port 8080 inbound rule
 )
 
-echo.
-echo Adding outbound firewall rule...
+netsh advfirewall firewall add rule name="Field Day Logger - Port 8081" dir=in action=allow protocol=TCP localport=8081 profile=private,domain
+if %errorLevel% equ 0 (
+    echo ✓ Port 8081 inbound rule added successfully
+) else (
+    echo ✗ Failed to add port 8081 inbound rule
+)
 
-REM Add outbound rule for Field Day Logger port 8080
+netsh advfirewall firewall add rule name="Field Day Logger - Port 8082" dir=in action=allow protocol=TCP localport=8082 profile=private,domain
+if %errorLevel% equ 0 (
+    echo ✓ Port 8082 inbound rule added successfully
+) else (
+    echo ✗ Failed to add port 8082 inbound rule
+)
+
+netsh advfirewall firewall add rule name="Field Day Logger - Port 8083" dir=in action=allow protocol=TCP localport=8083 profile=private,domain
+if %errorLevel% equ 0 (
+    echo ✓ Port 8083 inbound rule added successfully
+) else (
+    echo ✗ Failed to add port 8083 inbound rule
+)
+
+echo.
+echo Adding outbound firewall rules...
+
+REM Add outbound rules for Field Day Logger ports
 netsh advfirewall firewall add rule name="Field Day Logger - Port 8080 Out" dir=out action=allow protocol=TCP localport=8080 profile=private,domain
 if %errorLevel% equ 0 (
     echo ✓ Port 8080 outbound rule added successfully
@@ -52,32 +70,41 @@ if %errorLevel% equ 0 (
     echo ✗ Failed to add port 8080 outbound rule
 )
 
+netsh advfirewall firewall add rule name="Field Day Logger - Port 8081 Out" dir=out action=allow protocol=TCP localport=8081 profile=private,domain
+if %errorLevel% equ 0 (
+    echo ✓ Port 8081 outbound rule added successfully
+) else (
+    echo ✗ Failed to add port 8081 outbound rule
+)
+
+netsh advfirewall firewall add rule name="Field Day Logger - Port 8082 Out" dir=out action=allow protocol=TCP localport=8082 profile=private,domain
+if %errorLevel% equ 0 (
+    echo ✓ Port 8082 outbound rule added successfully
+) else (
+    echo ✗ Failed to add port 8082 outbound rule
+)
+
+netsh advfirewall firewall add rule name="Field Day Logger - Port 8083 Out" dir=out action=allow protocol=TCP localport=8083 profile=private,domain
+if %errorLevel% equ 0 (
+    echo ✓ Port 8083 outbound rule added successfully
+) else (
+    echo ✗ Failed to add port 8083 outbound rule
+)
+
 echo.
 echo ========================================
 echo Windows Firewall Configuration Complete
 echo ========================================
 echo.
-echo Field Day Logger is now configured to communicate on port 8080.
+echo The following ports are now open in Windows Firewall:
+echo - 8080, 8081, 8082, 8083 (TCP In/Out)
 echo.
-echo Summary:
-echo ✓ Inbound TCP port 8080 - Allow Field Day Logger connections (HTTPS)
-echo ✓ Outbound TCP port 8080 - Allow Field Day Logger connections (HTTPS)
+echo You can now run multiple Field Day Logger instances and they should
+echo be able to communicate with each other.
 echo.
-echo Next steps:
-echo 1. Start Field Day Logger: npm run dev
-echo 2. The app will automatically use port 8080 with HTTPS
-echo 3. Other stations can discover this instance automatically
-echo 4. Use Network Modal to see connected stations
-echo 5. Accept browser security warnings for self-signed certificates
+echo To test:
+echo 1. Start first instance: npm run dev (will use port 8080)
+echo 2. Start second instance: PORT=8081 npm run dev
+echo 3. In the Network modal, set first as Host, second as Client
 echo.
-echo For multiple stations:
-echo - Run each instance on a different machine
-echo - All will use port 8080 with HTTPS (hardcoded)
-echo - Use "Auto" mode for automatic discovery
-echo - Use "Host" mode on main logging station
-echo - Use "Join" mode on additional stations
-echo - You may need to accept security warnings in browsers
-echo.
-
-echo Press any key to exit...
-pause >nul
+pause

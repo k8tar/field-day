@@ -15,10 +15,10 @@
     "serve": "vite preview",
     "test": "npm run test:unit && npm run test:ui",
     "test:unit": "vue-cli-service test:unit",
-    "test:ui": "node tests/test-release-validation.cjs",
+    "test:ui": "node test-scripts/test-release-validation.cjs",
     "test:watch": "vue-cli-service test:unit --watch",
-    "test:pipeline": "bash test-pipeline.sh",
-    "test:pipeline:windows": "test-pipeline.bat",
+    "test:pipeline": "bash test-scripts/test-pipeline.sh",
+    "test:pipeline:windows": "test-scripts/test-pipeline.bat",
     "lint": "vue-cli-service lint",
     "lint:fix": "vue-cli-service lint --fix",
     "electron:dev": "electron .",
@@ -63,6 +63,7 @@
   "build": {
     "appId": "com.k8tar.fieldday",
     "productName": "Field Day Logger",
+    "icon": "public/app-icon.ico",
     "directories": {
       "output": "dist-electron"
     },
@@ -90,9 +91,9 @@
           "arch": ["x64"]
         }
       ],
-      "publisherName": "K8TAR Amateur Radio",
       "verifyUpdateCodeSignature": false,
-      "requestedExecutionLevel": "asInvoker"
+      "requestedExecutionLevel": "asInvoker",
+      "forceCodeSigning": false
     },
     "nsis": {
       "oneClick": false,

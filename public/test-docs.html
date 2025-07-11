@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Documentation Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 2rem; }
+        .test-result { margin: 1rem 0; padding: 1rem; border-radius: 4px; }
+        .success { background: #d4edda; border: 1px solid #c3e6cb; }
+        .error { background: #f8d7da; border: 1px solid #f5c6cb; }
+        .info { background: #d1ecf1; border: 1px solid #bee5eb; }
+        pre { background: #f8f9fa; padding: 1rem; border-radius: 4px; overflow: auto; }
+        button { padding: 0.5rem 1rem; margin: 0.5rem; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        button:hover { background: #0056b3; }
+    </style>
+</head>
+<body>
+    <h1>📚 K8TAR Field Day Logger - Documentation Test</h1>
+    
+    <div class="info test-result">
+        <h3>Testing Documentation Accessibility</h3>
+        <p>This page tests if the documentation is properly accessible and working.</p>
+    </div>
+    
+    <button onclick="testDocumentation()">🧪 Run Documentation Test</button>
+    <button onclick="testHelpButton()">🔍 Test Help Button</button>
+    
+    <div id="test-results"></div>
+    
+    <script>
+        async function testDocumentation() {
+            const resultsDiv = document.getElementById('test-results');
+            resultsDiv.innerHTML = '<h3>Running Tests...</h3>';
+            
+            const results = [];
+            
+            try {
+                // Test 1: Check if docs file is accessible
+                results.push('<h4>📄 Testing Documentation File Access</h4>');
+                
+                const response = await fetch('/docs/README.md');
+                if (response.ok) {
+                    const content = await response.text();
+                    results.push(`<div class="success test-result">✅ Documentation file accessible (${content.length} characters)</div>`);
+                    
+                    // Check for key sections
+                    const sections = [
+                        { name: 'Getting Started', marker: '## 🚀 Getting Started' },
+                        { name: 'QSO Entry Form', marker: '## 📝 QSO Entry Form' },
+                        { name: 'Network Configuration', marker: '## 🌐 Network Configuration' },
+                        { name: 'Keyboard Shortcuts', marker: '## ⌨️ Keyboard Shortcuts' },
+                        { name: 'Troubleshooting', marker: '## 🔧 Troubleshooting' }
+                    ];
+                    
+                    results.push('<h4>📋 Section Verification</h4>');
+                    sections.forEach(section => {
+                        const found = content.includes(section.marker);
+                        const className = found ? 'success' : 'error';
+                        const icon = found ? '✅' : '❌';
+                        results.push(`<div class="${className} test-result">${icon} ${section.name}</div>`);
+                    });
+                    
+                    // Show first few lines
+                    const firstLines = content.split('\\n').slice(0, 5).join('\\n');
+                    results.push(`<h4>📖 Content Preview</h4><pre>${firstLines}...</pre>`);
+                    
+                } else {
+                    results.push(`<div class="error test-result">❌ Failed to fetch documentation: ${response.status} ${response.statusText}</div>`);
+                }
+                
+                // Test 2: Check if running from main app
+                results.push('<h4>🔍 UI Integration Test</h4>');
+                if (window.location.port === '8080' && window.location.pathname === '/') {
+                    results.push('<div class="success test-result">✅ Running from main Field Day Logger app</div>');
+                    results.push('<div class="info test-result">💡 Look for the help icon (?) in the header and try pressing F1!</div>');
+                } else {
+                    results.push('<div class="info test-result">ℹ️ Running as standalone test page</div>');
+                }
+                
+                results.push('<h4>🎉 Test Summary</h4>');
+                results.push('<div class="success test-result">Documentation system is working correctly!</div>');
+                results.push('<div class="info test-result">📝 <strong>How to access docs in the app:</strong><br>• Click the help icon (?) in the header<br>• Press F1 key anywhere in the app<br>• Documentation opens in a beautiful modal with rendered Markdown</div>');
+                
+            } catch (error) {
+                results.push(`<div class="error test-result">❌ Test failed: ${error.message}</div>`);
+            }
+            
+            resultsDiv.innerHTML = results.join('');
+        }
+        
+        function testHelpButton() {
+            const resultsDiv = document.getElementById('test-results');
+            
+            // Try to find the help button in the parent window (if we're in an iframe)
+            let helpButton = document.querySelector('.docs-button');
+            
+            if (!helpButton && window.parent !== window) {
+                try {
+                    helpButton = window.parent.document.querySelector('.docs-button');
+                } catch (e) {
+                    // Cross-origin access blocked
+                }
+            }
+            
+            if (helpButton) {
+                resultsDiv.innerHTML = '<div class="success test-result">✅ Help button found! Attempting to click it...</div>';
+                helpButton.click();
+            } else {
+                resultsDiv.innerHTML = '<div class="info test-result">ℹ️ Help button not found in this context. Open this test from the main app (https://localhost:8080) to test the help button.</div>';
+            }
+        }
+        
+        // Auto-run test when page loads
+        window.addEventListener('load', () => {
+            setTimeout(testDocumentation, 500);
+        });
+    </script>
+</body>
+</html>

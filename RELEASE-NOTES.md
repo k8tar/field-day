@@ -1,5 +1,46 @@
 # Field Day Logger - Release Notes
 
+## Version 2.0.1 (Latest Updates)
+
+### 🔧 Recent Improvements
+
+#### ARRL Section & Division Updates
+- **Corrected ARRL Division Assignments**: Updated all division mappings to match current ARRL structure
+  - **Division 0**: CO, IA, KS, MN, MO, ND, NE, SD
+  - **Division 1**: CT, EMA, ME, NH, RI, VT, WMA (New England)
+  - **Division 2**: ENY, NLI, NNJ, NNY, SNJ, WNY (Hudson)
+  - **Division 3**: DE, EPA, MDC, WPA (Atlantic)
+  - **Division 4**: AL, GA, KY, NC, NFL, PR, SC, SFL, TN, VA, VI, WCF (Southeast)
+  - **Division 5**: AR, LA, MS, NM, NTX, OK, STX, WTX (West Gulf)
+  - **Division 6**: EB, LAX, ORG, PAC, SB, SCV, SDG, SF, SJV, SV (Pacific)
+  - **Division 7**: AK, AZ, EWA, ID, MT, NV, OR, UT, WWA, WY (Northwestern)
+  - **Division 8**: MI, OH (Great Lakes)
+  - **Division 9**: IL, IN, WI (Central)
+  - **Canada**: AB, BC, GTA, MAR, MB, NL, NT, ONE, ONN, ONS, QC, SK
+  - **DX**: DX
+- **Section Code Corrections**: Fixed section assignments including WCF and NM
+- **Removed Duplicate Assignments**: Eliminated WV appearing in multiple divisions
+
+#### Electron Offline Improvements
+- **Eliminated Network Fetch Errors**: Fixed "Failed to fetch" errors in Electron mode
+- **Full Offline Operation**: Electron app now operates completely offline using local file storage
+- **Skip Server API Calls**: QSO sync and message functions automatically detect Electron environment
+- **Local File Storage Priority**: All data operations use local storage in Electron mode
+- **Improved Console Output**: Better logging for debugging and status monitoring
+
+#### Development & Testing Improvements
+- **Test Script Organization**: Moved development test scripts to separate `test-scripts/` folder
+- **Cleaner Repository**: Development test scripts now ignored by git to reduce repository clutter
+- **Maintained Unit Tests**: Proper unit tests remain in `tests/unit/` for continuous integration
+
+### 🐛 Bug Fixes
+- **Fixed WV Section Assignment**: Corrected West Virginia assignment to Division 4 only
+- **Section Map Display**: Updated section progress and map components with correct divisions
+- **Achievement System**: Division completion notifications now use correct section assignments
+- **Network Sync**: Eliminated unnecessary network calls in Electron standalone mode
+
+---
+
 ## Version 2.0.0 (Current)
 
 ### 🎉 Major Release - Complete Overhaul

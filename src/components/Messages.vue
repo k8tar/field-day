@@ -259,29 +259,33 @@ async function sendMessage() {
         addMessage('info', 'Failed to send message to network');
       }
     } else {
-      // Store locally via API for standalone operation
-      try {
-        const response = await fetch('/api/messages', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            id: messageId,
-            type: 'chat',
-            text: messageText,
-            from: stationId,
-            target,
-            timestamp: Date.now(),
-            stationId
-          })
-        });
-        
-        if (response.ok) {
-          console.log(`✅ Message stored locally (ID: ${messageId})`);
+      // Store locally via API for standalone operation (skip in Electron mode)
+      if (typeof window !== 'undefined' && (window as any).Electron) {
+        console.log('📱 Skipping local message storage via API in Electron mode (using in-memory storage)');
+      } else {
+        try {
+          const response = await fetch('/api/messages', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              id: messageId,
+              type: 'chat',
+              text: messageText,
+              from: stationId,
+              target,
+              timestamp: Date.now(),
+              stationId
+            })
+          });
+          
+          if (response.ok) {
+            console.log(`✅ Message stored locally (ID: ${messageId})`);
+          }
+        } catch (error) {
+          console.error('Failed to store message locally:', error);
         }
-      } catch (error) {
-        console.error('Failed to store message locally:', error);
       }
     }
     
@@ -319,29 +323,33 @@ async function sendModalMessage() {
         addMessage('info', 'Failed to send message to network');
       }
     } else {
-      // Store locally via API for standalone operation
-      try {
-        const response = await fetch('/api/messages', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            id: messageId,
-            type: 'chat',
-            text: messageText,
-            from: stationId,
-            target,
-            timestamp: Date.now(),
-            stationId
-          })
-        });
-        
-        if (response.ok) {
-          console.log(`✅ Message stored locally (ID: ${messageId})`);
+      // Store locally via API for standalone operation (skip in Electron mode)
+      if (typeof window !== 'undefined' && (window as any).Electron) {
+        console.log('📱 Skipping modal message storage via API in Electron mode (using in-memory storage)');
+      } else {
+        try {
+          const response = await fetch('/api/messages', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              id: messageId,
+              type: 'chat',
+              text: messageText,
+              from: stationId,
+              target,
+              timestamp: Date.now(),
+              stationId
+            })
+          });
+          
+          if (response.ok) {
+            console.log(`✅ Message stored locally (ID: ${messageId})`);
+          }
+        } catch (error) {
+          console.error('Failed to store message locally:', error);
         }
-      } catch (error) {
-        console.error('Failed to store message locally:', error);
       }
     }
     
@@ -411,6 +419,12 @@ function handleNetworkMessage(event: any) {
 // Sync messages from the API (for network and standalone mode)
 async function syncMessages() {
   try {
+    // Skip message sync from server in Electron environment
+    if (typeof window !== 'undefined' && (window as any).Electron) {
+      console.log('📱 Skipping message sync from server in Electron mode (using local messaging)');
+      return;
+    }
+    
     const response = await fetch('/api/messages?limit=20');
     if (response.ok) {
       const data = await response.json();

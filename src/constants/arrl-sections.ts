@@ -1,52 +1,37 @@
 // ARRL Sections for Field Day
 export const ARRL_SECTIONS = [
-  // Atlantic Division
-  'EPA', 'MDC', 'NLI', 'NNJ', 'SNJ', 'WPA',
+  // Division 0
+  'CO', 'IA', 'KS', 'MN', 'MO', 'ND', 'NE', 'SD',
   
-  // Central Division
-  'IL', 'IN', 'WI',
-  
-  // Dakota Division
-  'MN', 'ND', 'SD',
-  
-  // Delta Division
-  'AR', 'LA', 'MS', 'TN',
-  
-  // Great Lakes Division
-  'KY', 'MI', 'OH',
-  
-  // Hudson Division
-  'ENY', 'NNY', 'WNY',
-  
-  // Midwest Division
-  'IA', 'KS', 'MO', 'NE',
-  
-  // New England Division
+  // Division 1 (New England)
   'CT', 'EMA', 'ME', 'NH', 'RI', 'VT', 'WMA',
   
-  // Northwestern Division
-  'AK', 'EWA', 'ID', 'MT', 'OR', 'WWA',
+  // Division 2 (Hudson)
+  'ENY', 'NLI', 'NNJ', 'NNY', 'SNJ', 'WNY',
   
-  // Pacific Division
-  'EB', 'LAX', 'ORG', 'SB', 'SCV', 'SDG', 'SF', 'SJV', 'SV',
+  // Division 3 (Atlantic)
+  'DE', 'EPA', 'MDC', 'WPA',
   
-  // Roanoke Division
-  'NC', 'SC', 'VA', 'WV',
+  // Division 4 (Southeast)
+  'AL', 'GA', 'KY', 'NC', 'NFL', 'PR', 'SC', 'SFL', 'TN', 'VA', 'VI', 'WCF',
   
-  // Rocky Mountain Division
-  'CO', 'NM', 'UT', 'WY',
+  // Division 5 (West Gulf)
+  'AR', 'LA', 'MS', 'NM', 'NTX', 'OK', 'STX', 'WTX',
   
-  // Southeastern Division
-  'AL', 'GA', 'NFL', 'SFL',
+  // Division 6 (Pacific)
+  'EB', 'LAX', 'ORG', 'PAC', 'SB', 'SCV', 'SDG', 'SF', 'SJV', 'SV',
   
-  // Southwestern Division
-  'AZ', 'NV',
+  // Division 7 (Northwestern)
+  'AK', 'AZ', 'EWA', 'ID', 'MT', 'NV', 'OR', 'UT', 'WWA', 'WY',
   
-  // West Gulf Division
-  'NTX', 'OK', 'STX', 'WTX',
+  // Division 8 (Great Lakes)
+  'MI', 'OH',
+  
+  // Division 9 (Central)
+  'IL', 'IN', 'WI',
   
   // Canada (RAC Sections)
-  'AB', 'BC', 'GTA', 'MB', 'NB', 'NL', 'NS', 'NT', 'ON', 'PE', 'QC', 'SK', 'YT',
+  'AB', 'BC', 'GTA', 'MAR', 'MB', 'NL', 'NT', 'ONE', 'ONN', 'ONS', 'QC', 'SK',
   
   // DX
   'DX'

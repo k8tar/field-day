@@ -56,52 +56,40 @@ defineEmits(['open-section-map']);
 
 // ARRL Divisions and their sections (compact version) - ordered by division numbers
 const arrlDivisions = {
-  'Rocky Mountain (0)': {
-    sections: ['CO', 'NM', 'UT', 'WY']
+  'Division 0': {
+    sections: ['CO', 'IA', 'KS', 'MN', 'MO', 'ND', 'NE', 'SD']
   },
-  'New England (1)': {
+  'Division 1': {
     sections: ['CT', 'EMA', 'ME', 'NH', 'RI', 'VT', 'WMA']
   },
-  'Hudson (2)': {
-    sections: ['ENY', 'NNY', 'WNY']
+  'Division 2': {
+    sections: ['ENY', 'NLI', 'NNJ', 'NNY', 'SNJ', 'WNY']
   },
-  'Atlantic (3)': {
-    sections: ['EPA', 'MDC', 'NLI', 'NNJ', 'SNJ', 'WPA']
+  'Division 3': {
+    sections: ['DE', 'EPA', 'MDC', 'WPA']
   },
-  'Delta (4)': {
-    sections: ['AL', 'AR', 'LA', 'MS', 'TN']
+  'Division 4': {
+    sections: ['AL', 'GA', 'KY', 'NC', 'NFL', 'PR', 'SC', 'SFL', 'TN', 'VA', 'VI', 'WCF']
   },
-  'Southeastern (4)': {
-    sections: ['AL', 'GA', 'NFL', 'SFL']
+  'Division 5': {
+    sections: ['AR', 'LA', 'MS', 'NM', 'NTX', 'OK', 'STX', 'WTX']
   },
-  'Roanoke (4)': {
-    sections: ['NC', 'SC', 'VA', 'WV']
+  'Division 6': {
+    sections: ['EB', 'LAX', 'ORG', 'PAC', 'SB', 'SCV', 'SDG', 'SF', 'SJV', 'SV']
   },
-  'Midwest (5)': {
-    sections: ['IA', 'KS', 'MO', 'NE']
+  'Division 7': {
+    sections: ['AK', 'AZ', 'EWA', 'ID', 'MT', 'NV', 'OR', 'UT', 'WWA', 'WY']
   },
-  'Southwestern (5)': {
-    sections: ['AZ', 'NV']
+  'Division 8': {
+    sections: ['MI', 'OH']
   },
-  'West Gulf (5)': {
-    sections: ['NTX', 'OK', 'STX', 'WTX']
-  },
-  'Pacific (6)': {
-    sections: ['EB', 'LAX', 'ORG', 'SB', 'SCV', 'SDG', 'SF', 'SJV', 'SV']
-  },
-  'Northwestern (7)': {
-    sections: ['AK', 'EWA', 'ID', 'MT', 'OR', 'WWA']
-  },
-  'Great Lakes (8)': {
-    sections: ['KY', 'MI', 'OH', 'WV']
-  },
-  'Central (9)': {
+  'Division 9': {
     sections: ['IL', 'IN', 'WI']
   },
-  'Dakota (9)': {
-    sections: ['MN', 'ND', 'SD']
+  'Canada': {
+    sections: ['AB', 'BC', 'GTA', 'MAR', 'MB', 'NL', 'NT', 'ONE', 'ONN', 'ONS', 'QC', 'SK']
   },
-  'International (DX)': {
+  'DX': {
     sections: ['DX']
   }
 };

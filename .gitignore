@@ -51,6 +51,9 @@ test-*.jpg
 screenshot-*.png
 header-*.png
 
+# Test scripts (separated from unit tests)
+test-scripts/
+
 # Electron build artifacts
 /out/
 /app/

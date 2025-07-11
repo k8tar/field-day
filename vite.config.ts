@@ -793,6 +793,7 @@ export default defineConfig({
       }
     }
   ],
+  base: './', // Use relative paths for assets - needed for Electron
   resolve: {
     alias: {
       '@': path.resolve(__dirname, 'src'),

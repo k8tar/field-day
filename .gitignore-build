@@ -1,0 +1,24 @@
+# Build Output Directory
+dist-electron/
+installer/*.exe
+*.log
+
+# Temporary Build Files
+build.tmp
+dist.tmp
+*.tsbuildinfo
+
+# Installer Working Directory
+installer/Output/
+installer/Temp/
+
+# Build Artifacts
+*.msi
+*.exe
+*.zip
+build-info.json
+build-summary.txt
+
+# Platform-specific builds
+dist-electron/
+release/

@@ -210,21 +210,18 @@ class AchievementService {
 
   private getDivisionProgress(sections: string[]) {
     const divisions = {
-      'Atlantic': ['EPA', 'MDC', 'NLI', 'NNJ', 'SNJ', 'WPA'],
-      'Central': ['IL', 'IN', 'WI'],
-      'Dakota': ['MN', 'ND', 'SD'],
-      'Delta': ['AR', 'LA', 'MS', 'TN'],
-      'Great Lakes': ['KY', 'MI', 'OH'],
-      'Hudson': ['ENY', 'NNY', 'WNY'],
-      'Midwest': ['IA', 'KS', 'MO', 'NE'],
-      'New England': ['CT', 'EMA', 'ME', 'NH', 'RI', 'VT', 'WMA'],
-      'Northwestern': ['AK', 'EWA', 'ID', 'MT', 'OR', 'WWA'],
-      'Pacific': ['EB', 'LAX', 'ORG', 'SB', 'SCV', 'SDG', 'SF', 'SJV', 'SV'],
-      'Roanoke': ['NC', 'SC', 'VA', 'WV'],
-      'Rocky Mountain': ['CO', 'NM', 'UT', 'WY'],
-      'Southeastern': ['AL', 'GA', 'NFL', 'SFL'],
-      'Southwestern': ['AZ', 'NV'],
-      'West Gulf': ['NTX', 'OK', 'STX', 'WTX']
+      'Division 0': ['CO', 'IA', 'KS', 'MN', 'MO', 'ND', 'NE', 'SD'],
+      'Division 1': ['CT', 'EMA', 'ME', 'NH', 'RI', 'VT', 'WMA'],
+      'Division 2': ['ENY', 'NLI', 'NNJ', 'NNY', 'SNJ', 'WNY'],
+      'Division 3': ['DE', 'EPA', 'MDC', 'WPA'],
+      'Division 4': ['AL', 'GA', 'KY', 'NC', 'NFL', 'PR', 'SC', 'SFL', 'TN', 'VA', 'VI', 'WCF'],
+      'Division 5': ['AR', 'LA', 'MS', 'NM', 'NTX', 'OK', 'STX', 'WTX'],
+      'Division 6': ['EB', 'LAX', 'ORG', 'PAC', 'SB', 'SCV', 'SDG', 'SF', 'SJV', 'SV'],
+      'Division 7': ['AK', 'AZ', 'EWA', 'ID', 'MT', 'NV', 'OR', 'UT', 'WWA', 'WY'],
+      'Division 8': ['MI', 'OH'],
+      'Division 9': ['IL', 'IN', 'WI'],
+      'Canada': ['AB', 'BC', 'GTA', 'MAR', 'MB', 'NL', 'NT', 'ONE', 'ONN', 'ONS', 'QC', 'SK'],
+      'DX': ['DX']
     };
 
     const progress: { [key: string]: { completed: boolean; worked: string[]; total: number } } = {};

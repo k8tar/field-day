@@ -49,9 +49,12 @@ initializeQsos();
 
 // Start periodic refresh automatically for all instances
 // This ensures that multiple browser windows see each other's QSOs
-if (typeof window !== 'undefined') {
+// Skip in Electron environment as we use local file storage
+if (typeof window !== 'undefined' && !(window as any).Electron) {
   console.log('🌐 Auto-starting QSO refresh for UI sync...');
   startPeriodicQsoRefresh();
+} else if (typeof window !== 'undefined' && (window as any).Electron) {
+  console.log('📱 Skipping auto QSO refresh in Electron mode (using local file storage)');
 }
 
 export const band = ref('40m');
@@ -94,6 +97,12 @@ loadSettings();
 async function uploadLocalQsosToServer(force = false): Promise<boolean> {
   if (qsos.value.length === 0) {
     console.log('📭 No local QSOs to upload');
+    return true;
+  }
+  
+  // Skip upload in Electron environment - we're already using local file storage
+  if (typeof window !== 'undefined' && (window as any).Electron) {
+    console.log('📱 Skipping QSO upload to server in Electron mode (already using local file storage)');
     return true;
   }
   
@@ -344,6 +353,12 @@ export async function logQso(qso: any) {
 
 // Upload a single QSO to the server
 async function uploadSingleQsoToServer(qso: any): Promise<void> {
+  // Skip upload in Electron environment - we're already using local file storage
+  if (typeof window !== 'undefined' && (window as any).Electron) {
+    console.log('📱 Skipping single QSO upload to server in Electron mode (already using local file storage)');
+    return;
+  }
+  
   try {
     const response = await fetch('/api/qsos/bulk', {
       method: 'POST',
@@ -477,6 +492,12 @@ watch(mode, () => saveSettings());
 // Function to refresh QSOs from server
 export async function refreshQsosFromServer(): Promise<void> {
   try {
+    // Skip server refresh in Electron environment - we use local file storage
+    if (typeof window !== 'undefined' && (window as any).Electron) {
+      console.log('🔄 Skipping QSO refresh from server in Electron mode (using local file storage)');
+      return;
+    }
+    
     console.log('🔄 Refreshing QSOs from server...');
     const response = await fetch('/api/qsos');
     

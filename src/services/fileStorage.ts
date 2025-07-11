@@ -69,7 +69,31 @@ class FileStorageService {
   }
 
   private isElectron(): boolean {
-    return typeof window !== 'undefined' && !!window.Electron;
+    const windowExists = typeof window !== 'undefined';
+    const electronFlag = windowExists && !!(window as any).Electron;
+    const electronFS = windowExists && !!(window as any).electronFS;
+    const electronTest = windowExists && !!(window as any).ElectronTest;
+    
+    console.log('🔍 Electron detection debug:', {
+      windowExists,
+      electronFlag,
+      electronFS,
+      electronTest,
+      userAgent: windowExists ? navigator.userAgent : 'N/A'
+    });
+    
+    // Test the ElectronTest function if available
+    if (electronTest) {
+      try {
+        const result = (window as any).ElectronTest();
+        console.log('✅ ElectronTest executed successfully:', result);
+      } catch (error) {
+        console.error('❌ ElectronTest failed:', error);
+      }
+    }
+    
+    // Return true if we have both the flag and the FS API
+    return electronFlag && electronFS;
   }
 
   private getStorageKey(type: string): string {
@@ -311,7 +335,7 @@ class FileStorageService {
     
     try {
       const filePath = this.getFilePath(filename);
-      await window.Electron.ipcRenderer.invoke('write-file', filePath, content);
+      await (window as any).electronFS.writeFile(filePath, content);
     } catch (error) {
       console.error(`❌ Failed to write file ${filename}:`, error);
       throw error;
@@ -323,7 +347,7 @@ class FileStorageService {
     
     try {
       const filePath = this.getFilePath(filename);
-      return await window.Electron.ipcRenderer.invoke('read-file', filePath);
+      return await (window as any).electronFS.readFile(filePath);
     } catch (error) {
       console.warn(`⚠️ Failed to read file ${filename}:`, error);
       return null;
