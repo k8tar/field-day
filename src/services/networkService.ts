@@ -367,6 +367,11 @@ class NetworkService {
     setInterval(async () => {
       if (this.isHost && this.status.isConnected) {
         try {
+          // Get our local QSO count first
+          const localQsoData = await fileStorage.getQsoData();
+          const localQsoCount = localQsoData.length;
+          console.log(`📊 [HOST-MONITOR] Local QSO count: ${localQsoCount}`);
+          
           const response = await fetch('/api/network/stations');
           if (response.ok) {
             const data = await response.json();
@@ -377,21 +382,41 @@ class NetworkService {
             // Also update QSO counts by fetching from each connected station
             for (const station of this.connectedStations) {
               try {
-                console.log(`🔍 Fetching QSO count from ${station.callsign}-${station.designator} at ${station.ip}:${station.port}`);
+                console.log(`🔍 [HOST-MONITOR] Fetching QSO count from ${station.callsign}-${station.designator} at ${station.ip}:${station.port}`);
                 const qsoResponse = await fetch(`https://${station.ip}:${station.port}/api/station-info`);
                 if (qsoResponse.ok) {
                   const stationInfo = await qsoResponse.json();
-                  console.log(`📊 Station ${station.callsign}-${station.designator} reports: ${stationInfo.qsoCount} QSOs, ${stationInfo.score} pts`);
-                  station.qsoCount = stationInfo.qsoCount || 0;
+                  const remoteQsoCount = stationInfo.qsoCount || 0;
+                  console.log(`📊 [HOST-MONITOR] Station ${station.callsign}-${station.designator} reports: ${remoteQsoCount} QSOs, ${stationInfo.score} pts`);
+                  
+                  // Check if QSO counts differ and trigger sync if needed
+                  if (localQsoCount !== remoteQsoCount) {
+                    console.log(`🔄 [HOST-MONITOR] QSO count mismatch detected!`);
+                    console.log(`🔄 [HOST-MONITOR] Local (host): ${localQsoCount}, Remote (${station.callsign}-${station.designator}): ${remoteQsoCount}`);
+                    
+                    if (remoteQsoCount > localQsoCount) {
+                      console.log(`🔄 [HOST-MONITOR] Remote has more QSOs, pulling from client...`);
+                      // Import the refresh function dynamically to avoid circular imports
+                      const { refreshQsosFromServer } = await import('@/store/qso');
+                      await refreshQsosFromServer();
+                    } else if (localQsoCount > remoteQsoCount) {
+                      console.log(`🔄 [HOST-MONITOR] Local has more QSOs, will be pushed to client via broadcast...`);
+                      // The client will pick this up via its own refresh cycle
+                    }
+                  } else {
+                    console.log(`✅ [HOST-MONITOR] QSO counts match with ${station.callsign}-${station.designator} (${localQsoCount})`);
+                  }
+                  
+                  station.qsoCount = remoteQsoCount;
                   station.score = stationInfo.score || 0;
                   station.lastSeen = Date.now();
                   station.online = true;
                 } else {
-                  console.log(`❌ Failed to fetch station info from ${station.callsign}-${station.designator}: HTTP ${qsoResponse.status}`);
+                  console.log(`❌ [HOST-MONITOR] Failed to fetch station info from ${station.callsign}-${station.designator}: HTTP ${qsoResponse.status}`);
                 }
               } catch (error) {
                 station.online = false;
-                console.log(`Failed to update stats for ${station.callsign}-${station.designator}:`, error);
+                console.log(`❌ [HOST-MONITOR] Failed to update stats for ${station.callsign}-${station.designator}:`, error);
               }
             }
             
@@ -399,16 +424,16 @@ class NetworkService {
             await nextTick();
             this.triggerStationUpdate();
             
-            console.log(`📡 Host monitoring: ${this.connectedStations.length} connected stations`);
+            console.log(`📡 [HOST-MONITOR] ${this.connectedStations.length} connected stations`);
             this.connectedStations.forEach(station => {
               console.log(`  📊 ${station.callsign}-${station.designator}: ${station.qsoCount} QSOs, ${station.score} pts, last seen: ${new Date(station.lastSeen).toLocaleTimeString()}`);
             });
             
             // Trigger Vue reactivity by notifying that stations have been updated
-            console.log(`🔄 Station monitoring update complete at ${new Date().toLocaleTimeString()}`);
+            console.log(`🔄 [HOST-MONITOR] Station monitoring update complete at ${new Date().toLocaleTimeString()}`);
           }
         } catch (error) {
-          console.log('Failed to monitor stations:', error);
+          console.log('❌ [HOST-MONITOR] Failed to monitor stations:', error);
         }
       }
     }, 5000);
@@ -424,27 +449,60 @@ class NetworkService {
           const localStationId = await this.getLocalStationId();
           const [ip, port] = hostAddress.split(':');
           
-          // Get current QSO stats for heartbeat
+          // Get current local QSO stats for heartbeat
           const qsoData = await fileStorage.getQsoData();
-          const qsoCount = qsoData.length;
+          const localQsoCount = qsoData.length;
           const score = qsoData.reduce((total, qso) => {
             return total + (qso.mode === 'CW' || qso.mode === 'DIG' ? 2 : 1);
           }, 0);
           
-          await fetch(`https://${ip}:${port}/api/network/heartbeat`, {
+          console.log(`💓 [HEARTBEAT] Local QSO count: ${localQsoCount}`);
+          
+          // Get remote QSO count from host
+          let remoteQsoCount = 0;
+          try {
+            const qsoResponse = await fetch(`https://${ip}:${port}/api/qsos`);
+            if (qsoResponse.ok) {
+              const qsoData = await qsoResponse.json();
+              remoteQsoCount = qsoData.qsos ? qsoData.qsos.length : 0;
+              console.log(`💓 [HEARTBEAT] Remote QSO count: ${remoteQsoCount}`);
+              
+              // Check if counts differ and trigger sync if needed
+              if (localQsoCount !== remoteQsoCount) {
+                console.log(`🔄 [HEARTBEAT] QSO count mismatch detected! Local: ${localQsoCount}, Remote: ${remoteQsoCount}`);
+                console.log(`🔄 [HEARTBEAT] Triggering QSO refresh to sync...`);
+                
+                // Import the refresh function dynamically to avoid circular imports
+                const { refreshQsosFromServer } = await import('@/store/qso');
+                await refreshQsosFromServer();
+              } else {
+                console.log(`✅ [HEARTBEAT] QSO counts match (${localQsoCount})`);
+              }
+            }
+          } catch (qsoError) {
+            console.log(`⚠️ [HEARTBEAT] Could not check remote QSO count:`, qsoError);
+          }
+          
+          // Send heartbeat to host
+          const heartbeatResponse = await fetch(`https://${ip}:${port}/api/network/heartbeat`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json'
             },
             body: JSON.stringify({
               stationId: localStationId,
-              qsoCount: qsoCount,
+              qsoCount: localQsoCount,
               score: score,
               timestamp: Date.now()
             })
           });
+          
+          if (heartbeatResponse.ok) {
+            console.log(`💓 [HEARTBEAT] Sent to host: ${localQsoCount} QSOs, ${score} pts`);
+          }
+          
         } catch (error) {
-          console.log('Heartbeat failed:', error);
+          console.log('❌ [HEARTBEAT] Failed:', error);
         }
       }
     }, 10000); // Every 10 seconds
