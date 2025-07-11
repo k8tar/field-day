@@ -32,7 +32,7 @@ export interface SyncStatus {
 class NetworkService {
   private ws: WebSocket | null = null;
   private isHost = false;
-  private hostPort = 8080;
+  private hostPort = 8080; // Hardcoded to 8080 for all instances
   private connectedStations = reactive<NetworkStation[]>([]);
   private syncCallbacks: Array<(update: QsoUpdate) => void> = [];
   private syncInterval: number | null = null;
@@ -60,7 +60,7 @@ class NetworkService {
     lastConnectedStations: NetworkStation[];
   } = {
     isHost: false,
-    hostPort: 8080,
+    hostPort: 8080, // Hardcoded to 8080 for all instances
     autoReconnect: false,
     lastConnectedStations: []
   };
@@ -108,48 +108,60 @@ class NetworkService {
     const localStationId = `${localCallsign}-${localDesignator}`;
     
     const discoveredStations: NetworkStation[] = [];
-    const commonPorts = [8080, 8081, 8082, 8083, 3000, 4173, 5173, 8084, 8085, 8086, 8087, 8088]; // Focus on 8080/8081 first
+    const fieldDayPort = 8080; // All Field Day instances use port 8080
     
-    console.log('🔍 Scanning localhost for Field Day stations...');
-    console.log(`🏠 Current instance: ${localStationId} on port ${window.location.port || 'default'}`);
-    console.log(`🎯 Prioritizing ports 8080 and 8081 for discovery`);
+    console.log('🔍 Scanning for Field Day stations on port 8080...');
+    console.log(`🏠 Current instance: ${localStationId} on port 8080`);
+    console.log(`🎯 All Field Day instances use hardcoded port 8080`);
     
-    // Get current port to exclude ourselves
-    const currentPort = parseInt(window.location.port || '8080');
-    
-    // Scan localhost with different ports (excluding our own)
-    const portsToScan = commonPorts.filter(port => port !== currentPort);
-    console.log(`🎯 Scanning ports: ${portsToScan.join(', ')}`);
-    
-    // Try both IPv4 (127.0.0.1) and IPv6 (localhost) addresses
-    const addresses = ['127.0.0.1', 'localhost'];
-    
+    // Since all instances use port 8080, we scan different IP addresses on port 8080 only
     const scanPromises: Promise<NetworkStation | null>[] = [];
     
-    for (const address of addresses) {
-      for (const port of portsToScan) {
-        scanPromises.push(this.checkStationAt(address, port));
-      }
-    }
+    // Try IPv4 localhost (since multiple instances on same machine will use different processes)
+    // Note: Multiple instances on the same machine is not typical - usually different machines
+    console.log('🎯 Checking for other Field Day stations on port 8080...');
     
-    // Also try the current network if we can detect it
+    // Get the current machine's IP addresses to scan the local network
     try {
       const localIP = await this.getLocalIP();
       if (localIP && localIP !== '127.0.0.1') {
-        // Add the detected IP to scan list (excluding our own port)
-        scanPromises.push(...commonPorts
-          .filter(port => port !== currentPort)
-          .map(port => this.checkStationAt(localIP, port)));
+        console.log(`📡 Local IP detected: ${localIP}, scanning local network...`);
+        
+        // Scan the local network subnet (e.g., 192.168.1.x) for other Field Day stations
+        const ipParts = localIP.split('.');
+        if (ipParts.length === 4) {
+          const baseIP = `${ipParts[0]}.${ipParts[1]}.${ipParts[2]}`;
+          
+          // Scan common IP addresses in the subnet (1-254)
+          // For performance, focus on common ranges
+          const ipRanges = [
+            ...Array.from({length: 10}, (_, i) => i + 1),    // .1 to .10
+            ...Array.from({length: 20}, (_, i) => i + 100),  // .100 to .119
+            ...Array.from({length: 55}, (_, i) => i + 200),  // .200 to .254
+          ];
+          
+          for (const lastOctet of ipRanges) {
+            const testIP = `${baseIP}.${lastOctet}`;
+            if (testIP !== localIP) { // Don't scan ourselves
+              scanPromises.push(this.checkStationAt(testIP, fieldDayPort));
+            }
+          }
+        }
       }
     } catch (error) {
-      console.log('Could not detect local IP, scanning localhost only');
+      console.log('Could not detect local IP for network scanning:', error);
     }
+    
+    // Always check localhost in case there are multiple instances on same machine
+    // (though this is unusual for Field Day operations)
+    scanPromises.push(this.checkStationAt('127.0.0.1', fieldDayPort));
+    scanPromises.push(this.checkStationAt('localhost', fieldDayPort));
     
     // Wait for all scans to complete with timeout
     const results = await Promise.allSettled(scanPromises.map(p => 
       Promise.race([
         p,
-        new Promise<null>((_, reject) => setTimeout(() => reject(new Error('timeout')), 3000))
+        new Promise<null>((_, reject) => setTimeout(() => reject(new Error('timeout')), 2000))
       ])
     ));
     
@@ -162,8 +174,7 @@ class NetworkService {
         // Filter out our own station and known test stations
         if (stationId !== localStationId && 
             station.callsign !== localCallsign &&
-            station.callsign !== 'W3AO' && // Filter out mock stations
-            station.port !== currentPort) { // Don't include our own port
+            station.callsign !== 'W3AO') { // Filter out mock stations
           
           // Avoid duplicates
           const existing = discoveredStations.find(s => s.ip === station.ip && s.port === station.port);
@@ -174,7 +185,7 @@ class NetworkService {
       }
     });
     
-    console.log(`✅ Found ${discoveredStations.length} Field Day stations`);
+    console.log(`✅ Found ${discoveredStations.length} Field Day stations on port 8080`);
     discoveredStations.forEach(station => {
       console.log(`  📡 ${station.callsign} (${station.designator}) at ${station.ip}:${station.port} - ${station.qsoCount} QSOs`);
     });
@@ -291,9 +302,10 @@ class NetworkService {
   }
 
   // Start hosting a network
-  async startHost(port: number = 8080): Promise<boolean> {
+  async startHost(): Promise<boolean> {
+    const port = 8080; // All instances use port 8080
     try {
-      console.log(`Starting host on port ${port}...`);
+      console.log(`Starting host on port ${port} (hardcoded)...`);
       
       // Register this instance as a host
       const response = await fetch('/api/network/host', {
@@ -824,8 +836,8 @@ class NetworkService {
     console.log('🔄 Auto-reconnect enabled, attempting to restore connection...');
     
     if (this.networkSettings.isHost) {
-      console.log(`🏠 Auto-starting host on port ${this.networkSettings.hostPort}...`);
-      this.startHost(this.networkSettings.hostPort);
+      console.log(`🏠 Auto-starting host on port 8080 (hardcoded)...`);
+      this.startHost();
     } else if (this.networkSettings.lastHostAddress) {
       console.log(`🔗 Auto-connecting to host at ${this.networkSettings.lastHostAddress}...`);
       this.connectToHost(this.networkSettings.lastHostAddress);
@@ -1039,99 +1051,105 @@ class NetworkService {
   async testDiscovery(): Promise<void> {
     console.log('🧪 Manual discovery test starting...');
     console.log(`📍 Current location: ${window.location.href}`);
-    console.log(`🔢 Current port: ${window.location.port || 'default'}`);
+    console.log(`🔢 All Field Day instances use port 8080 (hardcoded)`);
     
-    const currentPort = parseInt(window.location.port || '8080');
-    const testPorts = [8080, 8081, 8082, 8083, 8084, 8085];
+    const fieldDayPort = 8080;
     
-    console.log(`🔍 Testing ports: ${testPorts.join(', ')}`);
-    console.log(`⚠️ Excluding current port: ${currentPort}`);
+    console.log(`🔍 Testing Field Day port: ${fieldDayPort}`);
+    console.log(`ℹ️ Note: Multiple instances should run on different machines, not different ports`);
     
-    for (const port of testPorts) {
-      if (port !== currentPort) {
-        console.log(`\n🔎 Testing port ${port}...`);
-        const station = await this.checkStationAt('127.0.0.1', port);
-        if (station) {
-          console.log(`✅ SUCCESS: Found ${station.callsign}-${station.designator} at port ${port}`);
+    // Test localhost
+    console.log(`\n� Testing localhost on port ${fieldDayPort}...`);
+    const localStation = await this.checkStationAt('127.0.0.1', fieldDayPort);
+    if (localStation) {
+      console.log(`✅ SUCCESS: Found ${localStation.callsign}-${localStation.designator} at localhost:${fieldDayPort}`);
+    } else {
+      console.log(`❌ FAILED: No station at localhost:${fieldDayPort}`);
+    }
+    
+    // Test current network if available
+    try {
+      const localIP = await this.getLocalIP();
+      if (localIP && localIP !== '127.0.0.1') {
+        console.log(`\n🔎 Testing local network ${localIP}:${fieldDayPort}...`);
+        const networkStation = await this.checkStationAt(localIP, fieldDayPort);
+        if (networkStation) {
+          console.log(`✅ SUCCESS: Found ${networkStation.callsign}-${networkStation.designator} at ${localIP}:${fieldDayPort}`);
         } else {
-          console.log(`❌ FAILED: No station at port ${port}`);
+          console.log(`❌ FAILED: No station at ${localIP}:${fieldDayPort}`);
         }
-      } else {
-        console.log(`\n⏭️ Skipping port ${port} (current instance)`);
       }
+    } catch (error) {
+      console.log(`❌ ERROR: Could not test local network: ${error}`);
     }
     
     console.log('\n🏁 Manual discovery test complete');
   }
 
-  // Manual test method for debugging - focuses on ports 8080 and 8081
+  // Manual test method for debugging - checks Field Day port 8080 only
   async testFieldDayPorts(): Promise<void> {
-    console.log('🧪 Testing Field Day ports 8080 and 8081...');
+    console.log('🧪 Testing Field Day port 8080 (hardcoded for all instances)...');
     
-    const currentPort = parseInt(window.location.port || '8080');
-    console.log(`📍 Current port: ${currentPort}`);
+    const fieldDayPort = 8080;
+    console.log(`📍 All Field Day instances use port ${fieldDayPort}`);
+    console.log(`ℹ️ Multiple instances should run on different machines, not ports`);
     
-    const testPorts = [8080, 8081].filter(port => port !== currentPort);
-    console.log(`🎯 Testing ports: ${testPorts.join(', ')}`);
+    // Try both IPv4 and IPv6 addresses on localhost
+    const addresses = ['127.0.0.1', 'localhost', '[::1]'];
+    console.log(`🎯 Testing addresses: ${addresses.join(', ')}`);
     
-    for (const port of testPorts) {
-      console.log(`\n🔍 Testing port ${port}...`);
+    for (const address of addresses) {
+      console.log(`\n🔍 Testing ${address}:${fieldDayPort}...`);
       
-      // Try both IPv4 and IPv6 addresses
-      const addresses = ['127.0.0.1', 'localhost', '[::1]'];
-      
-      for (const address of addresses) {
-        try {
-          const url = `http://${address}:${port}/api/station-info`;
-          console.log(`📡 Fetching: ${url}`);
-          
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => {
-            console.log(`⏱️ Timeout after 3 seconds for ${address}:${port}`);
-            controller.abort();
-          }, 3000);
-          
-          const response = await fetch(url, {
-            method: 'GET',
-            signal: controller.signal,
-            headers: {
-              'Accept': 'application/json',
-              'User-Agent': 'Field-Day-Logger'
-            }
-          });
-          
-          clearTimeout(timeoutId);
-          
-          console.log(`📊 Response status: ${response.status} ${response.statusText}`);
-          
-          if (response.ok) {
-            const data = await response.json();
-            console.log(`✅ Station found at ${address}:${port}:`, data);
-            break; // Found it, no need to try other addresses for this port
-          } else {
-            console.log(`❌ HTTP error ${response.status} for ${address}:${port}`);
+      try {
+        const url = `http://${address}:${fieldDayPort}/api/station-info`;
+        console.log(`📡 Fetching: ${url}`);
+        
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => {
+          console.log(`⏱️ Timeout after 3 seconds for ${address}:${fieldDayPort}`);
+          controller.abort();
+        }, 3000);
+        
+        const response = await fetch(url, {
+          method: 'GET',
+          signal: controller.signal,
+          headers: {
+            'Accept': 'application/json',
+            'User-Agent': 'Field-Day-Logger'
           }
-          
-        } catch (error) {
-          if (error instanceof Error) {
-            if (error.name === 'AbortError') {
-              console.log(`⏱️ Request to ${address}:${port} timed out`);
-            } else {
-              console.log(`❌ Error connecting to ${address}:${port}:`, error.message);
-            }
+        });
+        
+        clearTimeout(timeoutId);
+        
+        console.log(`📊 Response status: ${response.status} ${response.statusText}`);
+        
+        if (response.ok) {
+          const data = await response.json();
+          console.log(`✅ Station found at ${address}:${fieldDayPort}:`, data);
+        } else {
+          console.log(`❌ HTTP error ${response.status} for ${address}:${fieldDayPort}`);
+        }
+        
+      } catch (error) {
+        if (error instanceof Error) {
+          if (error.name === 'AbortError') {
+            console.log(`⏱️ Request to ${address}:${fieldDayPort} timed out`);
+          } else {
+            console.log(`❌ Error connecting to ${address}:${fieldDayPort}:`, error.message);
           }
         }
       }
     }
     
-    console.log('\n🔄 Testing complete. Try running this again if needed.');
+    console.log('\n🔄 Testing complete. All Field Day instances use port 8080.');
   }
 
   // Comprehensive test for network discovery debugging
   async testNetworkDiscovery(): Promise<void> {
     console.log('\n🔬 === FIELD DAY NETWORK DISCOVERY TEST ===');
     console.log(`🌐 Current URL: ${window.location.href}`);
-    console.log(`📍 Current port: ${window.location.port || 'default'}`);
+    console.log(`📍 All Field Day instances use port 8080 (hardcoded)`);
     
     // Test 1: Local station info
     console.log('\n1️⃣ Testing local station info...');
@@ -1149,76 +1167,66 @@ class NetworkService {
       console.log('❌ Local station info error:', error);
     }
     
-    // Test 2: Check each port individually
-    console.log('\n2️⃣ Testing specific ports...');
-    const currentPort = parseInt(window.location.port || '8080');
-    const testPorts = [8080, 8081];
+    // Test 2: Check Field Day port 8080 on different addresses
+    console.log('\n2️⃣ Testing Field Day port 8080 on different addresses...');
+    const fieldDayPort = 8080;
     
-    for (const port of testPorts) {
-      if (port === currentPort) {
-        console.log(`⏭️ Skipping port ${port} (current instance)`);
-        continue;
-      }
-      
-      console.log(`\n🔍 Testing port ${port}:`);
-      
-      // Test different URL formats (both IPv4 and IPv6)
-      const urls = [
-        `http://127.0.0.1:${port}/api/station-info`,
-        `http://localhost:${port}/api/station-info`,
-        `http://[::1]:${port}/api/station-info`
-      ];
-      
-      for (const url of urls) {
-        try {
-          console.log(`   📡 Trying: ${url}`);
-          
-          const controller = new AbortController();
-          const timeoutId = setTimeout(() => controller.abort(), 3000);
-          
-          const response = await fetch(url, {
-            method: 'GET',
-            signal: controller.signal,
-            headers: {
-              'Accept': 'application/json'
-            },
-            mode: 'cors'
-          });
-          
-          clearTimeout(timeoutId);
-          
-          if (response.ok) {
-            const data = await response.json();
-            console.log(`   ✅ Success! Station data:`, data);
+    // Test different URL formats (both IPv4 and IPv6)
+    const urls = [
+      `http://127.0.0.1:${fieldDayPort}/api/station-info`,
+      `http://localhost:${fieldDayPort}/api/station-info`,
+      `http://[::1]:${fieldDayPort}/api/station-info`
+    ];
+    
+    for (const url of urls) {
+      try {
+        console.log(`   📡 Trying: ${url}`);
+        
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 3000);
+        
+        const response = await fetch(url, {
+          method: 'GET',
+          signal: controller.signal,
+          headers: {
+            'Accept': 'application/json'
+          },
+          mode: 'cors'
+        });
+        
+        clearTimeout(timeoutId);
+        
+        if (response.ok) {
+          const data = await response.json();
+          console.log(`   ✅ Success! Station data:`, data);
+        } else {
+          console.log(`   ❌ HTTP ${response.status}: ${response.statusText}`);
+        }
+        
+      } catch (error) {
+        if (error instanceof Error) {
+          if (error.name === 'AbortError') {
+            console.log(`   ⏱️ Timeout`);
           } else {
-            console.log(`   ❌ HTTP ${response.status}: ${response.statusText}`);
-          }
-          
-        } catch (error) {
-          if (error instanceof Error) {
-            if (error.name === 'AbortError') {
-              console.log(`   ⏱️ Timeout`);
-            } else {
-              console.log(`   ❌ Error: ${error.message}`);
-            }
+            console.log(`   ❌ Error: ${error.message}`);
           }
         }
       }
     }
     
     // Test 3: Run actual discovery
-    console.log('\n3️⃣ Running full discovery...');
+    console.log('\\n3. Running full discovery...');
     const stations = await this.discoverStations();
-    console.log(`🎯 Discovery result: ${stations.length} stations found`);
+    console.log('Discovery result: ' + stations.length + ' stations found');
     stations.forEach(station => {
       console.log(`   📡 ${station.callsign}-${station.designator} at ${station.ip}:${station.port}`);
     });
     
-    console.log('\n✅ Network discovery test complete!');
-    console.log('💡 If no stations were found, ensure both instances are running and try again.');
+    console.log('\\n✅ Network discovery test complete!');
+    console.log('💡 If no stations were found, ensure instances are running on different machines.');
   }
 
-  // Updated configuration methods using file storage
+  // Configuration methods using file storage
   async setConfiguration(callsign: string, designator: string): Promise<void> {
     console.log(`🔧 Setting configuration: ${callsign} - ${designator}`);
     
@@ -1298,54 +1306,7 @@ class NetworkService {
 
   // Public method to get host port for UI
   getHostPort(): number {
-    return this.networkSettings.hostPort || 8080;
-  }
-
-  // Manual refresh method for debugging
-  async refreshConnectedStations(): Promise<void> {
-    if (!this.isHost) {
-      console.log('❌ Cannot refresh stations - not a host');
-      return;
-    }
-    
-    console.log('🔄 Manually refreshing connected stations...');
-    
-    try {
-      const response = await fetch('/api/network/stations');
-      if (response.ok) {
-        const data = await response.json();
-        
-        // Clear and update connected stations
-        this.connectedStations.splice(0, this.connectedStations.length, ...data.connectedStations);
-        
-        // Update QSO counts by fetching from each connected station
-        for (const station of this.connectedStations) {
-          try {
-            const qsoResponse = await fetch(`http://${station.ip}:${station.port}/api/station-info`);
-            if (qsoResponse.ok) {
-              const stationInfo = await qsoResponse.json();
-              station.qsoCount = stationInfo.qsoCount || 0;
-              station.score = stationInfo.score || 0;
-              station.lastSeen = Date.now();
-              station.online = true;
-              
-              console.log(`  ✅ Updated ${station.callsign}-${station.designator}: ${station.qsoCount} QSOs, ${station.score} pts`);
-            }
-          } catch (error) {
-            station.online = false;
-            console.log(`  ❌ Failed to update ${station.callsign}-${station.designator}:`, error);
-          }
-        }
-        
-        // Force Vue reactivity update
-        await nextTick();
-        this.triggerStationUpdate();
-        
-        console.log(`✅ Manual refresh complete: ${this.connectedStations.length} stations`);
-      }
-    } catch (error) {
-      console.error('❌ Manual refresh failed:', error);
-    }
+    return 8080; // Hardcoded port for all Field Day instances
   }
 }
 

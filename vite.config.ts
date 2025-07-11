@@ -580,6 +580,7 @@ export default defineConfig({
   },
   server: {
     port: 8080,
+    strictPort: true, // Force port 8080, fail if unavailable
     cors: true,
   },
 });

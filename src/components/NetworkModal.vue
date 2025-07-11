@@ -54,16 +54,15 @@
           </div>
 
           <div v-if="networkMode === 'host'" class="setting-group">
-            <label for="network-port">Port:</label>
+            <label for="network-port">Port (Hardcoded):</label>
             <input 
               id="network-port" 
               type="number" 
               v-model.number="hostPort" 
-              min="1024" 
-              max="65535"
-              placeholder="8080"
+              disabled
+              value="8080"
             >
-            <p class="help-text">Other stations can connect to: {{ localIP }}:{{ hostPort }}</p>
+            <p class="help-text">All Field Day instances use port 8080. Other stations can connect to: {{ localIP }}:8080</p>
           </div>
 
           <div v-if="networkMode === 'join'" class="setting-group">
@@ -177,8 +176,9 @@
             <p>No other Field Day stations found on the network.</p>
             <p class="help-text">
               To test network features:
-              <br>• Start another instance on port 4173: <code>npm run dev -- --port 4173</code>
-              <br>• Or manually connect using "Join Network" mode with address: <code>127.0.0.1:4173</code>
+              <br>• Start another instance on a different machine (all use port 8080)
+              <br>• Or manually connect using "Join Network" mode with address: <code>[other-machine-ip]:8080</code>
+              <br>• For testing on same machine, use different directories and start another server
             </p>
           </div>
         </div>
@@ -271,7 +271,7 @@ const emit = defineEmits<{
 const isConnected = computed(() => networkService.status.isConnected);
 const networkMode = ref<'auto' | 'host' | 'join'>('auto');
 const networkId = computed(() => networkService.status.networkId);
-const hostPort = ref(8080);
+const hostPort = ref(8080); // Hardcoded - all Field Day instances use port 8080
 const hostAddress = ref('');
 const localIP = ref('192.168.1.100'); // This would be detected
 const autoReconnect = ref(false);
@@ -415,7 +415,7 @@ function connectToStation(station: NetworkStation) {
 async function startConnection() {
   if (networkMode.value === 'host') {
     // Start hosting using network service
-    await networkService.startHost(hostPort.value);
+    await networkService.startHost(); // Port 8080 is hardcoded
   } else if (networkMode.value === 'join') {
     // Connect to host using network service
     await networkService.connectToHost(hostAddress.value);

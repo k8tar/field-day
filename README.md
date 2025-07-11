@@ -122,3 +122,42 @@ The application now uses file-based storage for QSO sharing:
 - **Connection persistence**: Network connection details are saved and restored across app restarts
 - **Robust reconnection**: Exponential backoff retry logic for handling temporary network issues
 - **Manual disconnect**: Disabling auto-reconnect when manually disconnecting from network
+
+## Network Configuration (Updated)
+
+This application now uses **hardcoded port 8080** for all instances to simplify Field Day operations:
+
+- **All instances use port 8080**: No need to configure different ports
+- **Automatic discovery**: Scans local network on port 8080 for other stations
+- **Simple setup**: Just start the app on different machines
+- **Fail-safe**: Server won't start if port 8080 is unavailable (strictPort: true)
+
+### Multi-Station Setup
+
+For Field Day with multiple logging stations:
+
+1. **Main Station (Host)**:
+   ```bash
+   npm run dev  # Automatically uses port 8080
+   ```
+   - Use "Host" mode in Network settings
+   - Other stations will discover this automatically
+
+2. **Additional Stations**:
+   ```bash
+   npm run dev  # Also uses port 8080 (on different machines)
+   ```
+   - Use "Auto" mode for automatic discovery
+   - Or use "Join" mode with host IP address
+
+3. **Testing on Same Machine**:
+   - Copy project to different directories
+   - Start separate dev servers (each will try port 8080)
+   - Use different IP addresses for testing
+
+### Network Discovery
+
+The app automatically scans for other Field Day stations:
+- Checks local network IPs on port 8080
+- Displays found stations in Network Modal
+- Shows real-time QSO counts and scores

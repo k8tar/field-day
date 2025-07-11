@@ -123,21 +123,26 @@ async function quickTestAppState() {
       console.log('📝 Creating test operators...');
       const testOperators = ['K8TAR', 'W1TEST', 'N8ABC'];
       await fileStorage.saveOperators(testOperators);
-  // If no configuration exists, create one for testing
-  if (config.callsign === 'K8TAR' && config.designator === '1A') {
-    console.log('📝 Creating test configuration...');
-    await fileStorage.saveStationConfig({
-      callsign: 'W1TEST',
-      designator: 'PHONE 1',
-      stationClass: '2A',
-      stationSection: 'OH'
-    });
-    await fileStorage.saveOperators(['OP1', 'OP2']);
-    console.log('✅ Test configuration created');
+    }
+    // If no configuration exists, create one for testing
+    const config = await fileStorage.getStationConfig();
+    if (config.callsign === 'K8TAR' && config.designator === '1A') {
+      console.log('📝 Creating test configuration...');
+      await fileStorage.saveStationConfig({
+        callsign: 'W1TEST',
+        designator: 'PHONE 1',
+        stationClass: '2A',
+        stationSection: 'OH'
+      });
+      await fileStorage.saveOperators(['OP1', 'OP2']);
+      console.log('✅ Test configuration created');
+    }
+    
+    console.log('📋 Configuration should prevent setup screen on refresh');
+    console.log('🔄 Try refreshing the page now to verify...');
+  } catch (error) {
+    console.error('❌ Operator dropdown test failed:', error);
   }
-  
-  console.log('📋 Configuration should prevent setup screen on refresh');
-  console.log('🔄 Try refreshing the page now to verify...');
 }
 
 // Available commands
