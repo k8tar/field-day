@@ -41,6 +41,38 @@ export default defineConfig({
       configureServer(server) {
         // Load QSOs from shared file on server start
         let stationQsos: any[] = loadQsosFromFile();
+        
+        // Also check port-specific files and merge if they have more recent data
+        try {
+          const port = server.config.server.port || 8080;
+          const dataDir = path.join(__dirname, 'fieldday-data', `port_${port}`);
+          const qsoPath = path.join(dataDir, 'qso-data.json');
+          
+          if (fs.existsSync(qsoPath)) {
+            const portQsos = JSON.parse(fs.readFileSync(qsoPath, 'utf8'));
+            console.log(`📂 Found ${portQsos.length} QSOs in port-specific file vs ${stationQsos.length} in shared file`);
+            
+            // Use whichever has more QSOs (simple merge strategy)
+            if (portQsos.length > stationQsos.length) {
+              console.log('📈 Using port-specific QSOs as they contain more data');
+              stationQsos = portQsos;
+              // Sync back to shared file
+              saveQsosToFile(stationQsos);
+            } else if (stationQsos.length > portQsos.length) {
+              console.log('📈 Syncing shared file QSOs to port-specific file');
+              // Sync shared file data to port-specific file
+              if (!fs.existsSync(dataDir)) {
+                fs.mkdirSync(dataDir, { recursive: true });
+              }
+              fs.writeFileSync(qsoPath, JSON.stringify(stationQsos, null, 2));
+            }
+          } else {
+            console.log('📁 No port-specific QSO file found, will create on first sync');
+          }
+        } catch (error) {
+          console.error('❌ Error checking port-specific QSO files:', error);
+        }
+        
         let lastSyncTime = Date.now();
         
         // Watch for file changes (for real-time updates between servers)
@@ -49,6 +81,30 @@ export default defineConfig({
             console.log('📄 QSO file changed, reloading...');
             stationQsos = loadQsosFromFile();
           });
+        }
+        
+        // Helper function to sync QSOs to both storage systems
+        function syncQsosToAllStorageSystems(qsos: any[], action: string = 'sync') {
+          // Save to shared file
+          saveQsosToFile(qsos);
+          
+          // Save to port-specific file
+          try {
+            const port = server.config.server.port || 8080;
+            const dataDir = path.join(__dirname, 'fieldday-data', `port_${port}`);
+            const qsoPath = path.join(dataDir, 'qso-data.json');
+            
+            // Ensure directory exists
+            if (!fs.existsSync(dataDir)) {
+              fs.mkdirSync(dataDir, { recursive: true });
+            }
+            
+            // Write QSOs to port-specific file
+            fs.writeFileSync(qsoPath, JSON.stringify(qsos, null, 2));
+            console.log(`📁 Server: ${action} - Synced ${qsos.length} QSOs to port-specific file: ${qsoPath}`);
+          } catch (error) {
+            console.error(`❌ Server: Failed to sync QSOs to port-specific file during ${action}:`, error);
+          }
         }
         
         server.middlewares.use('/api/station-info', (req, res, next) => {
@@ -367,7 +423,7 @@ export default defineConfig({
                   const exists = stationQsos.find((qso: any) => qso.id === update.qso.id);
                   if (!exists) {
                     stationQsos.push(update.qso);
-                    saveQsosToFile(stationQsos); // Save to file
+                    syncQsosToAllStorageSystems(stationQsos, 'network-add'); // Use helper function
                     console.log(`Server: Added QSO from network: ${update.qso.call} (total: ${stationQsos.length})`);
                   } else {
                     console.log(`Server: QSO already exists: ${update.qso.call}`);
@@ -376,14 +432,14 @@ export default defineConfig({
                   const index = stationQsos.findIndex((qso: any) => qso.id === update.qso.id);
                   if (index >= 0) {
                     stationQsos[index] = { ...update.qso };
-                    saveQsosToFile(stationQsos); // Save to file
+                    syncQsosToAllStorageSystems(stationQsos, 'network-update'); // Use helper function
                     console.log(`Updated QSO from network: ${update.qso.call}`);
                   }
                 } else if (update.action === 'delete') {
                   const index = stationQsos.findIndex((qso: any) => qso.id === update.qso.id);
                   if (index >= 0) {
                     stationQsos.splice(index, 1);
-                    saveQsosToFile(stationQsos); // Save to file
+                    syncQsosToAllStorageSystems(stationQsos, 'network-delete'); // Use helper function
                     console.log(`Deleted QSO from network: ${update.qso.call}`);
                   }
                 }
@@ -431,7 +487,7 @@ export default defineConfig({
                 
                 // Save to file if any QSOs were added
                 if (addedCount > 0) {
-                  saveQsosToFile(stationQsos);
+                  syncQsosToAllStorageSystems(stationQsos, 'bulk-upload'); // Use helper function
                 }
                 
                 console.log(`Server: Added ${addedCount} new QSOs (total: ${stationQsos.length})`);
@@ -464,8 +520,8 @@ export default defineConfig({
         server.middlewares.use('/api/qsos/clear', (req, res, next) => {
           if (req.method === 'DELETE') {
             stationQsos = [];
-            saveQsosToFile(stationQsos);
-            console.log('🗑️  Cleared all QSOs');
+            syncQsosToAllStorageSystems(stationQsos, 'clear'); // Use helper function to clear both systems
+            console.log('🗑️  Cleared all QSOs from both storage systems');
             
             res.setHeader('Content-Type', 'application/json');
             res.setHeader('Access-Control-Allow-Origin', '*');
