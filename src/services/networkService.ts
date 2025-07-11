@@ -49,6 +49,11 @@ class NetworkService {
     networkId: ''
   });
 
+  // Helper function to detect if running in Electron
+  private isElectron(): boolean {
+    return typeof window !== 'undefined' && !!(window as any).Electron;
+  }
+
   // Network settings storage keys
   private readonly NETWORK_SETTINGS_KEY = 'fieldday_network_settings';
   
@@ -79,6 +84,14 @@ class NetworkService {
 
   private async initializeNetwork(): Promise<void> {
     try {
+      // In Electron, skip network initialization entirely
+      if (this.isElectron()) {
+        console.log('🖥️ Running in Electron - skipping network initialization');
+        this.status.isConnected = false;
+        this.status.networkId = 'ELECTRON-STANDALONE';
+        return;
+      }
+      
       // First load network settings
       await this.loadNetworkSettings();
       
@@ -93,6 +106,12 @@ class NetworkService {
 
   // Network discovery - scan localhost on common development ports
   async discoverStations(): Promise<NetworkStation[]> {
+    // In Electron, skip network discovery and return empty array
+    if (this.isElectron()) {
+      console.log('🖥️ Running in Electron - skipping network discovery');
+      return [];
+    }
+    
     let localCallsign = '';
     let localDesignator = '';
     
@@ -305,6 +324,17 @@ class NetworkService {
   // Start hosting a network
   async startHost(): Promise<boolean> {
     const port = 8080; // All instances use port 8080
+    
+    // In Electron, skip server-based networking and run in standalone mode
+    if (this.isElectron()) {
+      console.log('🖥️ Running in Electron - skipping network host setup');
+      this.hostPort = port;
+      this.isHost = false; // Don't act as a network host in Electron
+      this.status.isConnected = false;
+      this.status.networkId = 'ELECTRON-STANDALONE';
+      return true;
+    }
+    
     try {
       console.log(`Starting host on port ${port} (hardcoded)...`);
       
@@ -981,6 +1011,12 @@ class NetworkService {
   }
 
   private attemptAutoReconnect(): void {
+    // In Electron, skip auto-reconnect networking
+    if (this.isElectron()) {
+      console.log('🖥️ Running in Electron - skipping auto-reconnect networking');
+      return;
+    }
+    
     console.log('🔄 Checking auto-reconnect...', {
       autoReconnect: this.networkSettings.autoReconnect,
       isHost: this.networkSettings.isHost,

@@ -121,10 +121,16 @@ app.whenReady().then(() => {
   // Setup IPC handlers for file operations
   ipcMain.handle('fs-write', async (event, filePath, data) => {
     try {
-      const fullPath = path.join(__dirname, 'data', filePath);
+      // Use userData directory for writable storage when packaged
+      const dataDir = app.isPackaged ? 
+        path.join(app.getPath('userData'), 'data') : 
+        path.join(__dirname, 'data');
+      const fullPath = path.join(dataDir, filePath);
       const dir = path.dirname(fullPath);
       
       console.log('📝 IPC fs-write:', fullPath);
+      console.log('📦 App is packaged:', app.isPackaged);
+      console.log('📁 Data directory:', dataDir);
       
       // Create directory if it doesn't exist
       if (!fs.existsSync(dir)) {
@@ -143,8 +149,14 @@ app.whenReady().then(() => {
 
   ipcMain.handle('fs-read', async (event, filePath) => {
     try {
-      const fullPath = path.join(__dirname, 'data', filePath);
+      // Use userData directory for writable storage when packaged
+      const dataDir = app.isPackaged ? 
+        path.join(app.getPath('userData'), 'data') : 
+        path.join(__dirname, 'data');
+      const fullPath = path.join(dataDir, filePath);
       console.log('📖 IPC fs-read:', fullPath);
+      console.log('📦 App is packaged:', app.isPackaged);
+      console.log('📁 Data directory:', dataDir);
       
       if (fs.existsSync(fullPath)) {
         const data = fs.readFileSync(fullPath, 'utf8');

@@ -1,14 +1,7 @@
 /**
  * File-based storage service for Field Day Logger
- * Stores data in files specific to each port to avoid conflicts between instan    if (this.isEl      if (this.isElectron()) {
-        qsoDataStr = await this.readFileElectron('qso-data.json');
-      } else {
-        qsoDataStr = await this.readFileServer('qso-data.json');
-      }()) {
-      await this.writeFileElectron('qso-data.json', JSON.stringify(qsoData, null, 2));
-    } else {
-      await this.writeFileServer('qso-data.json', JSON.stringify(qsoData, null, 2));
-    }*/
+ * Stores data in files specific to each port to avoid conflicts between instances
+ */
 
 export interface StationConfig {
   callsign: string;
