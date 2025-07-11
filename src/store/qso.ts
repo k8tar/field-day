@@ -460,3 +460,74 @@ export function getSectionOrder(section: string): number {
 watch(band, () => saveSettings());
 watch(operator, () => saveSettings());
 watch(mode, () => saveSettings());
+
+// Function to refresh QSOs from server
+export async function refreshQsosFromServer(): Promise<void> {
+  try {
+    console.log('🔄 Refreshing QSOs from server...');
+    const response = await fetch('/api/qsos');
+    
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+    
+    const data = await response.json();
+    if (data.qsos && Array.isArray(data.qsos)) {
+      console.log(`📥 Received ${data.qsos.length} QSOs from server`);
+      
+      // Merge server QSOs with local QSOs, avoiding duplicates
+      const currentQsos = [...qsos.value];
+      const serverQsos = data.qsos;
+      
+      // Create a map of existing QSOs by ID for quick lookup
+      const existingQsoMap = new Map();
+      currentQsos.forEach(qso => {
+        if (qso.id) {
+          existingQsoMap.set(qso.id, qso);
+        }
+      });
+      
+      // Add server QSOs that don't exist locally
+      let newQsosAdded = 0;
+      serverQsos.forEach((serverQso: QSO) => {
+        if (serverQso.id && !existingQsoMap.has(serverQso.id)) {
+          currentQsos.push(serverQso);
+          newQsosAdded++;
+        }
+      });
+      
+      if (newQsosAdded > 0) {
+        console.log(`✅ Added ${newQsosAdded} new QSOs from server`);
+        qsos.value = currentQsos;
+        await saveQsos(); // Save updated QSOs to file storage
+      } else {
+        console.log('📋 No new QSOs from server');
+      }
+    }
+  } catch (error) {
+    console.error('❌ Failed to refresh QSOs from server:', error);
+  }
+}
+
+// Set up periodic QSO refresh when connected to network
+let refreshInterval: NodeJS.Timeout | null = null;
+
+export function startPeriodicQsoRefresh(): void {
+  if (refreshInterval) {
+    clearInterval(refreshInterval);
+  }
+  
+  console.log('🔄 Starting periodic QSO refresh every 10 seconds...');
+  refreshInterval = setInterval(refreshQsosFromServer, 10000); // Refresh every 10 seconds
+  
+  // Do an initial refresh
+  refreshQsosFromServer();
+}
+
+export function stopPeriodicQsoRefresh(): void {
+  if (refreshInterval) {
+    console.log('⏹️ Stopping periodic QSO refresh');
+    clearInterval(refreshInterval);
+    refreshInterval = null;
+  }
+}

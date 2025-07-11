@@ -1,5 +1,6 @@
 import { ref, reactive, nextTick } from 'vue';
 import { fileStorage } from './fileStorage';
+import { startPeriodicQsoRefresh, stopPeriodicQsoRefresh } from '@/store/qso';
 
 export interface NetworkStation {
   id: string;
@@ -346,6 +347,9 @@ class NetworkService {
       this.startPeriodicSync();
       this.startStationMonitoring();
       
+      // Start periodic QSO refresh to sync data from network
+      startPeriodicQsoRefresh();
+      
       console.log(`✅ Started hosting on port ${port}`);
       return true;
     } catch (error) {
@@ -592,6 +596,9 @@ class NetworkService {
       // Start monitoring for host updates (clients need to see host stats too)
       this.startClientMonitoring(address);
       
+      // Start periodic QSO refresh to sync data from network
+      startPeriodicQsoRefresh();
+      
       // Perform initial full sync
       await this.performInitialSync();
       
@@ -621,6 +628,9 @@ class NetworkService {
       clearInterval(this.syncInterval);
       this.syncInterval = null;
     }
+    
+    // Stop periodic QSO refresh
+    stopPeriodicQsoRefresh();
     
     this.isHost = false;
     this.status.isConnected = false;
