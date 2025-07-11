@@ -12,8 +12,14 @@
       <transition name="fade">
         <div v-if="latestMessage" class="message" :class="messageTypeClass">
           <div class="message-icon">{{ messageIcon }}</div>
-          <div class="message-text">{{ latestMessage.text }}</div>
-          <div class="message-time">{{ formatTime(latestMessage.timestamp) }}</div>
+          <div class="message-content">
+            <div class="message-text">{{ latestMessage.text }}</div>
+            <div class="message-meta">
+              <span class="message-time">{{ formatTime(latestMessage.timestamp) }}</span>
+              <span v-if="latestMessage.from" class="message-from">from {{ latestMessage.from }}</span>
+              <span v-if="latestMessage.target && latestMessage.target !== 'all'" class="message-target">to {{ latestMessage.target }}</span>
+            </div>
+          </div>
         </div>
         <div v-else class="no-messages">
           No recent messages
@@ -86,16 +92,29 @@
 import { computed, ref, watch, onMounted, onUnmounted } from 'vue';
 import { useStore } from 'vuex';
 import { networkService } from '@/services/networkService';
+import { fileStorage } from '@/services/fileStorage';
 
 interface Message {
   id: string;
-  type: 'bonus' | 'section' | 'multiplier' | 'network' | 'info';
+  type: 'bonus' | 'section' | 'multiplier' | 'network' | 'info' | 'chat';
   text: string;
   timestamp: number;
+  from?: string;
+  target?: string;
 }
 
 const store = useStore();
 const messages = ref<Message[]>([]);
+
+// UI state
+const showAllMessages = ref(false);
+const newMessage = ref('');
+const selectedTarget = ref('all');
+
+// Get connected stations from network service
+const connectedStations = computed(() => {
+  return networkService.getConnectedStations();
+});
 
 // Get the latest message
 const latestMessage = computed(() => {
@@ -112,7 +131,12 @@ const messageTypeClass = computed(() => {
 // Compute icon for message type
 const messageIcon = computed(() => {
   if (!latestMessage.value) return '';
-  switch (latestMessage.value.type) {
+  return getIconForType(latestMessage.value.type);
+});
+
+// Get icon for a specific message type
+function getIconForType(type: Message['type']): string {
+  switch (type) {
     case 'bonus':
       return '⭐';
     case 'section':
@@ -121,11 +145,13 @@ const messageIcon = computed(() => {
       return '✨';
     case 'network':
       return '🔄';
+    case 'chat':
+      return '💬';
     case 'info':
     default:
       return 'ℹ️';
   }
-});
+}
 
 // Format timestamp for display
 function formatTime(timestamp: number): string {
@@ -133,13 +159,27 @@ function formatTime(timestamp: number): string {
   return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 }
 
+// Format timestamp with date for display
+function formatFullTime(timestamp: number): string {
+  const date = new Date(timestamp);
+  return date.toLocaleString([], { 
+    month: 'short', 
+    day: 'numeric', 
+    hour: '2-digit', 
+    minute: '2-digit',
+    second: '2-digit'
+  });
+}
+
 // Add a new message
-function addMessage(type: Message['type'], text: string) {
+function addMessage(type: Message['type'], text: string, from?: string, target?: string) {
   const message: Message = {
     id: Date.now().toString(),
     type,
     text,
-    timestamp: Date.now()
+    timestamp: Date.now(),
+    from,
+    target
   };
   
   messages.value.push(message);
@@ -148,6 +188,42 @@ function addMessage(type: Message['type'], text: string) {
   if (messages.value.length > 10) {
     messages.value = messages.value.slice(-10);
   }
+}
+
+// Send a message
+async function sendMessage() {
+  if (!newMessage.value.trim()) return;
+  
+  try {
+    const messageText = newMessage.value.trim();
+    const target = selectedTarget.value;
+    
+    // Get current station info
+    const stationConfig = await fileStorage.getStationConfig();
+    const stationId = `${stationConfig.callsign}-${stationConfig.designator}`;
+    
+    // Add message locally first with sender information
+    addMessage('chat', messageText, stationId, target);
+    
+    // Send to network if connected
+    if (networkService.status.isConnected) {
+      // For now, just log that we would send the message
+      // We'll implement the actual network message sending later
+      console.log(`Would send message from ${stationId} to ${target}: ${messageText}`);
+    }
+    
+    // Clear input
+    newMessage.value = '';
+  } catch (error) {
+    console.error('Failed to send message:', error);
+    addMessage('info', 'Failed to send message');
+  }
+}
+
+// Clear all messages
+function clearAllMessages() {
+  messages.value = [];
+  showAllMessages.value = false;
 }
 
 // Network event handlers
@@ -247,6 +323,35 @@ h3 {
   font-size: 1rem;
 }
 
+.messages-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.view-all-button {
+  background: var(--primary-color);
+  color: white;
+  border: none;
+  border-radius: 50%;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background-color 0.2s;
+
+  &:hover {
+    background: var(--accent-color);
+  }
+
+  .material-icons {
+    font-size: 18px;
+  }
+}
+
 .messages-content {
   flex: 1;
   overflow-y: auto;
@@ -255,7 +360,7 @@ h3 {
 
 .message {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 0.5rem;
   padding: 0.5rem;
   border-radius: 4px;
@@ -268,13 +373,14 @@ h3 {
 .message-icon {
   font-size: 1.2rem;
   flex-shrink: 0;
+  margin-top: 0.1rem;
 }
 
 .message-text {
-  flex: 1;
   font-size: 0.9rem;
   line-height: 1.3;
   word-wrap: break-word;
+  margin-bottom: 0.25rem;
 }
 
 .message-time {
@@ -282,6 +388,25 @@ h3 {
   color: var(--text-color);
   opacity: 0.7;
   flex-shrink: 0;
+}
+
+.message-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.message-meta {
+  display: flex;
+  gap: 1rem;
+  font-size: 0.7rem;
+  color: var(--text-color);
+  opacity: 0.8;
+}
+
+.message-from, .message-target {
+  font-style: italic;
 }
 
 .message-bonus {
@@ -344,6 +469,18 @@ h3 {
   color: #93c5fd;
 }
 
+.message-chat {
+  background-color: rgba(64, 196, 255, 0.1);
+  border-color: #40c4ff;
+  color: #0277bd;
+}
+
+[data-theme="dark"] .message-chat {
+  background-color: rgba(64, 196, 255, 0.15);
+  border-color: #40c4ff;
+  color: #81d4fa;
+}
+
 .no-messages {
   font-style: italic;
   color: var(--text-color);
@@ -362,5 +499,192 @@ h3 {
 .fade-enter-from,
 .fade-leave-to {
   opacity: 0;
+}
+
+/* Send Message Form */
+.send-message-form {
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid var(--border-color);
+}
+
+.message-input-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.target-select {
+  flex: 0 0 auto;
+  min-width: 120px;
+  padding: 0.3rem;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background-color: var(--input-bg);
+  color: var(--text-color);
+  font-size: 0.8rem;
+
+  &:focus {
+    outline: none;
+    border-color: var(--primary-color);
+  }
+}
+
+.message-input {
+  flex: 1;
+  padding: 0.3rem;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background-color: var(--input-bg);
+  color: var(--text-color);
+  font-size: 0.8rem;
+
+  &:focus {
+    outline: none;
+    border-color: var(--primary-color);
+  }
+
+  &::placeholder {
+    color: var(--text-color);
+    opacity: 0.6;
+  }
+}
+
+.send-button {
+  flex: 0 0 auto;
+  background: var(--primary-color);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background-color 0.2s;
+
+  &:hover:not(:disabled) {
+    background: var(--accent-color);
+  }
+
+  &:disabled {
+    background: var(--border-color);
+    cursor: not-allowed;
+  }
+
+  .material-icons {
+    font-size: 16px;
+  }
+}
+
+/* Messages Modal */
+.messages-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: var(--modal-bg);
+  backdrop-filter: blur(5px);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+  padding: 2rem;
+  box-sizing: border-box;
+}
+
+.messages-modal-content {
+  background: var(--modal-content);
+  border-radius: 12px;
+  width: 100%;
+  max-width: 800px;
+  height: 80vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--border-color);
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1.5rem 2rem;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--primary-color);
+  color: white;
+  border-radius: 12px 12px 0 0;
+
+  h3 {
+    margin: 0;
+    font-size: 1.3rem;
+    font-weight: 600;
+    color: white;
+  }
+}
+
+.close-button {
+  background: rgba(255, 255, 255, 0.2);
+  border: none;
+  border-radius: 50%;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  color: white;
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.3);
+  }
+
+  .material-icons {
+    font-size: 20px;
+  }
+}
+
+.modal-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1rem;
+  color: var(--text-color);
+}
+
+.messages-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.modal-footer {
+  padding: 1rem 2rem;
+  border-top: 1px solid var(--border-color);
+  display: flex;
+  justify-content: flex-end;
+}
+
+.clear-button {
+  background: #dc3545;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 0.5rem 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  transition: background-color 0.2s;
+
+  &:hover {
+    background: #c82333;
+  }
+
+  .material-icons {
+    font-size: 18px;
+  }
 }
 </style>
