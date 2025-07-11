@@ -18,12 +18,14 @@ interface ApiResponse {
 class FieldDayApiServer {
   private isRunning = false;
   private port = 8080;
+  private httpServer: any = null;
   private qsoStore: QSO[] = [];
   private syncInterval: number | null = null;
   
   constructor() {
     this.setupFetchInterceptor();
     this.loadQsosFromStorage();
+    this.startHttpServerIfNeeded();
   }
 
   private async loadQsosFromStorage(): Promise<void> {
@@ -485,7 +487,7 @@ class FieldDayApiServer {
       for (const station of stations) {
         try {
           // Get QSOs from this station since last sync
-          const response = await fetch(`http://${station.ip}:${station.port}/api/qsos?since=${lastSync}`, {
+          const response = await fetch(`https://${station.ip}:${station.port}/api/qsos?since=${lastSync}`, {
             method: 'GET',
             headers: {
               'Accept': 'application/json'
@@ -562,7 +564,7 @@ class FieldDayApiServer {
 
     for (const port of portsToScan) {
       try {
-        const response = await fetch(`http://127.0.0.1:${port}/api/station-info`, {
+        const response = await fetch(`https://127.0.0.1:${port}/api/station-info`, {
           method: 'GET',
           headers: { 'Accept': 'application/json' }
         });
@@ -648,6 +650,29 @@ class FieldDayApiServer {
         data: { error: 'Failed to get debug network info', details: error instanceof Error ? error.message : String(error) }
       };
     }
+  }
+
+  private async startHttpServerIfNeeded(): Promise<void> {
+    // Only start HTTP server in Electron environments (not in browser dev mode)
+    if (typeof window !== 'undefined' && (window as any).electronAPI) {
+      try {
+        // Use Node.js http module through Electron's main process
+        // We'll need to expose this in the preload script
+        console.log('🚀 Starting HTTP server for Electron mesh discovery...');
+        await this.startElectronHttpServer();
+      } catch (error) {
+        console.warn('⚠️ Could not start HTTP server in Electron mode:', error);
+        console.log('📝 Falling back to fetch interceptor only');
+      }
+    } else {
+      console.log('🌐 Running in browser mode - using fetch interceptor only');
+    }
+  }
+
+  private async startElectronHttpServer(): Promise<void> {
+    // This will be implemented when we have access to Node.js modules in Electron
+    // For now, we'll rely on the Vite dev server or external HTTP server
+    console.log('🔧 Electron HTTP server setup pending - using fetch interceptor');
   }
 }
 

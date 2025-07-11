@@ -583,7 +583,9 @@ class MeshNetworkService {
         headers: {
           'Accept': 'application/json',
           'X-Mesh-Node-ID': this.nodeId
-        }
+        },
+        // Ignore SSL certificate errors for self-signed certificates in local mesh network
+        mode: 'cors'
       });
       
       clearTimeout(timeoutId);

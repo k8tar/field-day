@@ -10,6 +10,29 @@ protocol.registerSchemesAsPrivileged([
   { scheme: 'app', privileges: { secure: true, standard: true } }
 ]);
 
+// Ignore SSL certificate errors for local mesh network discovery
+app.commandLine.appendSwitch('--ignore-certificate-errors');
+app.commandLine.appendSwitch('--ignore-ssl-errors');
+app.commandLine.appendSwitch('--ignore-certificate-errors-spki-list');
+app.commandLine.appendSwitch('--disable-web-security');
+
+// Handle certificate errors for mesh network discovery
+app.on('certificate-error', (event, webContents, url, error, certificate, callback) => {
+  // For local network IPs (192.168.x.x, 10.x.x.x, 172.16-31.x.x), ignore certificate errors
+  const isLocalNetwork = /^https?:\/\/(192\.168\.|10\.|172\.(1[6-9]|2[0-9]|3[01])\.|127\.|localhost)/i.test(url);
+  
+  if (isLocalNetwork) {
+    console.log(`🔓 Ignoring SSL certificate error for local mesh network: ${url}`);
+    // Prevent the default behavior
+    event.preventDefault();
+    // Trust the certificate
+    callback(true);
+  } else {
+    // For external URLs, use default behavior
+    callback(false);
+  }
+});
+
 let mainWindow;
 
 function createWindow() {

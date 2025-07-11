@@ -367,8 +367,10 @@ networkService.getConnectedStations()
 function handleNetworkConnected(event: any) {
   if (event.type === 'host') {
     addMessage('network', `Started hosting network on port ${event.port}`);
-  } else {
+  } else if (event.station && event.station.callsign) {
     addMessage('network', `Connected to ${event.station.callsign} network`);
+  } else {
+    addMessage('network', `Connected to network station`);
   }
 }
 
