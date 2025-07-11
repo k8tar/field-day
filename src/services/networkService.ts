@@ -148,26 +148,19 @@ class NetworkService {
     try {
       const localIP = await this.getLocalIP();
       if (localIP && localIP !== '127.0.0.1') {
-        console.log(`📡 Local IP detected: ${localIP}, scanning local network...`);
+        console.log(`📡 Local IP detected: ${localIP}, scanning for Field Day stations...`);
         
-        // Scan the local network subnet (e.g., 192.168.1.x) for other Field Day stations
-        const ipParts = localIP.split('.');
-        if (ipParts.length === 4) {
-          const baseIP = `${ipParts[0]}.${ipParts[1]}.${ipParts[2]}`;
-          
-          // Scan common IP addresses in the subnet (1-254)
-          // For performance, focus on common ranges
-          const ipRanges = [
-            ...Array.from({length: 10}, (_, i) => i + 1),    // .1 to .10
-            ...Array.from({length: 20}, (_, i) => i + 100),  // .100 to .119
-            ...Array.from({length: 55}, (_, i) => i + 200),  // .200 to .254
-          ];
-          
-          for (const lastOctet of ipRanges) {
-            const testIP = `${baseIP}.${lastOctet}`;
-            if (testIP !== localIP) { // Don't scan ourselves
-              scanPromises.push(this.checkStationAt(testIP, fieldDayPort));
-            }
+        // For mesh network discovery, we only check a few specific addresses
+        // to avoid overwhelming the network and finding false positives
+        const specificIPs = [
+          '192.168.1.14',  // Known Field Day station IP
+          '192.168.1.30',  // Known Field Day station IP
+          localIP          // Our own IP (for verification)
+        ];
+        
+        for (const testIP of specificIPs) {
+          if (testIP !== localIP) { // Don't scan ourselves
+            scanPromises.push(this.checkStationAt(testIP, fieldDayPort));
           }
         }
       }
@@ -219,10 +212,10 @@ class NetworkService {
   // Check if a Field Day station is running at the given address
   private async checkStationAt(ip: string, port: number): Promise<NetworkStation | null> {
     try {
-      console.log(`🔎 Checking ${ip}:${port}...`);
+      console.log(`🔎 Checking Field Day station at ${ip}:${port}...`);
       
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 1000); // Increased timeout
+      const timeoutId = setTimeout(() => controller.abort(), 2000); // 2 second timeout
       
       const response = await fetch(`https://${ip}:${port}/api/station-info`, {
         method: 'GET',
@@ -236,21 +229,31 @@ class NetworkService {
       
       if (response.ok) {
         const stationInfo = await response.json();
-        console.log(`✅ Found station at ${ip}:${port}:`, stationInfo);
         
-        return {
-          id: `${ip}:${port}`,
-          callsign: stationInfo.callsign || 'UNKNOWN',
-          designator: stationInfo.designator || '1A',
-          ip: ip,
-          port: port,
-          qsoCount: stationInfo.qsoCount || 0,
-          score: stationInfo.score || 0,
-          online: true,
-          lastSeen: Date.now()
-        };
+        // Validate this is actually a Field Day station by checking required fields
+        if (stationInfo.callsign && 
+            stationInfo.designator && 
+            stationInfo.software && 
+            stationInfo.software.includes('Field Day')) {
+          
+          console.log(`✅ Found Field Day station at ${ip}:${port}:`, stationInfo);
+          
+          return {
+            id: `${ip}:${port}`,
+            callsign: stationInfo.callsign,
+            designator: stationInfo.designator,
+            ip: ip,
+            port: port,
+            qsoCount: stationInfo.qsoCount || 0,
+            score: stationInfo.score || 0,
+            online: true,
+            lastSeen: Date.now()
+          };
+        } else {
+          console.log(`❌ Response from ${ip}:${port} is not a Field Day station:`, stationInfo);
+        }
       } else {
-        console.log(`❌ No Field Day station at ${ip}:${port} (HTTP ${response.status})`);
+        console.log(`❌ No valid response at ${ip}:${port} (HTTP ${response.status})`);
       }
     } catch (error) {
       if (error instanceof Error && error.name !== 'AbortError') {
@@ -1690,6 +1693,9 @@ class NetworkService {
       console.log('🛑 NetworkService: Disconnecting existing connections...');
       this.disconnect();
       
+      // Clear any duplicate stations that might have accumulated
+      this.removeDuplicateStations();
+      
       // Start mesh network
       console.log('🚀 NetworkService: Calling meshNetworkService.startMesh()...');
       const success = await meshNetworkService.startMesh();
@@ -1743,7 +1749,7 @@ class NetworkService {
   private setupMeshEventHandlers(): void {
     // Handle mesh node discovery
     meshNetworkService.on('mesh:node-discovered', (node: MeshNode) => {
-      console.log(`📡 Mesh node discovered: ${node.callsign} (${node.designator})`);
+      console.log(`📡 Mesh node discovered: ${node.callsign} (${node.designator}) at ${node.ip}:${node.port}`);
       
       // Convert mesh node to network station format
       const station: NetworkStation = {
@@ -1758,14 +1764,24 @@ class NetworkService {
         lastSeen: node.lastSeen
       };
       
-      // Add to connected stations list
-      const existingIndex = this.connectedStations.findIndex(s => s.id === station.id);
+      // Check for existing station using multiple criteria to prevent duplicates
+      const existingIndex = this.connectedStations.findIndex(s => 
+        s.id === station.id || 
+        (s.ip === station.ip && s.port === station.port) ||
+        (s.callsign === station.callsign && s.designator === station.designator)
+      );
+      
       if (existingIndex >= 0) {
+        // Update existing station instead of adding duplicate
+        console.log(`🔄 Updating existing station: ${station.callsign} (${station.designator})`);
         Object.assign(this.connectedStations[existingIndex], station);
       } else {
+        // Only add if truly new
+        console.log(`➕ Adding new station: ${station.callsign} (${station.designator})`);
         this.connectedStations.push(station);
       }
       
+      console.log(`📊 Total connected stations: ${this.connectedStations.length}`);
       this.triggerStationUpdate();
     });
 
@@ -1798,6 +1814,43 @@ class NetworkService {
       const meshStatus = meshNetworkService.getMeshStatus();
       this.status.networkId = `MESH-${meshStatus.nodeId}-${health.toUpperCase()}`;
     });
+  }
+
+  // Remove duplicate stations from the connected stations list
+  private removeDuplicateStations(): void {
+    const uniqueStations = new Map<string, NetworkStation>();
+    
+    // Use multiple keys to detect duplicates
+    for (const station of this.connectedStations) {
+      const keys = [
+        station.id,
+        `${station.ip}:${station.port}`,
+        `${station.callsign}-${station.designator}`
+      ];
+      
+      let isDuplicate = false;
+      for (const key of keys) {
+        if (uniqueStations.has(key)) {
+          isDuplicate = true;
+          break;
+        }
+      }
+      
+      if (!isDuplicate) {
+        for (const key of keys) {
+          uniqueStations.set(key, station);
+        }
+      }
+    }
+    
+    // Get unique stations
+    const stations = Array.from(new Set(uniqueStations.values()));
+    const removedCount = this.connectedStations.length - stations.length;
+    
+    if (removedCount > 0) {
+      console.log(`🗑️ Removed ${removedCount} duplicate stations`);
+      this.connectedStations.splice(0, this.connectedStations.length, ...stations);
+    }
   }
 
   // Get mesh nodes for UI

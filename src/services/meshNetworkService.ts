@@ -70,7 +70,7 @@ class MeshNetworkService {
   
   // Mesh network configuration
   private readonly DISCOVERY_PORT = 8081; // Different from main app port
-  private readonly DISCOVERY_INTERVAL = 15000; // 15 seconds
+  private readonly DISCOVERY_INTERVAL = 60000; // 60 seconds - less frequent to avoid spam
   private readonly HEARTBEAT_INTERVAL = 10000; // 10 seconds
   private readonly SYNC_INTERVAL = 30000; // 30 seconds
   private readonly NODE_TIMEOUT = 45000; // 45 seconds before considering node offline
@@ -331,58 +331,51 @@ class MeshNetworkService {
   private async discoverPeers(): Promise<void> {
     if (!this.localNode) return;
     
-    console.log('🔎 Discovering peers...');
+    console.log('🔎 Discovering mesh peers...');
     
     try {
-      // In a real mesh network, this would use multicast/broadcast
-      // For browser environment, we'll simulate by scanning known IP ranges
-      const localIP = this.localNode.ip;
-      const ipParts = localIP.split('.');
+      // For mesh network discovery, we only check specific known Field Day station IPs
+      // to avoid overwhelming the network and finding false positives
+      const specificIPs = [
+        '192.168.1.14',  // Known Field Day station IP
+        '192.168.1.30',  // Known Field Day station IP
+        '127.0.0.1'      // Localhost for testing
+      ];
       
-      if (ipParts.length === 4) {
-        const baseIP = `${ipParts[0]}.${ipParts[1]}.${ipParts[2]}`;
-        const scanPromises: Promise<MeshNode | null>[] = [];
-        
-        // Scan common IP addresses
-        const ipRanges = [
-          ...Array.from({length: 20}, (_, i) => i + 1),    // .1 to .20
-          ...Array.from({length: 30}, (_, i) => i + 100),  // .100 to .129
-          ...Array.from({length: 55}, (_, i) => i + 200),  // .200 to .254
-        ];
-        
-        for (const lastOctet of ipRanges) {
-          const testIP = `${baseIP}.${lastOctet}`;
-          if (testIP !== localIP) {
-            scanPromises.push(this.checkForMeshNode(testIP));
+      const scanPromises: Promise<MeshNode | null>[] = [];
+      const localIP = this.localNode.ip;
+      
+      for (const testIP of specificIPs) {
+        if (testIP !== localIP) { // Don't scan ourselves
+          scanPromises.push(this.checkForMeshNode(testIP));
+        }
+      }
+      
+      // Wait for all scans
+      const results = await Promise.allSettled(scanPromises.map(p => 
+        Promise.race([
+          p,
+          new Promise<null>((_, reject) => setTimeout(() => reject(new Error('timeout')), 3000))
+        ])
+      ));
+      
+      // Process results
+      let newNodes = 0;
+      results.forEach(result => {
+        if (result.status === 'fulfilled' && result.value) {
+          const node = result.value;
+          if (!this.discoveredNodes.has(node.id)) {
+            newNodes++;
+            this.addDiscoveredNode(node);
+          } else {
+            // Update existing node
+            this.updateDiscoveredNode(node);
           }
         }
-        
-        // Wait for all scans
-        const results = await Promise.allSettled(scanPromises.map(p => 
-          Promise.race([
-            p,
-            new Promise<null>((_, reject) => setTimeout(() => reject(new Error('timeout')), 3000))
-          ])
-        ));
-        
-        // Process results
-        let newNodes = 0;
-        results.forEach(result => {
-          if (result.status === 'fulfilled' && result.value) {
-            const node = result.value;
-            if (!this.discoveredNodes.has(node.id)) {
-              newNodes++;
-              this.addDiscoveredNode(node);
-            } else {
-              // Update existing node
-              this.updateDiscoveredNode(node);
-            }
-          }
-        });
-        
-        if (newNodes > 0) {
-          console.log(`✅ Discovered ${newNodes} new mesh nodes`);
-        }
+      });
+      
+      if (newNodes > 0) {
+        console.log(`✅ Discovered ${newNodes} new mesh nodes`);
       }
     } catch (error) {
       console.error('❌ Error during peer discovery:', error);
@@ -411,21 +404,32 @@ class MeshNetworkService {
       
       if (response.ok) {
         const nodeInfo = await response.json();
-        console.log(`✅ Found mesh node at ${ip}:${this.DISCOVERY_PORT}:`, nodeInfo);
         
-        return {
-          id: nodeInfo.nodeId,
-          callsign: nodeInfo.callsign || 'UNKNOWN',
-          designator: nodeInfo.designator || '1A',
-          ip: ip,
-          port: this.DISCOVERY_PORT,
-          qsoCount: nodeInfo.qsoCount || 0,
-          score: nodeInfo.score || 0,
-          online: true,
-          lastSeen: Date.now(),
-          version: nodeInfo.version || '2.0.0',
-          capabilities: nodeInfo.capabilities || []
-        };
+        // Validate this is actually a Field Day mesh node
+        if (nodeInfo.nodeId && 
+            nodeInfo.callsign && 
+            nodeInfo.designator && 
+            nodeInfo.software && 
+            nodeInfo.software.includes('Field Day')) {
+          
+          console.log(`✅ Found Field Day mesh node at ${ip}:${this.DISCOVERY_PORT}:`, nodeInfo);
+          
+          return {
+            id: nodeInfo.nodeId,
+            callsign: nodeInfo.callsign,
+            designator: nodeInfo.designator,
+            ip: ip,
+            port: this.DISCOVERY_PORT,
+            qsoCount: nodeInfo.qsoCount || 0,
+            score: nodeInfo.score || 0,
+            online: true,
+            lastSeen: Date.now(),
+            version: nodeInfo.version || '2.0.0',
+            capabilities: nodeInfo.capabilities || []
+          };
+        } else {
+          console.log(`❌ Response from ${ip}:${this.DISCOVERY_PORT} is not a Field Day mesh node:`, nodeInfo);
+        }
       }
     } catch (error) {
       // Silently fail - this is expected for most IPs

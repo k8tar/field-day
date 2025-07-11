@@ -70,12 +70,22 @@ class FieldDayApiServer {
            url.includes('/api/qsos') || 
            url.includes('/station-info') ||
            url.includes('/api/status') ||
-           url.includes('/mesh/discovery');
+           url.includes('/mesh/discovery') ||
+           url.includes('/api/files/');
   }
 
   private async handleApiRequest(url: string, init?: RequestInit): Promise<Response> {
     const method = init?.method || 'GET';
-    const parsedUrl = new URL(url);
+    
+    // Handle relative URLs by creating a proper base URL
+    let parsedUrl: URL;
+    try {
+      parsedUrl = new URL(url);
+    } catch (e) {
+      // If it's a relative URL, construct it with a base
+      parsedUrl = new URL(url, window.location.origin);
+    }
+    
     const pathname = parsedUrl.pathname;
     const searchParams = parsedUrl.searchParams;
 
@@ -88,6 +98,8 @@ class FieldDayApiServer {
         response = await this.handleStationInfo();
       } else if (pathname.includes('/mesh/discovery')) {
         response = await this.handleMeshDiscovery(init);
+      } else if (pathname.includes('/api/files/')) {
+        response = await this.handleFileOperations(pathname, method, init, searchParams);
       } else if (pathname.includes('/qsos')) {
         if (method === 'GET') {
           response = this.handleGetQsos(searchParams);
@@ -175,6 +187,88 @@ class FieldDayApiServer {
       return {
         status: 500,
         data: { error: 'Failed to process mesh discovery request' }
+      };
+    }
+  }
+
+  private async handleFileOperations(pathname: string, method: string, init?: RequestInit, searchParams?: URLSearchParams): Promise<ApiResponse> {
+    try {
+      if (pathname.includes('/api/files/write') && method === 'POST') {
+        const body = init?.body ? JSON.parse(init.body as string) : {};
+        const { filename, content } = body;
+        
+        if (!filename || content === undefined) {
+          return {
+            status: 400,
+            data: { error: 'Missing filename or content' }
+          };
+        }
+
+        // In browser mode, we'll just log the file write operation
+        // since we can't actually write to the filesystem
+        console.log(`📁 File write request: ${filename}`);
+        console.log(`📄 Content length: ${content.length} characters`);
+        
+        // Store in localStorage as a fallback for browser environments
+        try {
+          localStorage.setItem(`fieldday_file_${filename}`, content);
+          console.log(`💾 Stored file in localStorage: ${filename}`);
+        } catch (e) {
+          console.warn(`⚠️ Could not store in localStorage: ${e instanceof Error ? e.message : String(e)}`);
+        }
+
+        return {
+          status: 200,
+          data: { 
+            success: true, 
+            message: `File ${filename} written successfully (browser mode)`,
+            filename: filename 
+          }
+        };
+      } else if (pathname.includes('/api/files/read') && method === 'GET') {
+        const filename = searchParams?.get('filename');
+        
+        if (!filename) {
+          return {
+            status: 400,
+            data: { error: 'Missing filename parameter' }
+          };
+        }
+
+        // Try to read from localStorage
+        try {
+          const content = localStorage.getItem(`fieldday_file_${filename}`);
+          if (content !== null) {
+            return {
+              status: 200,
+              data: { 
+                content: content,
+                filename: filename 
+              }
+            };
+          } else {
+            return {
+              status: 404,
+              data: { error: 'File not found' }
+            };
+          }
+        } catch (e) {
+          return {
+            status: 500,
+            data: { error: 'Error reading file from storage' }
+          };
+        }
+      } else {
+        return {
+          status: 405,
+          data: { error: 'Method not allowed for file operations' }
+        };
+      }
+    } catch (error) {
+      console.error('❌ Error handling file operations:', error);
+      return {
+        status: 500,
+        data: { error: 'Failed to process file operation' }
       };
     }
   }
