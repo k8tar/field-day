@@ -137,18 +137,18 @@
                 <small>Official ARRL Field Day contest submission format</small>
               </div>
               <div class="config-option">
-                <button class="export-button" @click="exportAdif" :disabled="qsos.length === 0">
-                  <span class="material-icons">download</span>
-                  Export ADIF Log
-                </button>
-                <small>Standard format for amateur radio logging software</small>
-              </div>
-              <div class="config-option">
                 <button class="export-button" @click="exportDupeSheet" :disabled="qsos.length === 0">
                   <span class="material-icons">download</span>
                   Export Duplicate Sheet
                 </button>
                 <small>CSV format for operator reference and duplicate checking</small>
+              </div>
+              <div class="config-option">
+                <button class="export-button" @click="exportAdif" :disabled="qsos.length === 0">
+                  <span class="material-icons">download</span>
+                  Export ADIF Log
+                </button>
+                <small>Standard format for amateur radio logging software</small>
               </div>
             </div>
           </div>

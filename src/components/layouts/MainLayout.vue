@@ -101,7 +101,8 @@ watch(modeVal, (newMode) => {
 }
 
 .content-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: 3fr 1fr; /* 75% and 25% */
   gap: 0.5rem;
   flex: 0 0 auto;
   min-height: 0;
@@ -114,11 +115,13 @@ watch(modeVal, (newMode) => {
 }
 
 .recent-contacts {
-  flex: 2; /* 2/3 of the width */
+  /* Grid item - no flex needed */
+  min-width: 0; /* Allow shrinking */
 }
 
 .score-statistics {
-  flex: 1; /* 1/3 of the width */
+  /* Grid item - no flex needed */
+  min-width: 0; /* Allow shrinking */
 }
 
 .bottom-section {

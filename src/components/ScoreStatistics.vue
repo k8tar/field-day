@@ -100,6 +100,7 @@ const qsosPerHalfHour = computed(() => {
   height: 100%;
   display: flex;
   flex-direction: column;
+  width: 100%;
 }
 
 h2 {
