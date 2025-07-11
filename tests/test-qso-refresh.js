@@ -5,7 +5,7 @@
  * This test verifies that the QSO store properly refreshes data from the server API
  */
 
-const puppeteer = require('puppeteer');
+import puppeteer from 'puppeteer';
 
 async function testQsoRefresh() {
   console.log('🧪 Testing QSO refresh mechanism...');

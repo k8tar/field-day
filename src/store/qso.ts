@@ -18,6 +18,9 @@ export interface QSO {
 const QSO_STORAGE_KEY = 'qsos';
 const SETTINGS_KEY = 'qso_settings';
 
+// Periodic QSO refresh interval
+let refreshInterval: NodeJS.Timeout | null = null;
+
 // Initialize QSOs from file storage
 export const qsos = ref<QSO[]>([]);
 
@@ -43,6 +46,13 @@ async function initializeQsos() {
 
 // Initialize immediately
 initializeQsos();
+
+// Start periodic refresh automatically for all instances
+// This ensures that multiple browser windows see each other's QSOs
+if (typeof window !== 'undefined') {
+  console.log('🌐 Auto-starting QSO refresh for UI sync...');
+  startPeriodicQsoRefresh();
+}
 
 export const band = ref('40m');
 export const operator = ref('');
@@ -479,6 +489,8 @@ export async function refreshQsosFromServer(): Promise<void> {
       const currentQsos = [...qsos.value];
       const serverQsos = data.qsos;
       
+      console.log(`🔍 Current local QSOs: ${currentQsos.length}, Server QSOs: ${serverQsos.length}`);
+      
       // Create a map of existing QSOs by ID for quick lookup
       const existingQsoMap = new Map();
       currentQsos.forEach(qso => {
@@ -493,6 +505,7 @@ export async function refreshQsosFromServer(): Promise<void> {
         if (serverQso.id && !existingQsoMap.has(serverQso.id)) {
           currentQsos.push(serverQso);
           newQsosAdded++;
+          console.log(`➕ Added new QSO from server: ${serverQso.call} (ID: ${serverQso.id})`);
         }
       });
       
@@ -509,18 +522,19 @@ export async function refreshQsosFromServer(): Promise<void> {
   }
 }
 
-// Set up periodic QSO refresh when connected to network
-let refreshInterval: NodeJS.Timeout | null = null;
-
 export function startPeriodicQsoRefresh(): void {
   if (refreshInterval) {
     clearInterval(refreshInterval);
   }
   
   console.log('🔄 Starting periodic QSO refresh every 10 seconds...');
-  refreshInterval = setInterval(refreshQsosFromServer, 10000); // Refresh every 10 seconds
+  refreshInterval = setInterval(() => {
+    console.log('⏰ Periodic QSO refresh triggered');
+    refreshQsosFromServer();
+  }, 10000); // Refresh every 10 seconds
   
   // Do an initial refresh
+  console.log('🚀 Doing initial QSO refresh...');
   refreshQsosFromServer();
 }
 

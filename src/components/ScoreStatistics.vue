@@ -11,7 +11,7 @@
     <div class="stats-content">
       <div class="stats-grid">
         <div class="stat-item">
-          <label>Total QSO Points:</label>
+          <label>Total Contacts ({{qsos.length}}):</label>
           <span class="stat-value">{{ totalQsoPoints }}</span>
         </div>
         <div class="stat-item">

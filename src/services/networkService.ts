@@ -975,19 +975,48 @@ class NetworkService {
       stationId: localStationId
     };
 
-    console.log(`📡 Broadcasting QSO ${action} to ${this.connectedStations.length} stations:`, qso.call);
+    console.log(`📡 Broadcasting QSO ${action}: ${qso.call} (isHost: ${this.isHost})`);
     
-    if (this.connectedStations.length === 0) {
-      console.log('📡 No connected stations to broadcast to');
-      return;
-    }
-    
-    // Send update to all connected stations via the QSO POST endpoint
-    this.connectedStations.forEach(async (station) => {
+    if (this.isHost) {
+      // Host: broadcast to all connected clients
+      if (this.connectedStations.length === 0) {
+        console.log('📡 Host: No connected clients to broadcast to');
+        return;
+      }
+      
+      console.log(`📡 Host: Broadcasting to ${this.connectedStations.length} connected clients`);
+      this.connectedStations.forEach(async (station) => {
+        try {
+          console.log(`📤 Host->Client: Sending QSO ${action} to ${station.callsign}-${station.designator} at ${station.ip}:${station.port}`);
+          
+          const response = await fetch(`https://${station.ip}:${station.port}/api/qsos`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(update)
+          });
+
+          if (response.ok) {
+            const result = await response.json();
+            console.log(`✅ Host->Client: QSO ${action} sent to ${station.callsign}-${station.designator}:`, result);
+          } else {
+            console.log(`❌ Host->Client: Failed to send QSO ${action} to ${station.callsign}-${station.designator}: ${response.status}`);
+          }
+        } catch (error) {
+          console.log(`⚠️ Host->Client: Network error sending QSO ${action} to ${station.callsign}-${station.designator}:`, error);
+        }
+      });
+    } else {
+      // Client: send update to host
+      if (!this.networkSettings.lastHostAddress) {
+        console.log('📡 Client: No host address available to send QSO update');
+        return;
+      }
+      
+      console.log(`📡 Client: Sending QSO ${action} to host at ${this.networkSettings.lastHostAddress}`);
       try {
-        console.log(`📤 Sending QSO ${action} to ${station.callsign}-${station.designator} at ${station.ip}:${station.port}`);
-        
-        const response = await fetch(`https://${station.ip}:${station.port}/api/qsos`, {
+        const response = await fetch(`https://${this.networkSettings.lastHostAddress}/api/qsos`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
@@ -997,14 +1026,14 @@ class NetworkService {
 
         if (response.ok) {
           const result = await response.json();
-          console.log(`✅ QSO ${action} sent to ${station.callsign}-${station.designator}:`, result);
+          console.log(`✅ Client->Host: QSO ${action} sent to host:`, result);
         } else {
-          console.log(`❌ Failed to send QSO ${action} to ${station.callsign}-${station.designator}: ${response.status}`);
+          console.log(`❌ Client->Host: Failed to send QSO ${action} to host: ${response.status}`);
         }
       } catch (error) {
-        console.log(`⚠️ Network error sending QSO ${action} to ${station.callsign}-${station.designator}:`, error);
+        console.log(`⚠️ Client->Host: Network error sending QSO ${action} to host:`, error);
       }
-    });
+    }
   }
 
   // Debug methods for testing and configuration
