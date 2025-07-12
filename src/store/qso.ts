@@ -210,18 +210,33 @@ async function refreshQsosFromBackend(): Promise<void> {
       convertedQsos.push(localQso);
     });
     
-    // Check for changes (additions and deletions)
+    // Check for changes (additions, deletions, and updates)
     const currentQsos = [...qsos.value];
     let changesDetected = false;
     
     // Check for new QSOs from backend
     let newQsosAdded = 0;
+    let qsosUpdated = 0;
     convertedQsos.forEach(backendQso => {
       const existingQso = currentQsos.find(qso => qso.id?.toString() === backendQso.id?.toString());
       if (!existingQso) {
         currentQsos.push(backendQso);
         newQsosAdded++;
         changesDetected = true;
+      } else {
+        // Check if the QSO has been updated (compare timestamps)
+        const backendTimestamp = backendQso.timestamp || 0;
+        const localTimestamp = existingQso.timestamp || 0;
+        
+        if (backendTimestamp > localTimestamp) {
+          // Backend QSO is newer, update the local version
+          const index = currentQsos.findIndex(qso => qso.id?.toString() === backendQso.id?.toString());
+          if (index >= 0) {
+            currentQsos[index] = { ...backendQso };
+            qsosUpdated++;
+            changesDetected = true;
+          }
+        }
       }
     });
     
@@ -240,8 +255,8 @@ async function refreshQsosFromBackend(): Promise<void> {
       qsos.value = filteredQsos;
       await saveQsos();
       
-      if (newQsosAdded > 0 || qsosDeleted > 0) {
-        console.log(`🔄 QSO sync: +${newQsosAdded} added, -${qsosDeleted} deleted from backend`);
+      if (newQsosAdded > 0 || qsosDeleted > 0 || qsosUpdated > 0) {
+        console.log(`🔄 QSO sync: +${newQsosAdded} added, ~${qsosUpdated} updated, -${qsosDeleted} deleted from backend`);
       }
     }
   } catch (error) {
@@ -324,10 +339,18 @@ function updateNetworkQso(networkQso: any) {
   if (index >= 0) {
     // Check timestamp for conflict resolution (latest wins)
     const existingQso = qsos.value[index];
-    if ((networkQso.timestamp || 0) >= (existingQso.timestamp || 0)) {
+    const networkTimestamp = networkQso.timestamp || 0;
+    const existingTimestamp = existingQso.timestamp || 0;
+    
+    if (networkTimestamp >= existingTimestamp) {
+      console.log(`📝 Updating QSO from network: ${networkQso.call} (ID: ${networkQso.id})`);
       qsos.value[index] = { ...networkQso };
       saveQsos(); // Use file storage
+    } else {
+      console.log(`⏭️ Skipping network QSO update (older): ${networkQso.call} (network: ${networkTimestamp}, local: ${existingTimestamp})`);
     }
+  } else {
+    console.warn(`⚠️ Cannot update QSO ${networkQso.id} - not found locally`);
   }
 }
 
