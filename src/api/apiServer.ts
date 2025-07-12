@@ -17,7 +17,7 @@ interface ApiResponse {
 
 class FieldDayApiServer {
   private isRunning = false;
-  private port = 8080;
+  private port = 8080; // All Field Day instances use port 8080
   private httpServer: any = null;
   private qsoStore: QSO[] = [];
   private syncInterval: number | null = null;
@@ -58,6 +58,11 @@ class FieldDayApiServer {
       // Handle our API endpoints
       if (this.isApiRequest(url)) {
         return this.handleApiRequest(url, init);
+      }
+      
+      // For remote API requests, use protocol fallback
+      if (this.isRemoteApiRequest(url)) {
+        return this.handleRemoteApiRequest(url, init);
       }
       
       // For all other requests, use original fetch
@@ -111,6 +116,64 @@ class FieldDayApiServer {
     }
     
     return shouldIntercept;
+  }
+
+  private isRemoteApiRequest(url: string): boolean {
+    // Check if this is a request to a remote Field Day station API
+    try {
+      const parsedUrl = new URL(url);
+      const targetHost = parsedUrl.hostname;
+      const currentHost = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
+      
+      // Check if it's a remote host making Field Day API requests
+      const isRemoteHost = targetHost !== currentHost && 
+                          targetHost !== 'localhost' && 
+                          targetHost !== '127.0.0.1' &&
+                          targetHost !== '[::1]';
+      
+      const hasApiEndpoint = url.includes('/api/station-info') || 
+             url.includes('/api/qsos') || 
+             url.includes('/api/mesh/discovery') ||
+             url.includes('/api/messages') ||
+             url.includes('/api/network/');
+      
+      return isRemoteHost && hasApiEndpoint;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  private async handleRemoteApiRequest(url: string, init?: RequestInit): Promise<Response> {
+    // Protocol fallback for remote Field Day stations
+    const urlObj = new URL(url);
+    const protocols = ['https', 'http'];
+    let lastError;
+    
+    for (const protocol of protocols) {
+      try {
+        const protocolUrl = url.replace(/^https?:/, `${protocol}:`);
+        console.log(`🔍 Trying ${protocol.toUpperCase()} for remote Field Day API: ${protocolUrl}`);
+        
+        const response = await fetch(protocolUrl, init);
+        console.log(`✅ ${protocol.toUpperCase()} connection successful to ${urlObj.hostname} (${response.status})`);
+        return response;
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        lastError = error;
+        
+        if (errorMessage.includes('certificate') || errorMessage.includes('SSL') || errorMessage.includes('TLS')) {
+          console.log(`🔒 ${protocol.toUpperCase()} ${urlObj.hostname}: SSL certificate error - trying HTTP fallback`);
+        } else {
+          console.log(`⚠️ ${protocol.toUpperCase()} ${urlObj.hostname}: ${errorMessage}`);
+        }
+        
+        // Continue to next protocol
+        continue;
+      }
+    }
+    
+    // If both protocols failed, throw the last error
+    throw lastError;
   }
 
   private async handleApiRequest(url: string, init?: RequestInit): Promise<Response> {
@@ -486,8 +549,8 @@ class FieldDayApiServer {
       
       for (const station of stations) {
         try {
-          // Get QSOs from this station since last sync (using HTTP for local network)
-          const response = await fetch(`http://${station.ip}:${station.port}/api/qsos?since=${lastSync}`, {
+          // Get QSOs from this station since last sync (using protocol fallback)
+          const response = await this.handleRemoteApiRequest(`https://${station.ip}:${station.port}/api/qsos?since=${lastSync}`, {
             method: 'GET',
             headers: {
               'Accept': 'application/json'
@@ -559,31 +622,52 @@ class FieldDayApiServer {
 
   private discoverStations = async (): Promise<Array<{ip: string, port: number, callsign: string, designator: string, qsoCount: number}>> => {
     const discovered = [];
-    const currentPort = parseInt(window.location.port || '8080');
-    const portsToScan = [3000, 4173, 5173, 8080, 8081, 8082, 8083, 8084, 8085].filter(p => p !== currentPort);
+    const fieldDayPort = 8080; // All Field Day instances use port 8080
+    
+    // Only scan for actual Field Day stations on port 8080
+    // Check specific known IPs that might have Field Day stations
+    const knownIPs = [
+      '192.168.1.14',  // Known Field Day station
+      '192.168.1.30',  // Known Field Day station  
+      '192.168.1.15',  // Potential Field Day station
+      '192.168.1.25'   // Potential Field Day station
+    ];
 
-    for (const port of portsToScan) {
+    for (const ip of knownIPs) {
       try {
-        const response = await fetch(`http://127.0.0.1:${port}/api/station-info`, {
+        // Use protocol fallback for remote stations
+        const response = await this.handleRemoteApiRequest(`https://${ip}:${fieldDayPort}/api/station-info`, {
           method: 'GET',
           headers: { 'Accept': 'application/json' }
         });
 
         if (response.ok) {
           const stationInfo = await response.json();
-          discovered.push({
-            ip: '127.0.0.1',
-            port: port,
-            callsign: stationInfo.callsign,
-            designator: stationInfo.designator,
-            qsoCount: stationInfo.qsoCount || 0
-          });
+          
+          // Validate this is actually a Field Day station
+          if (stationInfo.callsign && 
+              stationInfo.designator && 
+              stationInfo.software && 
+              stationInfo.software.includes('Field Day')) {
+            
+            discovered.push({
+              ip: ip,
+              port: fieldDayPort,
+              callsign: stationInfo.callsign,
+              designator: stationInfo.designator,
+              qsoCount: stationInfo.qsoCount || 0
+            });
+            
+            console.log(`✅ Discovered Field Day station: ${stationInfo.callsign}-${stationInfo.designator} at ${ip}:${fieldDayPort}`);
+          }
         }
       } catch (error) {
-        // Station not available on this port
+        // Station not available or not a Field Day station
+        console.log(`⚠️ No Field Day station found at ${ip}:${fieldDayPort}`);
       }
     }
 
+    console.log(`🔍 Station discovery complete: found ${discovered.length} Field Day stations on port ${fieldDayPort}`);
     return discovered;
   }
 

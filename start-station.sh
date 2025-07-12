@@ -4,7 +4,7 @@
 # Default values
 CALLSIGN=${1:-"K8TAR"}
 DESIGNATOR=${2:-"1A"}
-PORT=${3:-"4173"}
+PORT=${3:-"8080"}
 
 echo "Starting Field Day Logger with:"
 echo "  Callsign: $CALLSIGN"

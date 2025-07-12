@@ -8,7 +8,7 @@ set PORT=%~3
 
 if "%CALLSIGN%"=="" set CALLSIGN=K8TAR
 if "%DESIGNATOR%"=="" set DESIGNATOR=1A
-if "%PORT%"=="" set PORT=4173
+if "%PORT%"=="" set PORT=8080
 
 echo Starting Field Day Logger with:
 echo   Callsign: %CALLSIGN%

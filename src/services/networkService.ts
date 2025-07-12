@@ -867,6 +867,13 @@ class NetworkService {
       console.log(`✅ Connected to host at ${address}`);
       return true;
     } catch (error) {
+      console.error('❌ Failed to connect to host:', error);
+      this.status.isConnected = false;
+      return false;
+    }
+  }
+
+  private disconnect(): void {
     console.log('Disconnected from network');
   }
 

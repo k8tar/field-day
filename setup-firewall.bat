@@ -38,27 +38,6 @@ if %errorLevel% equ 0 (
     echo ✗ Failed to add port 8080 inbound rule
 )
 
-netsh advfirewall firewall add rule name="Field Day Logger - Port 8081" dir=in action=allow protocol=TCP localport=8081 profile=private,domain
-if %errorLevel% equ 0 (
-    echo ✓ Port 8081 inbound rule added successfully
-) else (
-    echo ✗ Failed to add port 8081 inbound rule
-)
-
-netsh advfirewall firewall add rule name="Field Day Logger - Port 8082" dir=in action=allow protocol=TCP localport=8082 profile=private,domain
-if %errorLevel% equ 0 (
-    echo ✓ Port 8082 inbound rule added successfully
-) else (
-    echo ✗ Failed to add port 8082 inbound rule
-)
-
-netsh advfirewall firewall add rule name="Field Day Logger - Port 8083" dir=in action=allow protocol=TCP localport=8083 profile=private,domain
-if %errorLevel% equ 0 (
-    echo ✓ Port 8083 inbound rule added successfully
-) else (
-    echo ✗ Failed to add port 8083 inbound rule
-)
-
 echo.
 echo Adding outbound firewall rules...
 
@@ -70,34 +49,13 @@ if %errorLevel% equ 0 (
     echo ✗ Failed to add port 8080 outbound rule
 )
 
-netsh advfirewall firewall add rule name="Field Day Logger - Port 8081 Out" dir=out action=allow protocol=TCP localport=8081 profile=private,domain
-if %errorLevel% equ 0 (
-    echo ✓ Port 8081 outbound rule added successfully
-) else (
-    echo ✗ Failed to add port 8081 outbound rule
-)
-
-netsh advfirewall firewall add rule name="Field Day Logger - Port 8082 Out" dir=out action=allow protocol=TCP localport=8082 profile=private,domain
-if %errorLevel% equ 0 (
-    echo ✓ Port 8082 outbound rule added successfully
-) else (
-    echo ✗ Failed to add port 8082 outbound rule
-)
-
-netsh advfirewall firewall add rule name="Field Day Logger - Port 8083 Out" dir=out action=allow protocol=TCP localport=8083 profile=private,domain
-if %errorLevel% equ 0 (
-    echo ✓ Port 8083 outbound rule added successfully
-) else (
-    echo ✗ Failed to add port 8083 outbound rule
-)
-
 echo.
 echo ========================================
 echo Windows Firewall Configuration Complete
 echo ========================================
 echo.
-echo The following ports are now open in Windows Firewall:
-echo - 8080, 8081, 8082, 8083 (TCP In/Out)
+echo The following port is now open in Windows Firewall:
+echo - 8080 (TCP In/Out) - Field Day Logger mesh network
 echo.
 echo You can now run multiple Field Day Logger instances and they should
 echo be able to communicate with each other.
