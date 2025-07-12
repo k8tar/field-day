@@ -2,12 +2,15 @@
   <div class="station-info">
     <div class="station-details">
       <div class="info-item">
+        <div class="info-label">Call</div>
         <div class="info-value">{{ stationCallsign || "Not Set" }}</div>
       </div>
       <div class="info-item">
+        <div class="info-label">Class</div>
         <div class="info-value">{{ stationClass || "Not Set" }}</div>
       </div>
       <div class="info-item">
+        <div class="info-label">Section</div>
         <div class="info-value">{{ stationSection || "Not Set" }}</div>
       </div>
     </div>
@@ -26,10 +29,16 @@ const stationSection = ref('');
 const refreshData = async () => {
   try {
     const config = await fileStorage.getStationConfig();
+    console.log('StationInfo: Loaded config:', config);
     stationCallsign.value = config.callsign || '';
     // Only use stationClass field, not designator as fallback
     stationClass.value = config.stationClass || '';
     stationSection.value = config.stationSection || '';
+    console.log('StationInfo: Set values:', {
+      callsign: stationCallsign.value,
+      class: stationClass.value,
+      section: stationSection.value
+    });
   } catch (error) {
     console.error('Error loading station info:', error);
   }

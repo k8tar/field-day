@@ -74,34 +74,34 @@ defineEmits(['close']);
 
 // Complete ARRL Divisions and their sections
 const arrlDivisions = {
-  'Division 0': {
+  'Dakota': {
     sections: ['CO', 'IA', 'KS', 'MN', 'MO', 'ND', 'NE', 'SD']
   },
-  'Division 1': {
+  'New England': {
     sections: ['CT', 'EMA', 'ME', 'NH', 'RI', 'VT', 'WMA']
   },
-  'Division 2': {
+  'Hudson': {
     sections: ['ENY', 'NLI', 'NNJ', 'NNY', 'SNJ', 'WNY']
   },
-  'Division 3': {
+  'Atlantic': {
     sections: ['DE', 'EPA', 'MDC', 'WPA']
   },
-  'Division 4': {
-    sections: ['AL', 'GA', 'KY', 'NC', 'NFL', 'PR', 'SC', 'SFL', 'TN', 'VA', 'VI', 'WV']
+  'Southeastern': {
+    sections: ['AL', 'GA', 'KY', 'NC', 'NFL', 'PR', 'SC', 'SFL', 'TN', 'VA', 'VI', 'WCF']
   },
-  'Division 5': {
-    sections: ['AR', 'LA', 'MS', 'NTX', 'OK', 'STX', 'WTX']
+  'West Gulf': {
+    sections: ['AR', 'LA', 'MS', 'NM', 'NTX', 'OK', 'STX', 'WTX']
   },
-  'Division 6': {
+  'Pacific': {
     sections: ['EB', 'LAX', 'ORG', 'PAC', 'SB', 'SCV', 'SDG', 'SF', 'SJV', 'SV']
   },
-  'Division 7': {
+  'Northwestern': {
     sections: ['AK', 'AZ', 'EWA', 'ID', 'MT', 'NV', 'OR', 'UT', 'WWA', 'WY']
   },
-  'Division 8': {
+  'Great Lakes': {
     sections: ['MI', 'OH']
   },
-  'Division 9': {
+  'Central': {
     sections: ['IL', 'IN', 'WI']
   },
   'Canada': {

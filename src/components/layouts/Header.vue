@@ -176,7 +176,7 @@ function handleConfigClose() {
   isFirstTime.value = false;
   // Reload operators and station info after config changes
   loadOperators();
-  stationDesignator.value = localStorage.getItem('stationDesignator') || '';
+  loadStationInfo();
 }
 
 // Network modal and status
@@ -249,11 +249,16 @@ onMounted(async () => {
   
   // Add keyboard event listener
   document.addEventListener('keydown', handleKeydown);
+  
+  // Listen for station info updates
+  window.addEventListener('stationInfoUpdate', loadStationInfo);
 });
 
 onBeforeUnmount(() => {
   // Remove keyboard event listener
   document.removeEventListener('keydown', handleKeydown);
+  // Remove station info update listener
+  window.removeEventListener('stationInfoUpdate', loadStationInfo);
 });
 </script>
 

@@ -210,16 +210,16 @@ class AchievementService {
 
   private getDivisionProgress(sections: string[]) {
     const divisions = {
-      'Division 0': ['CO', 'IA', 'KS', 'MN', 'MO', 'ND', 'NE', 'SD'],
-      'Division 1': ['CT', 'EMA', 'ME', 'NH', 'RI', 'VT', 'WMA'],
-      'Division 2': ['ENY', 'NLI', 'NNJ', 'NNY', 'SNJ', 'WNY'],
-      'Division 3': ['DE', 'EPA', 'MDC', 'WPA'],
-      'Division 4': ['AL', 'GA', 'KY', 'NC', 'NFL', 'PR', 'SC', 'SFL', 'TN', 'VA', 'VI', 'WCF'],
-      'Division 5': ['AR', 'LA', 'MS', 'NM', 'NTX', 'OK', 'STX', 'WTX'],
-      'Division 6': ['EB', 'LAX', 'ORG', 'PAC', 'SB', 'SCV', 'SDG', 'SF', 'SJV', 'SV'],
-      'Division 7': ['AK', 'AZ', 'EWA', 'ID', 'MT', 'NV', 'OR', 'UT', 'WWA', 'WY'],
-      'Division 8': ['MI', 'OH'],
-      'Division 9': ['IL', 'IN', 'WI'],
+      'Dakota': ['CO', 'IA', 'KS', 'MN', 'MO', 'ND', 'NE', 'SD'],
+      'New England': ['CT', 'EMA', 'ME', 'NH', 'RI', 'VT', 'WMA'],
+      'Hudson': ['ENY', 'NLI', 'NNJ', 'NNY', 'SNJ', 'WNY'],
+      'Atlantic': ['DE', 'EPA', 'MDC', 'WPA'],
+      'Southeastern': ['AL', 'GA', 'KY', 'NC', 'NFL', 'PR', 'SC', 'SFL', 'TN', 'VA', 'VI', 'WCF'],
+      'West Gulf': ['AR', 'LA', 'MS', 'NM', 'NTX', 'OK', 'STX', 'WTX'],
+      'Pacific': ['EB', 'LAX', 'ORG', 'PAC', 'SB', 'SCV', 'SDG', 'SF', 'SJV', 'SV'],
+      'Northwestern': ['AK', 'AZ', 'EWA', 'ID', 'MT', 'NV', 'OR', 'UT', 'WWA', 'WY'],
+      'Great Lakes': ['MI', 'OH'],
+      'Central': ['IL', 'IN', 'WI'],
       'Canada': ['AB', 'BC', 'GTA', 'MAR', 'MB', 'NL', 'NT', 'ONE', 'ONN', 'ONS', 'QC', 'SK'],
       'DX': ['DX']
     };

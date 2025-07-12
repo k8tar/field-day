@@ -1,33 +1,33 @@
 // ARRL Sections for Field Day
 export const ARRL_SECTIONS = [
-  // Division 0
+  // Dakota
   'CO', 'IA', 'KS', 'MN', 'MO', 'ND', 'NE', 'SD',
   
-  // Division 1 (New England)
+  // New England
   'CT', 'EMA', 'ME', 'NH', 'RI', 'VT', 'WMA',
   
-  // Division 2 (Hudson)
+  // Hudson
   'ENY', 'NLI', 'NNJ', 'NNY', 'SNJ', 'WNY',
   
-  // Division 3 (Atlantic)
+  // Atlantic
   'DE', 'EPA', 'MDC', 'WPA',
   
-  // Division 4 (Southeast)
+  // Southeastern
   'AL', 'GA', 'KY', 'NC', 'NFL', 'PR', 'SC', 'SFL', 'TN', 'VA', 'VI', 'WCF',
   
-  // Division 5 (West Gulf)
+  // West Gulf
   'AR', 'LA', 'MS', 'NM', 'NTX', 'OK', 'STX', 'WTX',
   
-  // Division 6 (Pacific)
+  // Pacific
   'EB', 'LAX', 'ORG', 'PAC', 'SB', 'SCV', 'SDG', 'SF', 'SJV', 'SV',
   
-  // Division 7 (Northwestern)
+  // Northwestern
   'AK', 'AZ', 'EWA', 'ID', 'MT', 'NV', 'OR', 'UT', 'WWA', 'WY',
   
-  // Division 8 (Great Lakes)
+  // Great Lakes
   'MI', 'OH',
   
-  // Division 9 (Central)
+  // Central
   'IL', 'IN', 'WI',
   
   // Canada (RAC Sections)

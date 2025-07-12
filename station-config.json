@@ -2,7 +2,8 @@
   "callsign": "K8TAR",
   "designator": "PHONE 1",
   "port": 8080,
-  "lastUpdated": 1752292079890,
-  "stationClass": "2A",
-  "stationSection": "MI"
+  "lastUpdated": 1752293564417,
+  "stationClass": "",
+  "stationSection": "",
+  "networkId": "MESH-node-mczqcflr-fkgf5"
 }
