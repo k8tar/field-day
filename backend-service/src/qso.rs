@@ -115,8 +115,21 @@ impl QsoManager {
         info!("Syncing QSOs with {} stations", stations.len());
         
         for station in stations {
-            if let Err(e) = self.sync_with_station(&station).await {
-                warn!("Failed to sync with station {}: {}", station.call_sign, e);
+            match self.sync_with_station(&station).await {
+                Ok(Some(sync_response)) => {
+                    // Process the received sync response
+                    if let Err(e) = self.process_sync_response(sync_response).await {
+                        warn!("Failed to process sync response from {}: {}", station.call_sign, e);
+                    } else {
+                        info!("Successfully processed sync response from {}", station.call_sign);
+                    }
+                }
+                Ok(None) => {
+                    debug!("No sync response received from {}", station.call_sign);
+                }
+                Err(e) => {
+                    warn!("Failed to sync with station {}: {}", station.call_sign, e);
+                }
             }
         }
         
@@ -127,7 +140,7 @@ impl QsoManager {
         Ok(())
     }
     
-    async fn sync_with_station(&self, station: &crate::types::Station) -> Result<()> {
+    async fn sync_with_station(&self, station: &crate::types::Station) -> Result<Option<QsoSyncResponse>> {
         let client = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(10))
             .danger_accept_invalid_certs(true)
@@ -169,8 +182,9 @@ impl QsoManager {
                                     info!("Successfully synced with {}: received {} QSOs, {} deleted, {} updated", 
                                           station.call_sign, sync_response.qsos.len(), 
                                           sync_response.deleted_qso_ids.len(), sync_response.updated_qsos.len());
-                                    // TODO: Process received QSOs and merge them
-                                    return Ok(());
+                                    
+                                    // Return the sync_response so we can process it in the calling function
+                                    return Ok(Some(sync_response));
                                 } else {
                                     warn!("Sync response from {} was successful but contained no data", station.call_sign);
                                     last_error = Some("No data in response".to_string());
@@ -301,5 +315,48 @@ impl QsoManager {
         }
         
         Ok(adif)
+    }
+    
+    async fn process_sync_response(&mut self, sync_response: QsoSyncResponse) -> Result<()> {
+        let mut changes_made = false;
+        
+        // Process deleted QSOs
+        for qso_id in &sync_response.deleted_qso_ids {
+            if self.qsos.remove(qso_id).is_some() {
+                info!("Deleted QSO from remote sync: {}", qso_id);
+                // Add to our deleted list if not already there
+                if !self.deleted_qso_ids.contains(qso_id) {
+                    self.deleted_qso_ids.push(qso_id.clone());
+                }
+                changes_made = true;
+            }
+        }
+        
+        // Process updated QSOs
+        for qso in &sync_response.updated_qsos {
+            if self.qsos.contains_key(&qso.id) {
+                info!("Updating QSO from remote sync: {} with {}", qso.id, qso.call_sign);
+                self.qsos.insert(qso.id.clone(), qso.clone());
+                changes_made = true;
+            }
+        }
+        
+        // Process new QSOs (this is the main sync functionality)
+        for qso in &sync_response.qsos {
+            if !self.qsos.contains_key(&qso.id) && !self.deleted_qso_ids.contains(&qso.id) {
+                info!("Adding QSO from remote sync: {} with {} on {}", qso.id, qso.call_sign, qso.frequency);
+                self.qsos.insert(qso.id.clone(), qso.clone());
+                changes_made = true;
+            }
+        }
+        
+        if changes_made {
+            info!("Sync processing complete - now have {} total QSOs", self.qsos.len());
+            self.save_qsos().await?;
+        } else {
+            debug!("No changes made during sync processing");
+        }
+        
+        Ok(())
     }
 }
