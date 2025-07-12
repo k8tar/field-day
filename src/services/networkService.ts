@@ -251,7 +251,7 @@ class NetworkService {
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 2000); // 2 second timeout
       
-      const response = await fetch(`https://${ip}:${port}/api/station-info`, {
+      const response = await this.fetchWithProtocolFallback(`https://${ip}:${port}/api/station-info`, {
         method: 'GET',
         signal: controller.signal,
         headers: {
@@ -334,6 +334,48 @@ class NetworkService {
     } catch (error) {
       return '192.168.1.100'; // Fallback
     }
+  }
+
+  // Helper method to make HTTP/HTTPS requests with protocol fallback for remote stations
+  private async fetchWithProtocolFallback(url: string, options: RequestInit = {}): Promise<Response> {
+    // Parse the URL to determine if it's a remote station
+    const urlObj = new URL(url);
+    const isLocalhost = urlObj.hostname === 'localhost' || urlObj.hostname === '127.0.0.1' || urlObj.hostname === '[::1]';
+    
+    // For localhost, always use the current protocol
+    if (isLocalhost) {
+      return fetch(url, options);
+    }
+    
+    // For remote stations, try HTTPS first, then HTTP
+    const protocols = ['https', 'http'];
+    let lastError;
+    
+    for (const protocol of protocols) {
+      try {
+        const protocolUrl = url.replace(/^https?:/, `${protocol}:`);
+        console.log(`🔍 Trying ${protocol.toUpperCase()} for remote station: ${protocolUrl}`);
+        
+        const response = await fetch(protocolUrl, options);
+        console.log(`✅ ${protocol.toUpperCase()} connection successful to ${urlObj.hostname}`);
+        return response;
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        lastError = error;
+        
+        if (errorMessage.includes('certificate') || errorMessage.includes('SSL') || errorMessage.includes('TLS')) {
+          console.log(`🔒 ${protocol.toUpperCase()} ${urlObj.hostname}: SSL certificate error - trying HTTP fallback`);
+        } else {
+          console.log(`⚠️ ${protocol.toUpperCase()} ${urlObj.hostname}: ${errorMessage}`);
+        }
+        
+        // Continue to next protocol
+        continue;
+      }
+    }
+    
+    // If both protocols failed, throw the last error
+    throw lastError;
   }
 
   // Event emitters for network events
@@ -453,7 +495,7 @@ class NetworkService {
             for (const station of this.connectedStations) {
               try {
                 console.log(`🔍 [HOST-MONITOR] Fetching QSO count from ${station.callsign}-${station.designator} at ${station.ip}:${station.port}`);
-                const qsoResponse = await fetch(`https://${station.ip}:${station.port}/api/station-info`);
+                const qsoResponse = await this.fetchWithProtocolFallback(`https://${station.ip}:${station.port}/api/station-info`);
                 if (qsoResponse.ok) {
                   const stationInfo = await qsoResponse.json();
                   const remoteQsoCount = stationInfo.qsoCount || 0;
@@ -469,7 +511,7 @@ class NetworkService {
                       
                       // Fetch QSOs directly from the remote client
                       try {
-                        const clientQsoResponse = await fetch(`https://${station.ip}:${station.port}/api/qsos`);
+                        const clientQsoResponse = await this.fetchWithProtocolFallback(`https://${station.ip}:${station.port}/api/qsos`);
                         if (clientQsoResponse.ok) {
                           const clientQsoData = await clientQsoResponse.json();
                           const clientQsos = clientQsoData.qsos || [];
@@ -572,7 +614,7 @@ class NetworkService {
           
           // Check for new messages from host
           try {
-            const messageResponse = await fetch(`https://${ip}:${port}/api/messages?limit=20`);
+            const messageResponse = await this.fetchWithProtocolFallback(`https://${ip}:${port}/api/messages?limit=20`);
             if (messageResponse.ok) {
               const messageData = await messageResponse.json();
               const remoteMessages = messageData.messages || [];
@@ -591,7 +633,7 @@ class NetworkService {
           let remoteQsoCount = 0;
           let remoteQsos = [];
           try {
-            const qsoResponse = await fetch(`https://${ip}:${port}/api/qsos`);
+            const qsoResponse = await this.fetchWithProtocolFallback(`https://${ip}:${port}/api/qsos`);
             if (qsoResponse.ok) {
               const qsoData = await qsoResponse.json();
               remoteQsos = qsoData.qsos || [];
@@ -646,7 +688,7 @@ class NetworkService {
           }
           
           // Send heartbeat to host
-          const heartbeatResponse = await fetch(`https://${ip}:${port}/api/network/heartbeat`, {
+          const heartbeatResponse = await this.fetchWithProtocolFallback(`https://${ip}:${port}/api/network/heartbeat`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json'
@@ -681,7 +723,7 @@ class NetworkService {
           const hostStation = this.connectedStations[0]; // Should be the host
           
           // Get updated host stats
-          const response = await fetch(`https://${ip}:${port}/api/station-info`);
+          const response = await this.fetchWithProtocolFallback(`https://${ip}:${port}/api/station-info`);
           if (response.ok) {
             const stationInfo = await response.json();
             hostStation.qsoCount = stationInfo.qsoCount || 0;
@@ -769,7 +811,7 @@ class NetworkService {
       };
       
       // Register with the host
-      const registerResponse = await fetch(`https://${ip}:${port}/api/network/register`, {
+      const registerResponse = await this.fetchWithProtocolFallback(`https://${ip}:${port}/api/network/register`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -825,48 +867,6 @@ class NetworkService {
       console.log(`✅ Connected to host at ${address}`);
       return true;
     } catch (error) {
-      console.error('Failed to connect to host:', error);
-      this.emit('network:error', { message: 'Failed to connect to host', error });
-      return false;
-    }
-  }
-
-  // Disconnect from network
-  disconnect(): void {
-    const wasConnected = this.status.isConnected;
-    
-    if (this.ws) {
-      this.ws.close();
-      this.ws = null;
-    }
-    
-    // Cancel any pending reconnects
-    this.cancelReconnect();
-    
-    // Clear sync interval
-    if (this.syncInterval) {
-      clearInterval(this.syncInterval);
-      this.syncInterval = null;
-    }
-    
-    // Stop periodic QSO refresh
-    stopPeriodicQsoRefresh();
-    
-    this.isHost = false;
-    this.status.isConnected = false;
-    this.status.networkId = '';
-    this.connectedStations.splice(0, this.connectedStations.length);
-    
-    // Clear auto-reconnect setting (manual disconnect)
-    this.networkSettings.autoReconnect = false;
-    this.saveNetworkSettings().catch(error => {
-      console.error('Failed to save network settings:', error);
-    });
-    
-    if (wasConnected) {
-      this.emit('network:disconnected');
-    }
-    
     console.log('Disconnected from network');
   }
 
@@ -878,7 +878,7 @@ class NetworkService {
     
     for (const station of this.connectedStations) {
       try {
-        const response = await fetch(`https://${station.ip}:${station.port}/api/qsos?since=${this.status.lastSync}`, {
+        const response = await this.fetchWithProtocolFallback(`https://${station.ip}:${station.port}/api/qsos?since=${this.status.lastSync}`, {
           timeout: 5000
         } as any);
         
@@ -961,7 +961,7 @@ class NetworkService {
         
         try {
           // Get QSOs from this station since last sync
-          const response = await fetch(`https://${station.ip}:${station.port}/api/qsos?since=${lastSync}`, {
+          const response = await this.fetchWithProtocolFallback(`https://${station.ip}:${station.port}/api/qsos?since=${lastSync}`, {
             method: 'GET',
             headers: {
               'Accept': 'application/json'
@@ -1230,7 +1230,7 @@ class NetworkService {
         try {
           console.log(`📤 Host->Client: Sending QSO ${action} to ${station.callsign}-${station.designator} at ${station.ip}:${station.port}`);
           
-          const response = await fetch(`https://${station.ip}:${station.port}/api/qsos`, {
+          const response = await this.fetchWithProtocolFallback(`https://${station.ip}:${station.port}/api/qsos`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json'
@@ -1257,7 +1257,7 @@ class NetworkService {
       
       console.log(`📡 Client: Sending QSO ${action} to host at ${this.networkSettings.lastHostAddress}`);
       try {
-        const response = await fetch(`https://${this.networkSettings.lastHostAddress}/api/qsos`, {
+        const response = await this.fetchWithProtocolFallback(`https://${this.networkSettings.lastHostAddress}/api/qsos`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
@@ -1326,7 +1326,7 @@ class NetworkService {
           if (target === 'all') {
             this.connectedStations.forEach(async (station) => {
               try {
-                const clientResponse = await fetch(`https://${station.ip}:${station.port}/api/messages`, {
+                const clientResponse = await this.fetchWithProtocolFallback(`https://${station.ip}:${station.port}/api/messages`, {
                   method: 'POST',
                   headers: {
                     'Content-Type': 'application/json'
@@ -1348,7 +1348,7 @@ class NetworkService {
             const targetStation = this.connectedStations.find(s => `${s.callsign}-${s.designator}` === target);
             if (targetStation) {
               try {
-                const clientResponse = await fetch(`https://${targetStation.ip}:${targetStation.port}/api/messages`, {
+                const clientResponse = await this.fetchWithProtocolFallback(`https://${targetStation.ip}:${targetStation.port}/api/messages`, {
                   method: 'POST',
                   headers: {
                     'Content-Type': 'application/json'
@@ -1376,7 +1376,7 @@ class NetworkService {
           return;
         }
         
-        const response = await fetch(`https://${this.networkSettings.lastHostAddress}/api/messages`, {
+        const response = await this.fetchWithProtocolFallback(`https://${this.networkSettings.lastHostAddress}/api/messages`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
@@ -1510,7 +1510,7 @@ class NetworkService {
           controller.abort();
         }, 3000);
         
-        const response = await fetch(url, {
+        const response = await this.fetchWithProtocolFallback(url, {
           method: 'GET',
           signal: controller.signal,
           headers: {
