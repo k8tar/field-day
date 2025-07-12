@@ -137,6 +137,34 @@ setTimeout(async () => {
 // Auto-start sync functionality - handled by backend service
 if (typeof window !== 'undefined') {
   // The backend service handles automatic syncing
+  
+  // Set up real-time network QSO update listener
+  setTimeout(async () => {
+    try {
+      const { networkService } = await import('@/services/networkService');
+      
+      // Listen for QSO updates from the network
+      networkService.onQsoUpdate((update) => {
+        console.log(`📡 Received QSO update from network: ${update.action} - ${update.qso?.call || update.id}`);
+        
+        switch (update.action) {
+          case 'add':
+            addNetworkQso(update.qso);
+            break;
+          case 'update':
+            updateNetworkQso(update.qso);
+            break;
+          case 'delete':
+            deleteNetworkQso(update.qso.id);
+            break;
+        }
+      });
+      
+      console.log('✅ Network QSO listener registered');
+    } catch (error) {
+      console.error('Failed to set up network QSO listener:', error);
+    }
+  }, 1500); // Delay slightly to ensure network service is available
 }
 
 // Function to refresh QSOs from backend service
@@ -150,49 +178,71 @@ async function refreshQsosFromBackend(): Promise<void> {
     if (!backendApi.connected.value) {
       return;
     }
-    
+
     const backendQsos = await backendApi.getQsos();
     
-    // Convert backend QSOs to local format and merge
-    const currentQsos = [...qsos.value];
-    let newQsosAdded = 0;
-    
-    const existingQsoMap = new Map();
-    currentQsos.forEach(qso => {
-      if (qso.id) {
-        existingQsoMap.set(qso.id.toString(), qso);
-      }
-    });
+    // Convert backend QSOs to local format
+    const backendQsoMap = new Map();
+    const convertedQsos: QSO[] = [];
     
     backendQsos.forEach((backendQso: BackendQso) => {
-      if (!existingQsoMap.has(backendQso.id)) {
-        // Extract station designator from station_id (e.g., "K8TAR-PHONE" -> "PHONE")
-        let stationDesignator = '';
-        if (backendQso.station_id) {
-          const parts = backendQso.station_id.split('-');
-          stationDesignator = parts.length > 1 ? parts[parts.length - 1] : backendQso.station_id;
-        }
-        
-        const localQso: QSO = {
-          id: parseInt(backendQso.id),
-          call: backendQso.call_sign,
-          class: backendQso.class,
-          section: backendQso.section,
-          datetime: new Date(backendQso.timestamp).toISOString(),
-          band: backendQso.frequency,
-          mode: backendQso.mode,
-          operator: backendQso.operator,
-          stationDesignator: stationDesignator, // Add the station designator
-          timestamp: new Date(backendQso.timestamp).getTime(),
-        };
-        currentQsos.push(localQso);
+      // Extract station designator from station_id (e.g., "K8TAR-PHONE" -> "PHONE")
+      let stationDesignator = '';
+      if (backendQso.station_id) {
+        const parts = backendQso.station_id.split('-');
+        stationDesignator = parts.length > 1 ? parts[parts.length - 1] : backendQso.station_id;
+      }
+      
+      const localQso: QSO = {
+        id: parseInt(backendQso.id),
+        call: backendQso.call_sign,
+        class: backendQso.class,
+        section: backendQso.section,
+        datetime: new Date(backendQso.timestamp).toISOString(),
+        band: backendQso.frequency,
+        mode: backendQso.mode,
+        operator: backendQso.operator,
+        stationDesignator: stationDesignator,
+        timestamp: new Date(backendQso.timestamp).getTime(),
+      };
+      
+      backendQsoMap.set(backendQso.id, localQso);
+      convertedQsos.push(localQso);
+    });
+    
+    // Check for changes (additions and deletions)
+    const currentQsos = [...qsos.value];
+    let changesDetected = false;
+    
+    // Check for new QSOs from backend
+    let newQsosAdded = 0;
+    convertedQsos.forEach(backendQso => {
+      const existingQso = currentQsos.find(qso => qso.id?.toString() === backendQso.id?.toString());
+      if (!existingQso) {
+        currentQsos.push(backendQso);
         newQsosAdded++;
+        changesDetected = true;
       }
     });
     
-    if (newQsosAdded > 0) {
-      qsos.value = currentQsos;
+    // Check for deleted QSOs (QSOs that exist locally but not in backend)
+    let qsosDeleted = 0;
+    const filteredQsos = currentQsos.filter(localQso => {
+      if (localQso.id && !backendQsoMap.has(localQso.id.toString())) {
+        qsosDeleted++;
+        changesDetected = true;
+        return false; // Remove this QSO
+      }
+      return true; // Keep this QSO
+    });
+    
+    if (changesDetected) {
+      qsos.value = filteredQsos;
       await saveQsos();
+      
+      if (newQsosAdded > 0 || qsosDeleted > 0) {
+        console.log(`🔄 QSO sync: +${newQsosAdded} added, -${qsosDeleted} deleted from backend`);
+      }
     }
   } catch (error) {
     console.error('Failed to refresh QSOs from backend:', error);
@@ -201,11 +251,19 @@ async function refreshQsosFromBackend(): Promise<void> {
   }
 }
 
-// Handle QSO updates from network - simplified for backend
-function handleNetworkQsoUpdate(qso: QSO): void {
-  // Backend handles deduplication and conflict resolution
-  // Just add to local storage
-  addNetworkQso(qso);
+// Handle QSO updates from network - now supports all actions
+function handleNetworkQsoUpdate(update: { action: 'add' | 'update' | 'delete', qso: any }): void {
+  switch (update.action) {
+    case 'add':
+      addNetworkQso(update.qso);
+      break;
+    case 'update':
+      updateNetworkQso(update.qso);
+      break;
+    case 'delete':
+      deleteNetworkQso(update.qso.id);
+      break;
+  }
 }
 
 function addNetworkQso(networkQso: any) {
@@ -343,6 +401,14 @@ export async function logQso(qso: any) {
     console.warn('⚠️ Backend service not available - QSO will not be synced to network');
   }
   
+  // Broadcast new QSO to network for immediate sync
+  try {
+    const { networkService } = await import('@/services/networkService');
+    await networkService.broadcastQsoUpdate(newQso, 'add');
+  } catch (error) {
+    console.error('Failed to broadcast new QSO to network:', error);
+  }
+  
   // Trigger achievement check for new QSO
   triggerAchievementCheck();
 }
@@ -357,7 +423,7 @@ async function saveQsos(): Promise<void> {
 }
 
 // Add these fully implemented functions
-export function deleteQso(id: number) {
+export async function deleteQso(id: number) {
   
   // Find the QSO being deleted for network broadcast
   const deletedQso = qsos.value.find(qso => qso.id === id);
@@ -378,6 +444,16 @@ export function deleteQso(id: number) {
     });
   } else {
     console.warn('⚠️ Backend service not available - QSO deletion will not be synced to network');
+  }
+  
+  // Broadcast deletion to network for immediate sync
+  if (deletedQso) {
+    try {
+      const { networkService } = await import('@/services/networkService');
+      await networkService.broadcastQsoUpdate(deletedQso, 'delete');
+    } catch (error) {
+      console.error('Failed to broadcast QSO deletion to network:', error);
+    }
   }
   
 }
@@ -425,6 +501,14 @@ export async function updateQso(id: number, updatedQso: QSO) {
       });
     } else {
       console.warn('⚠️ Backend service not available - QSO update will not be synced to network');
+    }
+    
+    // Broadcast update to network for immediate sync
+    try {
+      const { networkService } = await import('@/services/networkService');
+      await networkService.broadcastQsoUpdate(updated, 'update');
+    } catch (error) {
+      console.error('Failed to broadcast QSO update to network:', error);
     }
     
   } else {
