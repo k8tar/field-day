@@ -494,7 +494,7 @@ export function startPeriodicQsoRefresh(): void {
     if (backendApi.connected.value && !isRefreshing) {
       refreshQsosFromBackend();
     }
-  }, 120000); // Every 2 minutes - much less aggressive
+  }, 10000); // Every 10 seconds for more responsive sync
 }
 
 export function stopPeriodicQsoRefresh(): void {

@@ -613,6 +613,39 @@ class FileStorageService {
       await this.saveQsoData(testQsos);
     }
   }
+
+  // Message methods
+  async saveMessages(messages: any[]): Promise<void> {
+    if (this.isElectron()) {
+      await this.writeFileElectron('messages.json', JSON.stringify(messages, null, 2));
+    } else {
+      // Browser environment - use localStorage
+      const storageKey = this.getStorageKey('messages');
+      localStorage.setItem(storageKey, JSON.stringify(messages, null, 2));
+    }
+  }
+
+  async getMessages(): Promise<any[]> {
+    try {
+      if (this.isElectron()) {
+        const messagesDataStr = await this.readFileElectron('messages.json');
+        if (messagesDataStr) {
+          return JSON.parse(messagesDataStr);
+        }
+      } else {
+        // Browser environment - use localStorage
+        const storageKey = this.getStorageKey('messages');
+        const messagesDataStr = localStorage.getItem(storageKey);
+        if (messagesDataStr) {
+          return JSON.parse(messagesDataStr);
+        }
+      }
+    } catch (error) {
+      console.warn(`⚠️ Failed to load messages for port ${this.port}:`, error);
+    }
+
+    return [];
+  }
 }
 
 // Create a singleton instance for the current port

@@ -7,6 +7,7 @@ mod station;
 mod mesh;
 mod qso;
 mod config;
+mod message;
 
 pub fn create_routes(
     app_state: AppState,
@@ -17,11 +18,13 @@ pub fn create_routes(
     let mesh_routes = mesh::routes(app_state.clone());
     let qso_routes = qso::routes(app_state.clone());
     let config_routes = config::routes(app_state.clone());
+    let message_routes = message::routes(app_state.clone());
     
     api.and(
         station_routes
             .or(mesh_routes)
             .or(qso_routes)
             .or(config_routes)
+            .or(message_routes)
     )
 }

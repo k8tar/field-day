@@ -82,6 +82,30 @@ pub enum QsoOperationType {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MessageEntry {
+    pub id: String,
+    pub message_type: String,
+    pub text: String,
+    pub timestamp: DateTime<Utc>,
+    pub from_station_id: String,
+    pub target_station_id: Option<String>, // None means broadcast to all
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MessageSyncRequest {
+    pub station_id: String,
+    pub messages: Vec<MessageEntry>,
+    pub last_sync: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MessageSyncResponse {
+    pub messages: Vec<MessageEntry>,
+    pub total_count: u32,
+    pub sync_timestamp: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ApiResponse<T> {
     pub success: bool,
     pub data: Option<T>,

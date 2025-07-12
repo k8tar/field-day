@@ -96,20 +96,14 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch, onMounted, onUnmounted } from 'vue';
-import { useStore } from 'vuex';
-import { backendApi } from '@/services/backendApiService';
-import { fileStorage } from '@/services/fileStorage';
-import { achievementService } from '@/services/achievementService';
-
-// Generate a GUID for message IDs
-function generateGUID(): string {
-  return 'msg-' + 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-    const r = Math.random() * 16 | 0;
-    const v = c === 'x' ? r : (r & 0x3 | 0x8);
-    return v.toString(16);
-  });
-}
+import { computed, ref, onMounted, onUnmounted } from 'vue';
+import { 
+  messages as storeMessages,
+  recentMessages as storeRecentMessages,
+  allMessages as storeAllMessages,
+  sendMessage as sendMessageStore,
+  addMessage as addMessageStore
+} from '@/store/message';
 
 interface Message {
   id: string;
@@ -120,30 +114,20 @@ interface Message {
   target?: string;
 }
 
-const store = useStore();
-const messages = ref<Message[]>([]);
-
 // UI state
 const showAllMessages = ref(false);
 const newMessage = ref('');
-
-// Modal message sending state
 const modalNewMessage = ref('');
+
+// Use store messages
+const messages = computed(() => storeMessages.value);
+const recentMessages = computed(() => storeRecentMessages.value);
+const allMessagesReversed = computed(() => storeAllMessages.value);
 
 // Get the latest message
 const latestMessage = computed(() => {
   if (messages.value.length === 0) return null;
   return messages.value[messages.value.length - 1];
-});
-
-// Get the recent messages (latest 5) in reverse chronological order (newest first)
-const recentMessages = computed(() => {
-  return messages.value.slice(-5).reverse();
-});
-
-// Get all messages in reverse chronological order (newest first) for modal
-const allMessagesReversed = computed(() => {
-  return [...messages.value].reverse();
 });
 
 // Compute CSS class for message type
@@ -204,69 +188,16 @@ function formatFullTime(timestamp: number): string {
   });
 }
 
-// Add a new message
-function addMessage(type: Message['type'], text: string, from?: string, target?: string, messageId?: string) {
-  const id = messageId || generateGUID();
-  
-  // Check if message already exists to prevent duplicates
-  const existingMessage = messages.value.find(m => m.id === id);
-  if (existingMessage) {
-    return;
-  }
-  
-  const message: Message = {
-    id,
-    type,
-    text,
-    timestamp: Date.now(),
-    from,
-    target
-  };
-  
-  messages.value.push(message);
-  
-  // Keep only the last 20 messages to prevent memory buildup
-  if (messages.value.length > 20) {
-    messages.value = messages.value.slice(-20);
-  }
-}
-
 // Send a message
 async function sendMessage() {
   if (!newMessage.value.trim()) return;
   
   try {
-    const messageText = newMessage.value.trim();
-    const target = 'all'; // Always send to all stations
-    const messageId = generateGUID();
-    
-    // Get current station info
-    const stationConfig = await fileStorage.getStationConfig();
-    const stationId = `${stationConfig.callsign}-${stationConfig.designator}`;
-    
-    // Add message locally first with sender information and generated ID
-    addMessage('chat', messageText, stationId, target, messageId);
-    
-    // Send to network via backend if connected
-    if (backendApi.connected.value) {
-      try {
-        console.log('📨 Sending message via backend:', messageText, 'to', target);
-        // TODO: Implement backend messaging API when available
-        // await backendApi.sendMessage(messageText, target, messageId);
-      } catch (error) {
-        console.error('Failed to send message via backend:', error);
-        addMessage('info', 'Failed to send message to network');
-      }
-    } else {
-      console.warn('⚠️ Backend service not available - message sent locally only');
-      addMessage('info', 'Backend service not available - message not sent to network');
-    }
-    
-    // Clear input
+    await sendMessageStore(newMessage.value.trim());
     newMessage.value = '';
   } catch (error) {
     console.error('Failed to send message:', error);
-    addMessage('info', 'Failed to send message');
+    addMessageStore('info', 'Failed to send message');
   }
 }
 
@@ -275,180 +206,79 @@ async function sendModalMessage() {
   if (!modalNewMessage.value.trim()) return;
   
   try {
-    const messageText = modalNewMessage.value.trim();
-    const target = 'all'; // Always send to all stations
-    const messageId = generateGUID();
-    
-    // Get current station info
-    const stationConfig = await fileStorage.getStationConfig();
-    const stationId = `${stationConfig.callsign}-${stationConfig.designator}`;
-    
-    // Add message locally first with sender information and generated ID
-    addMessage('chat', messageText, stationId, target, messageId);
-    
-    // Send to network via backend if connected
-    if (backendApi.connected.value) {
-      try {
-        console.log('📨 Sending modal message via backend:', messageText, 'to', target);
-        // TODO: Implement backend messaging API when available
-        // await backendApi.sendMessage(messageText, target, messageId);
-      } catch (error) {
-        console.error('Failed to send message via backend:', error);
-        addMessage('info', 'Failed to send message to network');
-      }
-    } else {
-      console.warn('⚠️ Backend service not available - message sent locally only');
-      addMessage('info', 'Backend service not available - message not sent to network');
-    }
-    
-    // Clear modal input
+    await sendMessageStore(modalNewMessage.value.trim());
     modalNewMessage.value = '';
   } catch (error) {
-    console.error('Failed to send message from modal:', error);
-    addMessage('info', 'Failed to send message');
+    console.error('Failed to send message:', error);
+    addMessageStore('info', 'Failed to send message');
   }
 }
 
-// Get connected stations from backend
-function getConnectedStations() {
-  if (backendApi.connected.value) {
-    // TODO: Return connected stations from backend
-    return [];
-  }
-  return [];
+// Handle network events
+function handleStationJoin(stationInfo: any) {
+  addMessageStore('network', `Station ${getStationDesignator(stationInfo.call_sign)} joined the network`);
 }
 
-// Backend event handlers
-function handleBackendConnected() {
-  addMessage('network', 'Backend service connected - networking enabled');
+function handleStationLeave(stationInfo: any) {
+  addMessageStore('network', `Station ${getStationDesignator(stationInfo.call_sign)} left the network`);
 }
 
-function handleBackendDisconnected() {
-  addMessage('network', 'Backend service disconnected - networking disabled');
+function handleQsoReceived(qso: any) {
+  addMessageStore('network', `New QSO from ${getStationDesignator(qso.stationCallsign)}: ${qso.call} on ${qso.band}`);
 }
 
-// Legacy network event handlers (kept for compatibility)
-function handleNetworkConnected(event: any) {
-  if (event.type === 'host') {
-    addMessage('network', `Started hosting network on port ${event.port}`);
-  } else if (event.station && event.station.callsign) {
-    addMessage('network', `Connected to ${event.station.callsign} network`);
-  } else {
-    addMessage('network', `Connected to network station`);
-  }
+function handleBonusEarned(bonus: any) {
+  addMessageStore('bonus', `Bonus earned: ${bonus.name} (+${bonus.points} points)`);
 }
 
-function handleNetworkDisconnected() {
-  addMessage('network', 'Disconnected from network');
+function handleNewSection(event: any) {
+  const section = typeof event === 'string' ? event : (event.detail || 'Unknown');
+  addMessageStore('section', `New section worked: ${section}`);
 }
 
-function handleNetworkAutoReconnected(event: any) {
-  if (event.type === 'host') {
-    addMessage('network', `Auto-reconnected as host`);
-  } else {
-    addMessage('network', `Auto-reconnected to ${event.address}`);
-  }
+function handleNewMultiplier() {
+  addMessageStore('multiplier', 'New band/mode multiplier!');
 }
 
-function handleNetworkConnectionLost() {
-  addMessage('network', 'Connection lost, attempting to reconnect...');
+// Achievement system callback
+function handleAchievementMessage(type: string, message: string) {
+  const messageType = type as Message['type'] || 'info';
+  addMessageStore(messageType, message);
 }
-
-function handleNetworkReconnectFailed(event: any) {
-  addMessage('network', `Reconnect attempt ${event.attempt} failed`);
-}
-
-function handleNetworkReconnectExhausted() {
-  addMessage('network', 'All reconnect attempts failed, network disabled');
-}
-
-function handleInitialSyncComplete(event: any) {
-  addMessage('network', `Initial sync complete: ${event.syncedQsos} QSOs received`);
-}
-
-function handleQsoSynced(event: any) {
-  const { action, qso, stationId } = event;
-  if (action === 'add') {
-    addMessage('network', `QSO synced from ${stationId}: ${qso.call}`);
-  }
-}
-
-// Handle incoming network messages
-function handleNetworkMessage(event: any) {
-  const message = event;
-  
-  // Add the message using the ID from the network to prevent duplicates
-  addMessage(message.type, message.text, message.from, message.target, message.id);
-}
-
-// Sync messages from the API (for network and standalone mode)
-async function syncMessages() {
-  try {
-    // Skip message sync from server in Electron environment
-    if (typeof window !== 'undefined' && (window as any).Electron) {
-      return;
-    }
-    
-    const response = await fetch('/api/messages?limit=20');
-    if (response.ok) {
-      const data = await response.json();
-      const remoteMessages = data.messages || [];
-      
-      // Add any new messages we don't have locally using their existing IDs
-      remoteMessages.forEach((remoteMessage: any) => {
-        // Use the ID from the remote message to check for duplicates
-        const messageId = remoteMessage.id || generateGUID(); // Fallback to GUID if no ID
-        addMessage(remoteMessage.type, remoteMessage.text, remoteMessage.from, remoteMessage.target, messageId);
-      });
-      
-      // Sort messages by timestamp and keep only the latest 20
-      messages.value.sort((a, b) => a.timestamp - b.timestamp);
-      if (messages.value.length > 20) {
-        messages.value = messages.value.slice(-20);
-      }
-    }
-  } catch (error) {
-    console.error('Error syncing messages:', error);
-  }
-}
-
-// Set up network event listeners
-let messageSyncInterval: number | null = null;
 
 onMounted(() => {
-  // Listen for backend connection events
-  window.addEventListener('backendConnected', handleBackendConnected);
-  window.addEventListener('backendDisconnected', handleBackendDisconnected);
+  // Listen for network events
+  window.addEventListener('stationJoin', handleStationJoin);
+  window.addEventListener('stationLeave', handleStationLeave);
+  window.addEventListener('qsoReceived', handleQsoReceived);
+  window.addEventListener('bonusEarned', handleBonusEarned);
+  window.addEventListener('newSection', handleNewSection);
+  window.addEventListener('newMultiplier', handleNewMultiplier);
   
-  // Set up achievement service to send notifications through this component
-  achievementService.setMessageCallback((type: string, message: string) => {
-    addMessage(type as any, message);
-  });
-  
-  // Start periodic message sync (every 30 seconds - less aggressive)
-  messageSyncInterval = window.setInterval(syncMessages, 30000);
-  
-  // Initial message sync
-  syncMessages();
+  // Set up achievement system callback (if available)
+  if (typeof window !== 'undefined' && (window as any).achievementService) {
+    (window as any).achievementService.setMessageCallback(handleAchievementMessage);
+  }
 });
 
 onUnmounted(() => {
-  // Remove backend event listeners
-  window.removeEventListener('backendConnected', handleBackendConnected);
-  window.removeEventListener('backendDisconnected', handleBackendDisconnected);
+  // Clean up event listeners
+  window.removeEventListener('stationJoin', handleStationJoin);
+  window.removeEventListener('stationLeave', handleStationLeave);
+  window.removeEventListener('qsoReceived', handleQsoReceived);
+  window.removeEventListener('bonusEarned', handleBonusEarned);
+  window.removeEventListener('newSection', handleNewSection);
+  window.removeEventListener('newMultiplier', handleNewMultiplier);
   
-  // Clean up achievement service
-  achievementService.setMessageCallback(null);
-  
-  // Clear message sync interval
-  if (messageSyncInterval) {
-    clearInterval(messageSyncInterval);
+  // Clean up achievement system callback
+  if (typeof window !== 'undefined' && (window as any).achievementService) {
+    (window as any).achievementService.setMessageCallback(null);
   }
 });
 
 // Expose the addMessage function to parent components
 defineExpose({
-  addMessage
+  addMessage: addMessageStore
 });
 </script>
 

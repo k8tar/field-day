@@ -10,11 +10,13 @@ mod qso;
 mod station;
 mod types;
 mod config_manager;
+mod message;
 
 use crate::mesh::MeshManager;
 use crate::qso::QsoManager;
 use crate::station::StationManager;
 use crate::config_manager::ConfigManager;
+use crate::message::MessageManager;
 
 #[derive(Parser)]
 #[command(name = "fieldday-backend")]
@@ -39,6 +41,7 @@ pub struct AppState {
     pub qso_manager: Arc<RwLock<QsoManager>>,
     pub station_manager: Arc<RwLock<StationManager>>,
     pub config_manager: Arc<RwLock<ConfigManager>>,
+    pub message_manager: Arc<RwLock<MessageManager>>,
 }
 
 #[tokio::main]
@@ -78,11 +81,16 @@ async fn main() -> anyhow::Result<()> {
         QsoManager::new(config_manager.clone()).await?
     ));
     
+    let message_manager = Arc::new(RwLock::new(
+        MessageManager::new(config_manager.clone()).await?
+    ));
+    
     let app_state = AppState {
         mesh_manager: mesh_manager.clone(),
         qso_manager: qso_manager.clone(),
         station_manager: station_manager.clone(),
         config_manager: config_manager.clone(),
+        message_manager: message_manager.clone(),
     };
     
     // Start background tasks
@@ -101,6 +109,19 @@ async fn main() -> anyhow::Result<()> {
             
             if let Err(e) = qso_sync_manager.write().await.sync_with_peers(&mesh_sync_manager).await {
                 warn!("QSO sync failed: {}", e);
+            }
+        }
+    });
+    
+    // Message sync background task
+    let message_sync_manager = message_manager.clone();
+    let mesh_message_manager = mesh_manager.clone();
+    tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(tokio::time::Duration::from_secs(15)).await; // More frequent for messages
+            
+            if let Err(e) = message_sync_manager.write().await.sync_with_peers(&mesh_message_manager).await {
+                warn!("Message sync failed: {}", e);
             }
         }
     });

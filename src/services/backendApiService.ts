@@ -33,6 +33,16 @@ export interface BackendQso {
   notes?: string;
 }
 
+export interface BackendMessage {
+  id: string;
+  message_type: string;
+  content: string;
+  from_station_id: string;
+  to_station_id?: string;
+  timestamp: string;
+  priority: number;
+}
+
 export interface ApiResponse<T> {
   success: boolean;
   data?: T;
@@ -317,6 +327,34 @@ class BackendApiService {
       }),
     });
     return response.success;
+  }
+
+  // Message API
+  async addMessage(message: BackendMessage): Promise<boolean> {
+    const response = await this.makeRequest<string>('/message/add', {
+      method: 'POST',
+      body: JSON.stringify(message),
+    });
+    return response.success;
+  }
+
+  async getMessages(): Promise<BackendMessage[]> {
+    const response = await this.makeRequest<BackendMessage[]>('/message/list');
+    return response.success ? response.data || [] : [];
+  }
+
+  async sendMessage(content: string, target: string = 'all', messageId?: string): Promise<boolean> {
+    const messageData: BackendMessage = {
+      id: messageId || `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      message_type: 'chat',
+      content,
+      from_station_id: '', // Will be set by backend based on station config
+      to_station_id: target !== 'all' ? target : undefined,
+      timestamp: new Date().toISOString(),
+      priority: 1,
+    };
+    
+    return this.addMessage(messageData);
   }
 
   // Utility methods
