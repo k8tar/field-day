@@ -104,7 +104,7 @@ impl QsoManager {
         self.qsos.len()
     }
     
-    pub async fn sync_with_peers(&self, mesh_manager: &Arc<RwLock<MeshManager>>) -> Result<()> {
+    pub async fn sync_with_peers(&mut self, mesh_manager: &Arc<RwLock<MeshManager>>) -> Result<()> {
         let stations = mesh_manager.read().await.get_discovered_stations();
         
         if stations.is_empty() {
@@ -119,6 +119,10 @@ impl QsoManager {
                 warn!("Failed to sync with station {}: {}", station.call_sign, e);
             }
         }
+        
+        // Clear recent operations after successful sync
+        self.recent_operations.clear();
+        self.last_sync = Some(Utc::now());
         
         Ok(())
     }

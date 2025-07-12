@@ -99,7 +99,7 @@ async fn main() -> anyhow::Result<()> {
         loop {
             tokio::time::sleep(tokio::time::Duration::from_secs(30)).await;
             
-            if let Err(e) = qso_sync_manager.read().await.sync_with_peers(&mesh_sync_manager).await {
+            if let Err(e) = qso_sync_manager.write().await.sync_with_peers(&mesh_sync_manager).await {
                 warn!("QSO sync failed: {}", e);
             }
         }
