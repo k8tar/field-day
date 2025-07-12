@@ -27,12 +27,14 @@ const currentPort = parseInt(window.location.port || '8080');
 const otherPort = currentPort === 8080 ? 8081 : 8080;
 const station = await networkService.checkStationAt('localhost', otherPort);
 if (station) {
+  console.log('Connected to station:', station);
 } else {
+  console.log('No station found at port', otherPort);
 }
 `;
 
-🎯 Field Day Network Setup Commands
-====================================
+// Field Day Network Setup Commands
+/* Field Day Network Setup Commands
 
 1️⃣ Setup Port 8080 (PHONE 1):
 ${setupPort8080}
@@ -55,4 +57,6 @@ ${testConnectivity}
 - await networkService.setupTestStation('CALLSIGN', 'DESIGNATOR', QSO_COUNT)
 - await networkService.checkFileStorage()
 - await debugFileStorage()
-`);
+*/
+
+export { setupPort8080, setupPort8081, testDiscovery, testConnectivity };

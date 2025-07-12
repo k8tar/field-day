@@ -48,9 +48,9 @@
         <button class="messages-button" @click="openMessagesModal" title="Messages">
           <span class="material-icons">message</span>
         </button>
-        <button class="network-button" @click="openNetworkModal" :class="{ 'connected': networkConnected }" title="Network Status">
-          <span class="material-icons">{{ networkConnected ? 'wifi' : 'wifi_off' }}</span>
-          <span v-if="connectedStationCount > 0" class="station-count">{{ connectedStationCount }}</span>
+        <button class="network-button" @click="openNetworkModal" :class="networkStatus" :title="getNetworkStatusTitle()">
+          <span class="material-icons">{{ getNetworkIcon() }}</span>
+          <span v-if="totalDiscoveredCount > 0" class="station-count">{{ connectedStationCount }}/{{ totalDiscoveredCount }}</span>
         </button>
         <button class="config-button" @click="openConfigModal">
           <span class="material-icons">settings</span>
@@ -94,6 +94,7 @@ import DocsModal from '@/components/DocsModal.vue';
 import MessagesModal from '@/components/MessagesModal.vue';
 import { fileStorage } from '@/services/fileStorage';
 import { backendApi, type BackendStation } from '@/services/backendApiService';
+import { stationStatusService } from '@/services/stationStatusService';
 
 // Station designator
 const stationDesignator = ref('');
@@ -190,8 +191,32 @@ function handleConfigClose() {
 const networkModalOpen = ref(false);
 const networkConnected = computed(() => backendApi.connected.value);
 const discoveredStations = ref<BackendStation[]>([]);
+
+// Enhanced station status using the station status service
 const connectedStationCount = computed(() => {
-  return discoveredStations.value.filter(station => !station.is_self).length;
+  return stationStatusService.getConnectedCount();
+});
+
+const totalDiscoveredCount = computed(() => {
+  return stationStatusService.getTotalDiscoveredCount();
+});
+
+// Network status for icon coloring: green if connected to stations, red if no stations, yellow if backend disconnected
+const networkStatus = computed(() => {
+  if (!backendApi.connected.value) {
+    return 'disconnected'; // Backend not available
+  }
+  
+  const connectedCount = stationStatusService.getConnectedCount();
+  const totalDiscovered = stationStatusService.getTotalDiscoveredCount();
+  
+  if (connectedCount > 0) {
+    return 'connected'; // Green - actively connected to stations
+  } else if (totalDiscovered > 0) {
+    return 'warning'; // Yellow - discovered stations but none currently connected
+  } else {
+    return 'no-stations'; // Red - no stations discovered at all
+  }
 });
 
 // Load discovered stations
@@ -200,6 +225,19 @@ async function loadDiscoveredStations() {
     try {
       const stations = await backendApi.getDiscoveredStations();
       discoveredStations.value = stations;
+      
+      // Update station status service with discovered stations
+      const seenStationIds = stations.map(s => s.id);
+      
+      // Update statuses for seen stations
+      stations.forEach(station => {
+        stationStatusService.updateStationSeen(station);
+      });
+      
+      // Update request counts for missed stations
+      stationStatusService.updateMissedStations(seenStationIds);
+      
+      console.log(`📡 Header updated station status: ${stationStatusService.getConnectedCount()} connected, ${stationStatusService.getTotalDiscoveredCount()} total discovered`);
     } catch (error) {
       console.error('Error loading discovered stations:', error);
       discoveredStations.value = [];
@@ -215,6 +253,34 @@ function openNetworkModal() {
 
 function handleNetworkClose() {
   networkModalOpen.value = false;
+}
+
+function getNetworkIcon(): string {
+  switch (networkStatus.value) {
+    case 'connected': return 'wifi';
+    case 'warning': return 'wifi_tethering';
+    case 'no-stations': return 'wifi_off';
+    case 'disconnected': return 'signal_wifi_off';
+    default: return 'wifi_off';
+  }
+}
+
+function getNetworkStatusTitle(): string {
+  const connected = connectedStationCount.value;
+  const total = totalDiscoveredCount.value;
+  
+  switch (networkStatus.value) {
+    case 'connected': 
+      return `Network Status: Connected to ${connected} of ${total} stations`;
+    case 'warning': 
+      return `Network Status: ${total} stations discovered, ${connected} currently connected`;
+    case 'no-stations': 
+      return 'Network Status: No stations discovered';
+    case 'disconnected': 
+      return 'Network Status: Backend service disconnected';
+    default: 
+      return 'Network Status: Unknown';
+  }
 }
 
 // Documentation modal
@@ -293,16 +359,15 @@ onMounted(async () => {
   // Check for first-time setup
   await checkFirstTimeSetup();
   
-  // Add keyboard event listener
-  document.addEventListener('keydown', handleKeydown);
-  
-  // Listen for station info updates
-  window.addEventListener('stationInfoUpdate', loadStationInfo);
-  
-  // Set up periodic station discovery refresh
+  // Set up periodic refresh of discovered stations to keep counts updated
   const stationRefreshInterval = setInterval(async () => {
-    await loadDiscoveredStations();
-  }, 10000); // Refresh every 10 seconds
+    if (backendApi.connected.value) {
+      await loadDiscoveredStations();
+    }
+  }, 5000); // Refresh every 5 seconds for real-time status updates
+  
+  // Store interval for cleanup
+  (window as any).headerStationRefreshInterval = stationRefreshInterval;
   
   // Clean up interval on unmount
   onBeforeUnmount(() => {
@@ -453,11 +518,19 @@ watch(() => backendApi.connected.value, async (connected) => {
 }
 
 .network-button.connected {
-  color: #22c55e;
+  color: #22c55e; /* Green - connected to stations */
 }
 
-.network-button:not(.connected) {
-  color: #ef4444;
+.network-button.warning {
+  color: #f59e0b; /* Yellow/Orange - stations discovered but not connected */
+}
+
+.network-button.no-stations {
+  color: #ef4444; /* Red - no stations discovered */
+}
+
+.network-button.disconnected {
+  color: #9ca3af; /* Gray - backend disconnected */
 }
 
 .config-button {

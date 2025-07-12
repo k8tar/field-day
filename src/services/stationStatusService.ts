@@ -13,8 +13,53 @@ export interface StationStatus {
 
 class StationStatusService {
   private readonly STORAGE_KEY = 'fieldday-station-status';
+  private readonly DISCOVERED_KEY = 'fieldday-discovered-stations';
   private readonly MAX_WARNING_REQUESTS = 3; // Yellow after 3 missed requests
   private readonly MAX_OFFLINE_REQUESTS = 10; // Red after 10 missed requests
+
+  /**
+   * Get count of total unique stations discovered this session
+   */
+  getTotalDiscoveredCount(): number {
+    try {
+      const stored = localStorage.getItem(this.DISCOVERED_KEY);
+      if (!stored) return 0;
+      
+      const discoveredIds = JSON.parse(stored) as string[];
+      return discoveredIds.length;
+    } catch (error) {
+      console.error('Failed to load discovered stations count:', error);
+      return 0;
+    }
+  }
+
+  /**
+   * Add a station to the discovered list if not already there
+   */
+  private addToDiscovered(stationId: string): void {
+    try {
+      const stored = localStorage.getItem(this.DISCOVERED_KEY);
+      let discoveredIds: string[] = stored ? JSON.parse(stored) : [];
+      
+      if (!discoveredIds.includes(stationId)) {
+        discoveredIds.push(stationId);
+        localStorage.setItem(this.DISCOVERED_KEY, JSON.stringify(discoveredIds));
+      }
+    } catch (error) {
+      console.error('Failed to update discovered stations:', error);
+    }
+  }
+
+  /**
+   * Clear the discovered stations count (for testing/reset)
+   */
+  clearDiscoveredCount(): void {
+    try {
+      localStorage.removeItem(this.DISCOVERED_KEY);
+    } catch (error) {
+      console.error('Failed to clear discovered stations:', error);
+    }
+  }
 
   /**
    * Get all stored station statuses
@@ -55,6 +100,9 @@ class StationStatusService {
   }): void {
     const statuses = this.getStationStatuses();
     const now = Date.now();
+    
+    // Add to discovered list
+    this.addToDiscovered(station.id);
     
     let stationStatus = statuses.get(station.id);
     
@@ -129,6 +177,22 @@ class StationStatusService {
   getAllStationsWithStatus(): StationStatus[] {
     const statuses = this.getStationStatuses();
     return Array.from(statuses.values());
+  }
+
+  /**
+   * Get count of currently connected (online) stations
+   */
+  getConnectedCount(): number {
+    const statuses = this.getStationStatuses();
+    let connectedCount = 0;
+    
+    for (const station of statuses.values()) {
+      if (station.status === 'online') {
+        connectedCount++;
+      }
+    }
+    
+    return connectedCount;
   }
 
   /**

@@ -264,7 +264,7 @@
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import { backendApi, type BackendStation } from '@/services/backendApiService';
 import { fileStorage } from '@/services/fileStorage';
-import { stationStatusService, type StationStatus } from '@/services/stationStatusService';
+import { stationStatusService as stationService, type StationStatus } from '@/services/stationStatusService';
 
 const props = defineProps<{
   isOpen: boolean;
@@ -291,6 +291,9 @@ const discoveredStations = ref<BackendStation[]>([]);
 
 // Enhanced station status tracking
 const stationStatuses = ref<Map<string, StationStatus>>(new Map());
+
+// Expose the service for template use
+const stationStatusService = stationService;
 
 // Combined view of stations with status
 const stationsWithStatus = computed(() => {
@@ -328,11 +331,16 @@ const isElectron = computed(() => {
 });
 
 // Mesh status
-const meshStatus = computed(() => ({
-  meshHealth: stationsWithStatus.value.length > 0 ? 'good' : 'warning',
-  discoveredNodes: stationsWithStatus.value.length,
-  connectedNodes: stationsWithStatus.value.filter(s => !s.is_self && s.status.status === 'online').length,
-}));
+const meshStatus = computed(() => {
+  const totalDiscovered = stationService.getTotalDiscoveredCount();
+  const connectedCount = stationService.getConnectedCount();
+  
+  return {
+    meshHealth: connectedCount > 0 ? 'good' : totalDiscovered > 0 ? 'warning' : 'warning',
+    discoveredNodes: totalDiscovered,
+    connectedNodes: connectedCount,
+  };
+});
 
 // Computed properties
 const canConnect = computed(() => {
@@ -584,24 +592,24 @@ async function scanForStations() {
  */
 function updateStationStatuses(stations: BackendStation[]) {
   // Load current statuses
-  stationStatuses.value = stationStatusService.getStationStatuses();
+  stationStatuses.value = stationService.getStationStatuses();
   
   // Get IDs of stations seen in this discovery
   const seenStationIds = stations.map(s => s.id);
   
   // Update statuses for seen stations
   stations.forEach(station => {
-    stationStatusService.updateStationSeen(station);
+    stationService.updateStationSeen(station);
   });
   
   // Update request counts for missed stations
-  stationStatusService.updateMissedStations(seenStationIds);
+  stationService.updateMissedStations(seenStationIds);
   
   // Reload statuses after updates
-  stationStatuses.value = stationStatusService.getStationStatuses();
+  stationStatuses.value = stationService.getStationStatuses();
   
   // Clean up old offline stations
-  stationStatusService.cleanupOldStations();
+  stationService.cleanupOldStations();
 }
 
 function connectToStation(station: BackendStation) {
@@ -733,10 +741,13 @@ onMounted(async () => {
   await refreshStationInfo();
   
   // Load station statuses from localStorage
-  stationStatuses.value = stationStatusService.getStationStatuses();
+  stationStatuses.value = stationService.getStationStatuses();
   
   // Listen for station info updates from config modal
   window.addEventListener('stationInfoUpdate', refreshStationInfo);
+  
+  // Listen for global station status updates
+  window.addEventListener('stationStatusUpdate', handleStationStatusUpdate);
   
   // Always fetch discovered stations on mount if connected
   if (isConnected.value) {
@@ -758,38 +769,12 @@ onMounted(async () => {
       await refreshMeshDiscovery();
     }
   }
-  
-  // Set up periodic refresh of discovered stations every 10 seconds for better responsiveness
-  const refreshInterval = setInterval(async () => {
-    if (isConnected.value && (networkMode.value === 'mesh' || networkMode.value === 'auto') && !isRefreshing.value) {
-      try {
-        const stations = await backendApi.getDiscoveredStations();
-        if (stations.length !== discoveredStations.value.length) {
-          console.log(`📡 Station count changed: ${discoveredStations.value.length} -> ${stations.length}`);
-        }
-        discoveredStations.value = stations;
-        
-        // Update station statuses
-        updateStationStatuses(stations);
-      } catch (error) {
-        console.error('Failed to refresh discovered stations:', error);
-      }
-    }
-  }, 10000); // 10 seconds for more responsive updates
-  
-  // Store interval ID for cleanup
-  (window as any).networkModalRefreshInterval = refreshInterval;
 });
 
 // Clean up event listeners on unmount
 onUnmounted(() => {
   window.removeEventListener('stationInfoUpdate', refreshStationInfo);
-  
-  // Clean up periodic refresh interval
-  if ((window as any).networkModalRefreshInterval) {
-    clearInterval((window as any).networkModalRefreshInterval);
-    delete (window as any).networkModalRefreshInterval;
-  }
+  window.removeEventListener('stationStatusUpdate', handleStationStatusUpdate);
 });
 
 // Watch for backend connection changes
@@ -850,6 +835,35 @@ watch(() => props.isOpen, async (isOpen) => {
     }
   }
 });
+
+/**
+ * Handle global station status updates
+ */
+function handleStationStatusUpdate(event: Event) {
+  try {
+    const customEvent = event as CustomEvent;
+    
+    // Reload station statuses from localStorage
+    stationStatuses.value = stationStatusService.getStationStatuses();
+    
+    // Also refresh discovered stations to ensure we have the latest list
+    if (isConnected.value && !isRefreshing.value) {
+      backendApi.getDiscoveredStations().then(stations => {
+        discoveredStations.value = stations;
+      }).catch(error => {
+        console.error('Failed to refresh discovered stations from status update:', error);
+      });
+    }
+    
+    // Log status update details if we have them
+    if (customEvent.detail) {
+      const { total, online, warning, offline } = customEvent.detail;
+      console.log(`📊 Station status updated: ${total} total (${online} online, ${warning} warning, ${offline} offline)`);
+    }
+  } catch (error) {
+    console.error('Error handling station status update:', error);
+  }
+}
 </script>
 
 <style lang="scss" scoped>
@@ -1211,6 +1225,7 @@ watch(() => props.isOpen, async (isOpen) => {
 
   &.warning {
     background-color: #f59e0b;
+    color: white;
   }
 }
 
