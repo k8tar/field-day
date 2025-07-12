@@ -109,6 +109,14 @@ impl ConfigManager {
         &self.config
     }
     
+    pub fn get_data_directory(&self) -> PathBuf {
+        if let Some(parent) = self.config_path.parent() {
+            parent.to_path_buf()
+        } else {
+            PathBuf::from(".")
+        }
+    }
+    
     pub async fn update_station(&mut self, call_sign: String, name: String, section: String, class: String) -> Result<()> {
         self.config.station.call_sign = call_sign;
         self.config.station.name = name;

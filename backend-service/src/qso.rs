@@ -1,6 +1,7 @@
 use anyhow::Result;
 use chrono::{DateTime, Utc};
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use tracing::{info, warn, debug};
@@ -33,8 +34,33 @@ impl QsoManager {
     }
     
     async fn load_qsos(&mut self) -> Result<()> {
-        // TODO: Load QSOs from persistent storage
-        // For now, start with empty collection
+        let config = self.config_manager.read().await;
+        let data_dir = config.get_data_directory();
+        let qso_file = data_dir.join("qsos.json");
+        
+        if qso_file.exists() {
+            match std::fs::read_to_string(&qso_file) {
+                Ok(content) => {
+                    match serde_json::from_str::<Vec<QsoEntry>>(&content) {
+                        Ok(qsos) => {
+                            for qso in qsos {
+                                self.qsos.insert(qso.id.clone(), qso);
+                            }
+                            info!("Loaded {} QSOs from storage", self.qsos.len());
+                        }
+                        Err(e) => {
+                            warn!("Failed to parse QSOs from {}: {}", qso_file.display(), e);
+                        }
+                    }
+                }
+                Err(e) => {
+                    warn!("Failed to read QSOs from {}: {}", qso_file.display(), e);
+                }
+            }
+        } else {
+            info!("QSO file does not exist, starting with empty collection");
+        }
+        
         info!("QSO manager initialized with {} QSOs", self.qsos.len());
         Ok(())
     }
@@ -279,9 +305,34 @@ impl QsoManager {
     }
     
     async fn save_qsos(&self) -> Result<()> {
-        // TODO: Implement persistent storage for QSOs
-        // For now, just log the save operation
-        debug!("Saving {} QSOs to storage", self.qsos.len());
+        let config = self.config_manager.read().await;
+        let data_dir = config.get_data_directory();
+        
+        // Ensure data directory exists
+        if let Err(e) = std::fs::create_dir_all(&data_dir) {
+            warn!("Failed to create data directory {}: {}", data_dir.display(), e);
+            return Ok(());
+        }
+        
+        let qso_file = data_dir.join("qsos.json");
+        let qsos: Vec<QsoEntry> = self.qsos.values().cloned().collect();
+        
+        match serde_json::to_string_pretty(&qsos) {
+            Ok(json_content) => {
+                match std::fs::write(&qso_file, json_content) {
+                    Ok(_) => {
+                        debug!("Saved {} QSOs to {}", self.qsos.len(), qso_file.display());
+                    }
+                    Err(e) => {
+                        warn!("Failed to write QSOs to {}: {}", qso_file.display(), e);
+                    }
+                }
+            }
+            Err(e) => {
+                warn!("Failed to serialize QSOs: {}", e);
+            }
+        }
+        
         Ok(())
     }
     
