@@ -7,11 +7,13 @@ use tracing::{info, warn, debug};
 
 use crate::config_manager::ConfigManager;
 use crate::mesh::MeshManager;
-use crate::types::{QsoEntry, QsoSyncRequest, QsoSyncResponse};
+use crate::types::{QsoEntry, QsoSyncRequest, QsoSyncResponse, QsoOperation, QsoOperationType};
 
 pub struct QsoManager {
     config_manager: Arc<RwLock<ConfigManager>>,
     qsos: HashMap<String, QsoEntry>,
+    deleted_qso_ids: Vec<String>,
+    recent_operations: Vec<QsoOperation>,
     last_sync: Option<DateTime<Utc>>,
 }
 
@@ -20,6 +22,8 @@ impl QsoManager {
         let mut manager = Self {
             config_manager,
             qsos: HashMap::new(),
+            deleted_qso_ids: Vec::new(),
+            recent_operations: Vec::new(),
             last_sync: None,
         };
         
@@ -37,9 +41,59 @@ impl QsoManager {
     
     pub async fn add_qso(&mut self, qso: QsoEntry) -> Result<()> {
         debug!("Adding QSO: {} with {}", qso.id, qso.call_sign);
-        self.qsos.insert(qso.id.clone(), qso);
+        self.qsos.insert(qso.id.clone(), qso.clone());
+        
+        // Track operation for sync
+        self.recent_operations.push(QsoOperation {
+            operation_type: QsoOperationType::Add,
+            qso: Some(qso),
+            qso_id: None,
+            timestamp: Utc::now(),
+        });
+        
         self.save_qsos().await?;
         Ok(())
+    }
+    
+    pub async fn update_qso(&mut self, qso: QsoEntry) -> Result<()> {
+        debug!("Updating QSO: {} with {}", qso.id, qso.call_sign);
+        if self.qsos.contains_key(&qso.id) {
+            self.qsos.insert(qso.id.clone(), qso.clone());
+            
+            // Track operation for sync
+            self.recent_operations.push(QsoOperation {
+                operation_type: QsoOperationType::Update,
+                qso: Some(qso),
+                qso_id: None,
+                timestamp: Utc::now(),
+            });
+            
+            self.save_qsos().await?;
+            Ok(())
+        } else {
+            Err(anyhow::anyhow!("QSO with ID {} not found", qso.id))
+        }
+    }
+    
+    pub async fn delete_qso(&mut self, qso_id: &str) -> Result<()> {
+        debug!("Deleting QSO: {}", qso_id);
+        if self.qsos.remove(qso_id).is_some() {
+            // Track deleted QSO ID
+            self.deleted_qso_ids.push(qso_id.to_string());
+            
+            // Track operation for sync
+            self.recent_operations.push(QsoOperation {
+                operation_type: QsoOperationType::Delete,
+                qso: None,
+                qso_id: Some(qso_id.to_string()),
+                timestamp: Utc::now(),
+            });
+            
+            self.save_qsos().await?;
+            Ok(())
+        } else {
+            Err(anyhow::anyhow!("QSO with ID {} not found", qso_id))
+        }
     }
     
     pub async fn get_qsos(&self) -> Vec<QsoEntry> {
@@ -75,9 +129,18 @@ impl QsoManager {
             .danger_accept_invalid_certs(true)
             .build()?;
         
+        // Collect updated QSOs from recent operations
+        let updated_qsos: Vec<QsoEntry> = self.recent_operations
+            .iter()
+            .filter(|op| matches!(op.operation_type, QsoOperationType::Update))
+            .filter_map(|op| op.qso.clone())
+            .collect();
+        
         let sync_request = QsoSyncRequest {
             station_id: station.id.clone(),
             qsos: self.qsos.values().cloned().collect(),
+            deleted_qso_ids: self.deleted_qso_ids.clone(),
+            updated_qsos,
             last_sync: self.last_sync,
         };
         
@@ -108,22 +171,47 @@ impl QsoManager {
     pub async fn handle_sync_request(&mut self, request: QsoSyncRequest) -> Result<QsoSyncResponse> {
         debug!("Handling sync request from station: {}", request.station_id);
         
-        // TODO: Implement proper QSO merging logic
-        // For now, just return our QSOs
+        // Process deleted QSOs
+        for qso_id in &request.deleted_qso_ids {
+            if self.qsos.remove(qso_id).is_some() {
+                info!("Deleted QSO from sync: {}", qso_id);
+                // Add to our deleted list if not already there
+                if !self.deleted_qso_ids.contains(qso_id) {
+                    self.deleted_qso_ids.push(qso_id.clone());
+                }
+            }
+        }
+        
+        // Process updated QSOs
+        for qso in &request.updated_qsos {
+            if self.qsos.contains_key(&qso.id) {
+                info!("Updating QSO from sync: {} with {}", qso.id, qso.call_sign);
+                self.qsos.insert(qso.id.clone(), qso.clone());
+            }
+        }
+        
+        // Process new QSOs
+        for qso in &request.qsos {
+            if !self.qsos.contains_key(&qso.id) && !self.deleted_qso_ids.contains(&qso.id) {
+                info!("Adding QSO from sync: {} with {}", qso.id, qso.call_sign);
+                self.qsos.insert(qso.id.clone(), qso.clone());
+            }
+        }
+        
+        // Collect our updated QSOs to send back
+        let our_updated_qsos: Vec<QsoEntry> = self.recent_operations
+            .iter()
+            .filter(|op| matches!(op.operation_type, QsoOperationType::Update))
+            .filter_map(|op| op.qso.clone())
+            .collect();
         
         let response = QsoSyncResponse {
             qsos: self.qsos.values().cloned().collect(),
+            deleted_qso_ids: self.deleted_qso_ids.clone(),
+            updated_qsos: our_updated_qsos,
             total_count: self.qsos.len() as u32,
             sync_timestamp: Utc::now(),
         };
-        
-        // TODO: Process and merge incoming QSOs from the request
-        for qso in request.qsos {
-            if !self.qsos.contains_key(&qso.id) {
-                info!("Adding QSO from sync: {} with {}", qso.id, qso.call_sign);
-                self.qsos.insert(qso.id.clone(), qso);
-            }
-        }
         
         self.last_sync = Some(Utc::now());
         self.save_qsos().await?;

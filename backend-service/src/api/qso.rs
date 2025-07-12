@@ -20,6 +20,20 @@ pub fn routes(
         .and(with_app_state(app_state.clone()))
         .and_then(add_qso);
     
+    let update_qso = warp::path("qso")
+        .and(warp::path("update"))
+        .and(warp::put())
+        .and(warp::body::json())
+        .and(with_app_state(app_state.clone()))
+        .and_then(update_qso);
+    
+    let delete_qso = warp::path("qso")
+        .and(warp::path("delete"))
+        .and(warp::path::param::<String>())
+        .and(warp::delete())
+        .and(with_app_state(app_state.clone()))
+        .and_then(delete_qso);
+    
     let sync_qsos = warp::path("qso")
         .and(warp::path("sync"))
         .and(warp::post())
@@ -40,7 +54,7 @@ pub fn routes(
         .and(with_app_state(app_state))
         .and_then(get_qso_count);
     
-    get_qsos.or(add_qso).or(sync_qsos).or(export_adif).or(qso_count)
+    get_qsos.or(add_qso).or(update_qso).or(delete_qso).or(sync_qsos).or(export_adif).or(qso_count)
 }
 
 async fn get_qsos(app_state: AppState) -> Result<impl Reply, Infallible> {
@@ -61,6 +75,36 @@ async fn add_qso(qso: QsoEntry, app_state: AppState) -> Result<impl Reply, Infal
         }
         Err(e) => {
             let response: ApiResponse<&str> = ApiResponse::error(format!("Failed to add QSO: {}", e));
+            Ok(reply::json(&response))
+        }
+    }
+}
+
+async fn update_qso(qso: QsoEntry, app_state: AppState) -> Result<impl Reply, Infallible> {
+    let mut qso_manager = app_state.qso_manager.write().await;
+    
+    match qso_manager.update_qso(qso).await {
+        Ok(_) => {
+            let response = ApiResponse::success("QSO updated successfully");
+            Ok(reply::json(&response))
+        }
+        Err(e) => {
+            let response: ApiResponse<&str> = ApiResponse::error(format!("Failed to update QSO: {}", e));
+            Ok(reply::json(&response))
+        }
+    }
+}
+
+async fn delete_qso(qso_id: String, app_state: AppState) -> Result<impl Reply, Infallible> {
+    let mut qso_manager = app_state.qso_manager.write().await;
+    
+    match qso_manager.delete_qso(&qso_id).await {
+        Ok(_) => {
+            let response = ApiResponse::success("QSO deleted successfully");
+            Ok(reply::json(&response))
+        }
+        Err(e) => {
+            let response: ApiResponse<&str> = ApiResponse::error(format!("Failed to delete QSO: {}", e));
             Ok(reply::json(&response))
         }
     }

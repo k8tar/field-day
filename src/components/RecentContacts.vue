@@ -455,7 +455,7 @@ function closeEditModal() {
   editingQso.value = JSON.parse(JSON.stringify(emptyQso));
 }
 
-function saveQsoEdit() {
+async function saveQsoEdit() {
   if (editingQso.value && editingQso.value.id !== undefined) {
     
     // Validate section if provided
@@ -487,7 +487,7 @@ function saveQsoEdit() {
     };
     
     // Call the update function with proper parameters - ensure id is a number
-    updateQso(updatedQso.id as number, updatedQso);
+    await updateQso(updatedQso.id as number, updatedQso);
     closeEditModal();
   } else {
     console.error('Cannot save QSO: Missing ID or QSO data', editingQso.value);

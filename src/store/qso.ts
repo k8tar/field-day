@@ -363,11 +363,18 @@ export function deleteQso(id: number) {
   // Update file storage
   saveQsos(); // Use file storage
   
-  // Backend service handles network synchronization automatically
+  // Notify backend service for network synchronization
+  if (backendApi.connected.value && deletedQso) {
+    backendApi.deleteQso(deletedQso.id!.toString()).catch(error => {
+      console.error('Failed to delete QSO from backend:', error);
+    });
+  } else {
+    console.warn('⚠️ Backend service not available - QSO deletion will not be synced to network');
+  }
   
 }
 
-export function updateQso(id: number, updatedQso: QSO) {
+export async function updateQso(id: number, updatedQso: QSO) {
   
   // Find the index of the QSO to update
   const index = qsos.value.findIndex(qso => qso.id === id);
@@ -389,7 +396,28 @@ export function updateQso(id: number, updatedQso: QSO) {
     // Save to file storage
     saveQsos(); // Use file storage
     
-    // Backend service handles network synchronization automatically
+    // Notify backend service for network synchronization
+    if (backendApi.connected.value) {
+      const stationConfig = await fileStorage.getStationConfig();
+      const backendQso: BackendQso = {
+        id: updated.id!.toString(),
+        timestamp: new Date(updated.datetime).toISOString(),
+        frequency: updated.band,
+        mode: updated.mode,
+        call_sign: updated.call,
+        name: updated.call,
+        section: updated.section,
+        class: updated.class,
+        station_id: `${stationConfig.callsign || 'UNKNOWN'}-${stationConfig.designator || '1A'}`,
+        operator: updated.operator,
+      };
+      
+      backendApi.updateQso(backendQso).catch(error => {
+        console.error('Failed to update QSO in backend:', error);
+      });
+    } else {
+      console.warn('⚠️ Backend service not available - QSO update will not be synced to network');
+    }
     
   } else {
   }

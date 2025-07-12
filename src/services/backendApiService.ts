@@ -229,6 +229,21 @@ class BackendApiService {
     return response.success;
   }
 
+  async updateQso(qso: BackendQso): Promise<boolean> {
+    const response = await this.makeRequest<string>('/qso/update', {
+      method: 'PUT',
+      body: JSON.stringify(qso),
+    });
+    return response.success;
+  }
+
+  async deleteQso(qsoId: string): Promise<boolean> {
+    const response = await this.makeRequest<string>(`/qso/delete/${qsoId}`, {
+      method: 'DELETE',
+    });
+    return response.success;
+  }
+
   async getQsoCount(): Promise<number> {
     const response = await this.makeRequest<{ count: number }>('/qso/count');
     return response.success ? response.data?.count || 0 : 0;

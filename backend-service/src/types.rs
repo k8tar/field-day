@@ -52,14 +52,33 @@ pub struct MeshDiscoveryResponse {
 pub struct QsoSyncRequest {
     pub station_id: String,
     pub qsos: Vec<QsoEntry>,
+    pub deleted_qso_ids: Vec<String>,
+    pub updated_qsos: Vec<QsoEntry>,
     pub last_sync: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct QsoSyncResponse {
     pub qsos: Vec<QsoEntry>,
+    pub deleted_qso_ids: Vec<String>,
+    pub updated_qsos: Vec<QsoEntry>,
     pub total_count: u32,
     pub sync_timestamp: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct QsoOperation {
+    pub operation_type: QsoOperationType,
+    pub qso: Option<QsoEntry>,
+    pub qso_id: Option<String>,
+    pub timestamp: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum QsoOperationType {
+    Add,
+    Update,
+    Delete,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
