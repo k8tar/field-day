@@ -38,6 +38,10 @@ class NetworkService {
   private connectedStations = reactive<NetworkStation[]>([]);
   private syncCallbacks: Array<(update: QsoUpdate) => void> = [];
   private syncInterval: number | null = null;
+  private reconnectTimer: number | null = null; // Added missing property
+  private reconnectAttempts: number = 0; // Optional: used in scheduleReconnect
+  private maxReconnectAttempts: number = 5; // Optional: used in scheduleReconnect
+  private reconnectDelay: number = 2000; // Optional: used in scheduleReconnect
   
   // Reactive trigger for UI updates
   private stationUpdateTrigger = ref(0);
@@ -1693,7 +1697,7 @@ class NetworkService {
       return 'join';
     } else {
       // Return the last saved mode, defaulting to mesh
-      return this.networkSettings.lastNetworkMode || 'mesh';
+      return (this.networkSettings.lastNetworkMode as 'host' | 'join' | 'auto' | 'mesh') || 'mesh';
     }
   }
 

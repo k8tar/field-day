@@ -78,7 +78,7 @@ function saveMessagesToFile(messages: NetworkMessage[]): void {
 export default defineConfig({
   plugins: [
     vue(),
-    basicSsl(), // Add SSL plugin for HTTPS support
+    // basicSsl(), // Disabled for local mesh network testing - causes SSL certificate errors
     // Custom plugin to handle station info and QSO sync API
     {
       name: 'station-info-api',

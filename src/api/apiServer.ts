@@ -486,8 +486,8 @@ class FieldDayApiServer {
       
       for (const station of stations) {
         try {
-          // Get QSOs from this station since last sync
-          const response = await fetch(`https://${station.ip}:${station.port}/api/qsos?since=${lastSync}`, {
+          // Get QSOs from this station since last sync (using HTTP for local network)
+          const response = await fetch(`http://${station.ip}:${station.port}/api/qsos?since=${lastSync}`, {
             method: 'GET',
             headers: {
               'Accept': 'application/json'
@@ -564,7 +564,7 @@ class FieldDayApiServer {
 
     for (const port of portsToScan) {
       try {
-        const response = await fetch(`https://127.0.0.1:${port}/api/station-info`, {
+        const response = await fetch(`http://127.0.0.1:${port}/api/station-info`, {
           method: 'GET',
           headers: { 'Accept': 'application/json' }
         });

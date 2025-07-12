@@ -5,19 +5,28 @@ import fs from 'node:fs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
+// Configure SSL certificate handling BEFORE app is ready
+// Ignore SSL certificate errors for local mesh network discovery
+app.commandLine.appendSwitch('--ignore-certificate-errors');
+app.commandLine.appendSwitch('--ignore-ssl-errors');
+app.commandLine.appendSwitch('--ignore-certificate-errors-spki-list');
+app.commandLine.appendSwitch('--ignore-certificate-errors-ssl-spki-list');
+app.commandLine.appendSwitch('--disable-web-security');
+app.commandLine.appendSwitch('--allow-running-insecure-content');
+app.commandLine.appendSwitch('--disable-features=VizDisplayCompositor');
+
+console.log('🔧 Electron SSL certificate ignoring configured');
+
 // Scheme must be registered before the app is ready
 protocol.registerSchemesAsPrivileged([
   { scheme: 'app', privileges: { secure: true, standard: true } }
 ]);
 
-// Ignore SSL certificate errors for local mesh network discovery
-app.commandLine.appendSwitch('--ignore-certificate-errors');
-app.commandLine.appendSwitch('--ignore-ssl-errors');
-app.commandLine.appendSwitch('--ignore-certificate-errors-spki-list');
-app.commandLine.appendSwitch('--disable-web-security');
-
 // Handle certificate errors for mesh network discovery
 app.on('certificate-error', (event, webContents, url, error, certificate, callback) => {
+  console.log(`🔍 Certificate error for URL: ${url}`);
+  console.log(`🔍 Error: ${error}`);
+  
   // For local network IPs (192.168.x.x, 10.x.x.x, 172.16-31.x.x), ignore certificate errors
   const isLocalNetwork = /^https?:\/\/(192\.168\.|10\.|172\.(1[6-9]|2[0-9]|3[01])\.|127\.|localhost)/i.test(url);
   
@@ -28,8 +37,23 @@ app.on('certificate-error', (event, webContents, url, error, certificate, callba
     // Trust the certificate
     callback(true);
   } else {
+    console.log(`❌ Not ignoring SSL certificate error for external URL: ${url}`);
     // For external URLs, use default behavior
     callback(false);
+  }
+});
+
+// Handle client certificate selection for mesh network
+app.on('select-client-certificate', (event, webContents, url, list, callback) => {
+  console.log(`🔐 Client certificate selection for: ${url}`);
+  
+  // For local network, prevent certificate selection dialog
+  const isLocalNetwork = /^https?:\/\/(192\.168\.|10\.|172\.(1[6-9]|2[0-9]|3[01])\.|127\.|localhost)/i.test(url);
+  
+  if (isLocalNetwork) {
+    console.log(`🔓 Skipping client certificate selection for local network: ${url}`);
+    event.preventDefault();
+    callback({});
   }
 });
 
@@ -51,7 +75,9 @@ function createWindow() {
       preload: preloadPath,
       nodeIntegration: false,
       contextIsolation: true,
-      webSecurity: true
+      webSecurity: false, // Disable web security for local mesh network discovery
+      allowRunningInsecureContent: true,
+      experimentalFeatures: true
     }
   });
 
@@ -87,7 +113,7 @@ function createWindow() {
   // HMR for renderer base on electron-vite cli
   // Load the app
   if (process.env.NODE_ENV === 'development') {
-    mainWindow.loadURL('https://localhost:8080');
+    mainWindow.loadURL('http://localhost:8080');
     mainWindow.webContents.openDevTools();
   } else {
     // In production, load the built HTML file

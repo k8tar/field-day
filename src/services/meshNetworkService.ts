@@ -28,6 +28,7 @@ export interface MeshNode {
   lastSeen: number;
   version: string;
   capabilities: string[];
+  protocol?: 'http' | 'https'; // Which protocol worked for this node
 }
 
 export interface MeshMessage {
@@ -572,55 +573,76 @@ class MeshNetworkService {
 
   // Check if a mesh node exists at the given IP
   private async checkForMeshNode(ip: string): Promise<MeshNode | null> {
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 2000);
-      
-      // Try to connect to potential mesh node via the main app's API
-      const response = await fetch(`https://${ip}:${this.DISCOVERY_PORT}/api/mesh/discovery`, {
-        method: 'GET',
-        signal: controller.signal,
-        headers: {
-          'Accept': 'application/json',
-          'X-Mesh-Node-ID': this.nodeId
-        },
-        // Ignore SSL certificate errors for self-signed certificates in local mesh network
-        mode: 'cors'
-      });
-      
-      clearTimeout(timeoutId);
-      
-      if (response.ok) {
-        const nodeInfo = await response.json();
+    // Try both HTTPS and HTTP for maximum compatibility
+    const protocols = ['https', 'http'];
+    
+    for (const protocol of protocols) {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 3000);
         
-        // Validate this is actually a Field Day mesh node
-        if (nodeInfo.nodeId && 
-            nodeInfo.callsign && 
-            nodeInfo.designator && 
-            nodeInfo.software && 
-            nodeInfo.software.includes('Field Day')) {
+        console.log(`🔍 Trying ${protocol.toUpperCase()} for mesh discovery: ${ip}`);
+        
+        // Try to connect to potential mesh node via the main app's API
+        const response = await fetch(`${protocol}://${ip}:${this.DISCOVERY_PORT}/api/mesh/discovery`, {
+          method: 'GET',
+          signal: controller.signal,
+          headers: {
+            'Accept': 'application/json',
+            'X-Mesh-Node-ID': this.nodeId
+          },
+          mode: 'cors'
+        });
+        
+        clearTimeout(timeoutId);
+        
+        if (response.ok) {
+          const nodeInfo = await response.json();
           
-          console.log(`✅ Found Field Day mesh node at ${ip}:${this.DISCOVERY_PORT}:`, nodeInfo);
-          
-          return {
-            id: nodeInfo.nodeId,
-            callsign: nodeInfo.callsign,
-            designator: nodeInfo.designator,
-            ip: ip,
-            port: this.DISCOVERY_PORT,
-            qsoCount: nodeInfo.qsoCount || 0,
-            score: nodeInfo.score || 0,
-            online: true,
-            lastSeen: Date.now(),
-            version: nodeInfo.version || '2.0.0',
-            capabilities: nodeInfo.capabilities || []
-          };
+          // Validate this is actually a Field Day mesh node
+          if (nodeInfo.nodeId && 
+              nodeInfo.callsign && 
+              nodeInfo.designator && 
+              nodeInfo.software && 
+              nodeInfo.software.includes('Field Day')) {
+            
+            console.log(`✅ Found Field Day mesh node via ${protocol.toUpperCase()} at ${ip}:${this.DISCOVERY_PORT}:`, nodeInfo);
+            
+            return {
+              id: nodeInfo.nodeId,
+              callsign: nodeInfo.callsign,
+              designator: nodeInfo.designator,
+              ip: ip,
+              port: this.DISCOVERY_PORT,
+              qsoCount: nodeInfo.qsoCount || 0,
+              score: nodeInfo.score || 0,
+              online: true,
+              lastSeen: Date.now(),
+              version: nodeInfo.version || '2.0.0',
+              capabilities: nodeInfo.capabilities || [],
+              protocol: protocol as 'http' | 'https' // Remember which protocol worked
+            };
+          } else {
+            console.log(`❌ Response from ${ip}:${this.DISCOVERY_PORT} via ${protocol.toUpperCase()} is not a Field Day mesh node:`, nodeInfo);
+          }
         } else {
-          console.log(`❌ Response from ${ip}:${this.DISCOVERY_PORT} is not a Field Day mesh node:`, nodeInfo);
+          console.log(`⚠️ ${protocol.toUpperCase()} ${ip}: HTTP ${response.status}`);
         }
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        const errorName = error instanceof Error ? error.name : 'UnknownError';
+        
+        if (errorName === 'AbortError') {
+          console.log(`⏱️ ${protocol.toUpperCase()} ${ip}: Timeout`);
+        } else if (errorMessage.includes('certificate') || errorMessage.includes('SSL') || errorMessage.includes('TLS')) {
+          console.log(`🔒 ${protocol.toUpperCase()} ${ip}: SSL certificate error - ${errorMessage}`);
+        } else {
+          console.log(`📭 ${protocol.toUpperCase()} ${ip}: ${errorMessage}`);
+        }
+        
+        // Continue to next protocol
+        continue;
       }
-    } catch (error) {
-      // Silently fail - this is expected for most IPs
     }
     
     return null;
@@ -661,8 +683,9 @@ class MeshNetworkService {
     try {
       console.log(`🤝 Connecting to mesh node: ${node.callsign} at ${node.ip}:${node.port}`);
       
-      // Test connection to the node's API endpoint
-      const testResponse = await fetch(`https://${node.ip}:${node.port}/api/station-info`, {
+      // Test connection to the node's API endpoint using the protocol that worked for discovery
+      const protocol = node.protocol || 'http'; // Default to HTTP if protocol not specified
+      const testResponse = await fetch(`${protocol}://${node.ip}:${node.port}/api/station-info`, {
         method: 'GET',
         headers: { 'Accept': 'application/json' }
       });
@@ -799,8 +822,9 @@ class MeshNetworkService {
       const localQsos = await fileStorage.getQsoData();
       console.log(`📊 Local QSOs: ${localQsos.length}`);
       
-      // Request QSO data from the remote node
-      const response = await fetch(`https://${node.ip}:${node.port}/api/qsos`, {
+      // Request QSO data from the remote node using the protocol that worked for discovery
+      const protocol = node.protocol || 'http'; // Default to HTTP if protocol not specified
+      const response = await fetch(`${protocol}://${node.ip}:${node.port}/api/qsos`, {
         method: 'GET',
         headers: {
           'Accept': 'application/json',
