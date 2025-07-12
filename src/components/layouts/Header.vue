@@ -213,13 +213,25 @@ async function checkFirstTimeSetup() {
     const qsos = await fileStorage.getQsoData();
     const operators = await fileStorage.getOperators();
     
-    // Check if we have any configuration or data
-    const hasConfig = config.callsign !== 'K8TAR' || 
-                     config.designator !== 'PHONE 1' || 
-                     operators.length > 0;
+    console.log('Header: Checking first-time setup:', {
+      config,
+      operators,
+      qsosLength: qsos.length
+    });
+    
+    // Check if we have meaningful configuration (not just defaults)
+    const hasActualConfig = (config.stationClass && config.stationClass !== '') || 
+                           (config.stationSection && config.stationSection !== '') ||
+                           operators.length > 0;
     const hasQsos = qsos.length > 0;
     
-    if (!hasConfig && !hasQsos) {
+    console.log('Header: Setup check results:', {
+      hasActualConfig,
+      hasQsos,
+      willShowFirstTime: !hasActualConfig && !hasQsos
+    });
+    
+    if (!hasActualConfig && !hasQsos) {
       isFirstTime.value = true;
       configOpen.value = true;
     }
