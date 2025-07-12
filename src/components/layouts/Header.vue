@@ -45,7 +45,10 @@
         <button class="docs-button" @click="openDocsModal" title="Documentation">
           <span class="material-icons">help</span>
         </button>
-        <button class="network-button" @click="openNetworkModal" :class="{ 'connected': networkConnected }">
+        <button class="messages-button" @click="openMessagesModal" title="Messages">
+          <span class="material-icons">message</span>
+        </button>
+        <button class="network-button" @click="openNetworkModal" :class="{ 'connected': networkConnected }" title="Network Status">
           <span class="material-icons">{{ networkConnected ? 'wifi' : 'wifi_off' }}</span>
           <span v-if="connectedStationCount > 0" class="station-count">{{ connectedStationCount }}</span>
         </button>
@@ -75,6 +78,9 @@
     
     <!-- Documentation Modal -->
     <DocsModal :is-open="docsModalOpen" @close="handleDocsClose" />
+    
+    <!-- Messages Modal -->
+    <MessagesModal :is-open="messagesModalOpen" @close="handleMessagesClose" />
   </div>
 </template>
 
@@ -85,8 +91,9 @@ import { isDark, toggleTheme } from '@/store/theme';
 import ConfigModal from '@/components/ConfigModal.vue';
 import NetworkModal from '@/components/NetworkModal.vue';
 import DocsModal from '@/components/DocsModal.vue';
+import MessagesModal from '@/components/MessagesModal.vue';
 import { fileStorage } from '@/services/fileStorage';
-import { backendApi } from '@/services/backendApiService';
+import { backendApi, type BackendStation } from '@/services/backendApiService';
 
 // Station designator
 const stationDesignator = ref('');
@@ -182,10 +189,25 @@ function handleConfigClose() {
 // Network modal and status
 const networkModalOpen = ref(false);
 const networkConnected = computed(() => backendApi.connected.value);
+const discoveredStations = ref<BackendStation[]>([]);
 const connectedStationCount = computed(() => {
-  // For now, return 0 since we don't have station discovery in the new backend yet
-  return 0;
+  return discoveredStations.value.filter(station => !station.is_self).length;
 });
+
+// Load discovered stations
+async function loadDiscoveredStations() {
+  if (backendApi.connected.value) {
+    try {
+      const stations = await backendApi.getDiscoveredStations();
+      discoveredStations.value = stations;
+    } catch (error) {
+      console.error('Error loading discovered stations:', error);
+      discoveredStations.value = [];
+    }
+  } else {
+    discoveredStations.value = [];
+  }
+}
 
 function openNetworkModal() {
   networkModalOpen.value = true;
@@ -204,6 +226,17 @@ function openDocsModal() {
 
 function handleDocsClose() {
   docsModalOpen.value = false;
+}
+
+// Messages modal
+const messagesModalOpen = ref(false);
+
+function openMessagesModal() {
+  messagesModalOpen.value = true;
+}
+
+function handleMessagesClose() {
+  messagesModalOpen.value = false;
 }
 
 // Check for first-time setup using file storage
@@ -255,6 +288,7 @@ onMounted(async () => {
   // Load operators and station info
   await loadOperators();
   await loadStationInfo();
+  await loadDiscoveredStations();
   
   // Check for first-time setup
   await checkFirstTimeSetup();
@@ -264,13 +298,27 @@ onMounted(async () => {
   
   // Listen for station info updates
   window.addEventListener('stationInfoUpdate', loadStationInfo);
+  
+  // Set up periodic station discovery refresh
+  const stationRefreshInterval = setInterval(async () => {
+    await loadDiscoveredStations();
+  }, 10000); // Refresh every 10 seconds
+  
+  // Clean up interval on unmount
+  onBeforeUnmount(() => {
+    clearInterval(stationRefreshInterval);
+    document.removeEventListener('keydown', handleKeydown);
+    window.removeEventListener('stationInfoUpdate', loadStationInfo);
+  });
 });
 
-onBeforeUnmount(() => {
-  // Remove keyboard event listener
-  document.removeEventListener('keydown', handleKeydown);
-  // Remove station info update listener
-  window.removeEventListener('stationInfoUpdate', loadStationInfo);
+// Watch for backend connection changes
+watch(() => backendApi.connected.value, async (connected) => {
+  if (connected) {
+    await loadDiscoveredStations();
+  } else {
+    discoveredStations.value = [];
+  }
 });
 </script>
 
@@ -379,7 +427,8 @@ onBeforeUnmount(() => {
 
 .network-button,
 .config-button,
-.docs-button {
+.docs-button,
+.messages-button {
   // Uses global btn-icon styles
   @extend .btn-icon;
   position: relative;
@@ -417,6 +466,15 @@ onBeforeUnmount(() => {
 }
 
 .docs-button {
+  color: var(--primary-color);
+  
+  &:hover {
+    color: var(--primary-dark);
+    background-color: rgba(var(--primary-color-rgb), 0.1);
+  }
+}
+
+.messages-button {
   color: var(--primary-color);
   
   &:hover {

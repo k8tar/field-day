@@ -144,32 +144,73 @@ impl QsoManager {
             station_id: station.id.clone(),
             qsos: self.qsos.values().cloned().collect(),
             deleted_qso_ids: self.deleted_qso_ids.clone(),
-            updated_qsos,
+            updated_qsos: updated_qsos.clone(),
             last_sync: self.last_sync,
         };
+        
+        info!("Attempting to sync with station {} at {}:{} - sending {} QSOs, {} deleted, {} updated", 
+              station.call_sign, station.ip_address, station.port,
+              self.qsos.len(), self.deleted_qso_ids.len(), updated_qsos.len());
+        
+        let mut last_error = None;
         
         // Try both HTTP and HTTPS
         for protocol in &["http", "https"] {
             let url = format!("{}://{}:{}/api/qso/sync", protocol, station.ip_address, station.port);
+            info!("Trying sync URL: {}", url);
             
             match client.post(&url).json(&sync_request).send().await {
                 Ok(response) if response.status().is_success() => {
-                    if let Ok(sync_response) = response.json::<QsoSyncResponse>().await {
-                        debug!("Received {} QSOs from {}", sync_response.qsos.len(), station.call_sign);
-                        // TODO: Process received QSOs and merge them
-                        return Ok(());
+                    info!("Received successful response from {} (status: {})", station.call_sign, response.status());
+                    match response.json::<crate::types::ApiResponse<QsoSyncResponse>>().await {
+                        Ok(api_response) => {
+                            if api_response.success {
+                                if let Some(sync_response) = api_response.data {
+                                    info!("Successfully synced with {}: received {} QSOs, {} deleted, {} updated", 
+                                          station.call_sign, sync_response.qsos.len(), 
+                                          sync_response.deleted_qso_ids.len(), sync_response.updated_qsos.len());
+                                    // TODO: Process received QSOs and merge them
+                                    return Ok(());
+                                } else {
+                                    warn!("Sync response from {} was successful but contained no data", station.call_sign);
+                                    last_error = Some("No data in response".to_string());
+                                }
+                            } else {
+                                let error_msg = api_response.error.unwrap_or_else(|| "Unknown API error".to_string());
+                                warn!("Sync response from {} indicated failure: {}", station.call_sign, error_msg);
+                                last_error = Some(format!("API error: {}", error_msg));
+                            }
+                        }
+                        Err(e) => {
+                            warn!("Sync response from {} could not be parsed as JSON: {}", station.call_sign, e);
+                            last_error = Some(format!("JSON parse error: {}", e));
+                        }
                     }
                 }
                 Ok(response) => {
-                    debug!("Sync request to {} failed with status: {}", station.call_sign, response.status());
+                    let status = response.status();
+                    match response.text().await {
+                        Ok(body) => {
+                            warn!("Sync request to {} at {} failed with status {}: {}", 
+                                  station.call_sign, url, status, body);
+                            last_error = Some(format!("HTTP {}: {}", status, body));
+                        }
+                        Err(e) => {
+                            warn!("Sync request to {} at {} failed with status {} and couldn't read body: {}", 
+                                  station.call_sign, url, status, e);
+                            last_error = Some(format!("HTTP {} (body read failed)", status));
+                        }
+                    }
                 }
                 Err(e) => {
-                    debug!("Sync request to {} failed: {}", station.call_sign, e);
+                    warn!("Sync request to {} at {} failed with connection error: {}", station.call_sign, url, e);
+                    last_error = Some(format!("Connection error: {}", e));
                 }
             }
         }
         
-        Err(anyhow::anyhow!("Could not sync with station {}", station.call_sign))
+        let error_msg = last_error.unwrap_or_else(|| "Unknown error".to_string());
+        Err(anyhow::anyhow!("Could not sync with station {}: {}", station.call_sign, error_msg))
     }
     
     pub async fn handle_sync_request(&mut self, request: QsoSyncRequest) -> Result<QsoSyncResponse> {

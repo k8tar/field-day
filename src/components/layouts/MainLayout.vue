@@ -27,8 +27,7 @@
           :mode="modeVal"
           :qsos="qsos"
         />
-        <!-- Messages component temporarily disabled while refactoring networking -->
-        <!--        <Messages class="messages" />-->
+        <Messages class="messages" />
       </div>
       <div class="center-column">
         <!-- Placeholder for future component -->
