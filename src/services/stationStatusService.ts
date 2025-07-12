@@ -1,0 +1,221 @@
+
+export interface StationStatus {
+  id: string;
+  callSign: string;
+  ipAddress: string;
+  port: number;
+  lastSeen: number; // Unix timestamp
+  firstSeen: number; // Unix timestamp
+  requestCount: number; // Number of discovery requests since last seen
+  isOnline: boolean;
+  status: 'online' | 'warning' | 'offline'; // green, yellow, red
+}
+
+class StationStatusService {
+  private readonly STORAGE_KEY = 'fieldday-station-status';
+  private readonly MAX_WARNING_REQUESTS = 3; // Yellow after 3 missed requests
+  private readonly MAX_OFFLINE_REQUESTS = 10; // Red after 10 missed requests
+
+  /**
+   * Get all stored station statuses
+   */
+  getStationStatuses(): Map<string, StationStatus> {
+    try {
+      const stored = localStorage.getItem(this.STORAGE_KEY);
+      if (!stored) return new Map();
+      
+      const data = JSON.parse(stored);
+      return new Map(Object.entries(data));
+    } catch (error) {
+      console.error('Failed to load station statuses:', error);
+      return new Map();
+    }
+  }
+
+  /**
+   * Save station statuses to localStorage
+   */
+  private saveStationStatuses(statuses: Map<string, StationStatus>): void {
+    try {
+      const data = Object.fromEntries(statuses);
+      localStorage.setItem(this.STORAGE_KEY, JSON.stringify(data));
+    } catch (error) {
+      console.error('Failed to save station statuses:', error);
+    }
+  }
+
+  /**
+   * Update station status when seen in discovery
+   */
+  updateStationSeen(station: {
+    id: string;
+    call_sign: string;
+    ip_address: string;
+    port: number;
+  }): void {
+    const statuses = this.getStationStatuses();
+    const now = Date.now();
+    
+    let stationStatus = statuses.get(station.id);
+    
+    if (stationStatus) {
+      // Update existing station
+      stationStatus.lastSeen = now;
+      stationStatus.requestCount = 0; // Reset request count since we've seen it
+      stationStatus.isOnline = true;
+      stationStatus.status = 'online';
+      
+      // Update call sign and address if changed
+      stationStatus.callSign = station.call_sign;
+      stationStatus.ipAddress = station.ip_address;
+      stationStatus.port = station.port;
+    } else {
+      // New station
+      stationStatus = {
+        id: station.id,
+        callSign: station.call_sign,
+        ipAddress: station.ip_address,
+        port: station.port,
+        lastSeen: now,
+        firstSeen: now,
+        requestCount: 0,
+        isOnline: true,
+        status: 'online'
+      };
+    }
+    
+    statuses.set(station.id, stationStatus);
+    this.saveStationStatuses(statuses);
+  }
+
+  /**
+   * Update request count for stations not seen in current discovery
+   */
+  updateMissedStations(seenStationIds: string[]): void {
+    const statuses = this.getStationStatuses();
+    let hasChanges = false;
+    
+    for (const [stationId, station] of statuses) {
+      if (!seenStationIds.includes(stationId)) {
+        station.requestCount++;
+        hasChanges = true;
+        
+        // Update status based on request count
+        if (station.requestCount >= this.MAX_OFFLINE_REQUESTS) {
+          station.status = 'offline';
+          station.isOnline = false;
+        } else if (station.requestCount >= this.MAX_WARNING_REQUESTS) {
+          station.status = 'warning';
+        }
+      }
+    }
+    
+    if (hasChanges) {
+      this.saveStationStatuses(statuses);
+    }
+  }
+
+  /**
+   * Get status for a specific station
+   */
+  getStationStatus(stationId: string): StationStatus | null {
+    const statuses = this.getStationStatuses();
+    return statuses.get(stationId) || null;
+  }
+
+  /**
+   * Get all stations with enhanced status information
+   */
+  getAllStationsWithStatus(): StationStatus[] {
+    const statuses = this.getStationStatuses();
+    return Array.from(statuses.values());
+  }
+
+  /**
+   * Remove old offline stations (older than 24 hours and offline)
+   */
+  cleanupOldStations(): void {
+    const statuses = this.getStationStatuses();
+    const now = Date.now();
+    const TWENTY_FOUR_HOURS = 24 * 60 * 60 * 1000;
+    let hasChanges = false;
+    
+    for (const [stationId, station] of statuses) {
+      if (station.status === 'offline' && (now - station.lastSeen) > TWENTY_FOUR_HOURS) {
+        statuses.delete(stationId);
+        hasChanges = true;
+      }
+    }
+    
+    if (hasChanges) {
+      this.saveStationStatuses(statuses);
+    }
+  }
+
+  /**
+   * Get status indicator CSS class
+   */
+  getStatusClass(status: 'online' | 'warning' | 'offline'): string {
+    switch (status) {
+      case 'online': return 'status-online';
+      case 'warning': return 'status-warning';
+      case 'offline': return 'status-offline';
+      default: return 'status-unknown';
+    }
+  }
+
+  /**
+   * Get status color
+   */
+  getStatusColor(status: 'online' | 'warning' | 'offline'): string {
+    switch (status) {
+      case 'online': return '#22c55e'; // Green
+      case 'warning': return '#f59e0b'; // Yellow/Orange
+      case 'offline': return '#ef4444'; // Red
+      default: return '#9ca3af'; // Gray
+    }
+  }
+
+  /**
+   * Get human-readable status description
+   */
+  getStatusDescription(station: StationStatus): string {
+    const timeSinceLastSeen = Date.now() - station.lastSeen;
+    const minutes = Math.floor(timeSinceLastSeen / (1000 * 60));
+    const hours = Math.floor(minutes / 60);
+    
+    switch (station.status) {
+      case 'online':
+        return 'Online';
+      case 'warning':
+        return `Warning (${station.requestCount} missed)`;
+      case 'offline':
+        if (hours > 0) {
+          return `Offline (${hours}h ago)`;
+        } else {
+          return `Offline (${minutes}m ago)`;
+        }
+      default:
+        return 'Unknown';
+    }
+  }
+
+  /**
+   * Format last seen time
+   */
+  formatLastSeen(timestamp: number): string {
+    const time = new Date(timestamp);
+    const now = Date.now();
+    const seconds = Math.floor((now - timestamp) / 1000);
+    
+    if (seconds < 60) return `${seconds}s ago`;
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return `${minutes}m ago`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours}h ago`;
+    const days = Math.floor(hours / 24);
+    return `${days}d ago`;
+  }
+}
+
+export const stationStatusService = new StationStatusService();

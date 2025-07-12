@@ -104,9 +104,9 @@
             </div>
           </div>
           
-          <div v-if="discoveredStations.length > 0" class="stations-list">
+          <div v-if="stationsWithStatus.length > 0" class="stations-list">
             <div 
-              v-for="station in discoveredStations" 
+              v-for="station in stationsWithStatus" 
               :key="station.id" 
               class="station-card mesh-node"
             >
@@ -114,8 +114,9 @@
                 <div class="station-header">
                   <span class="station-callsign">{{ station.call_sign }}</span>
                   <span class="station-designator">{{ station.class }}</span>
-                  <span class="node-status" :class="{ 'online': !station.is_self }">
-                    {{ !station.is_self ? '🟢' : '🔴' }}
+                  <span class="node-status" :class="stationStatusService.getStatusClass(station.status.status)">
+                    <span class="status-indicator" :style="{ backgroundColor: stationStatusService.getStatusColor(station.status.status) }"></span>
+                    {{ station.is_self ? 'Self' : stationStatusService.getStatusDescription(station.status) }}
                   </span>
                 </div>
                 <div class="station-details">
@@ -124,9 +125,12 @@
                 </div>
                 <div class="node-capabilities">
                   <span class="capability-tag">Field Day</span>
+                  <span v-if="station.status.requestCount > 0" class="capability-tag warning">
+                    {{ station.status.requestCount }} missed
+                  </span>
                 </div>
                 <div class="station-status">
-                  <span class="last-seen">{{ formatLastSeen(station.last_seen) }}</span>
+                  <span class="last-seen">{{ stationStatusService.formatLastSeen(station.status.lastSeen) }}</span>
                 </div>
               </div>
             </div>
@@ -160,15 +164,15 @@
         </div>
 
         <!-- Discovered Stations (Auto mode) -->
-        <div v-if="networkMode === 'auto' && discoveredStations.length > 0" class="discovered-stations">
+        <div v-if="networkMode === 'auto' && stationsWithStatus.length > 0" class="discovered-stations">
           <h3>
             <span class="material-icons">search</span>
-            Discovered Stations ({{ discoveredStations.length }})
+            Discovered Stations ({{ stationsWithStatus.length }})
           </h3>
           
           <div class="stations-list">
             <div 
-              v-for="station in discoveredStations" 
+              v-for="station in stationsWithStatus" 
               :key="station.id" 
               class="station-card"
             >
@@ -176,17 +180,22 @@
                 <div class="station-header">
                   <span class="station-callsign">{{ station.call_sign }}</span>
                   <span class="station-designator">{{ station.class }}</span>
+                  <span class="node-status" :class="stationStatusService.getStatusClass(station.status.status)">
+                    <span class="status-indicator" :style="{ backgroundColor: stationStatusService.getStatusColor(station.status.status) }"></span>
+                    {{ stationStatusService.getStatusDescription(station.status) }}
+                  </span>
                 </div>
                 <div class="station-details">
                   <span class="station-ip">{{ station.ip_address }}:{{ station.port }}</span>
                 </div>
                 <div class="station-status">
-                  <span class="last-seen">{{ formatLastSeen(station.last_seen) }}</span>
+                  <span class="last-seen">{{ stationStatusService.formatLastSeen(station.status.lastSeen) }}</span>
                 </div>
               </div>
               <button 
                 class="connect-button" 
                 @click="connectToStation(station)"
+                :disabled="station.status.status === 'offline'"
               >
                 Connect
               </button>
@@ -195,7 +204,7 @@
         </div>
 
         <!-- No Stations Found -->
-        <div v-if="(networkMode === 'auto') && discoveredStations.length === 0 && !isScanning" class="no-stations">
+        <div v-if="(networkMode === 'auto') && stationsWithStatus.length === 0 && !isScanning" class="no-stations">
           <p><strong>No stations found</strong></p>
           <p>Make sure other Field Day Logger instances are running on the network.</p>
           <p>Try using <strong>Mesh Network</strong> mode for better discovery.</p>
@@ -255,6 +264,7 @@
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import { backendApi, type BackendStation } from '@/services/backendApiService';
 import { fileStorage } from '@/services/fileStorage';
+import { stationStatusService, type StationStatus } from '@/services/stationStatusService';
 
 const props = defineProps<{
   isOpen: boolean;
@@ -279,6 +289,30 @@ const localStationInfo = ref({
 // Discovered stations from backend
 const discoveredStations = ref<BackendStation[]>([]);
 
+// Enhanced station status tracking
+const stationStatuses = ref<Map<string, StationStatus>>(new Map());
+
+// Combined view of stations with status
+const stationsWithStatus = computed(() => {
+  return discoveredStations.value.map(station => {
+    const status = stationStatuses.value.get(station.id);
+    return {
+      ...station,
+      status: status || {
+        id: station.id,
+        callSign: station.call_sign,
+        ipAddress: station.ip_address,
+        port: station.port,
+        lastSeen: Date.now(),
+        firstSeen: Date.now(),
+        requestCount: 0,
+        isOnline: true,
+        status: 'online' as const
+      }
+    };
+  });
+});
+
 // Status tracking
 const isRefreshing = ref(false);
 const isSyncing = ref(false);
@@ -295,9 +329,9 @@ const isElectron = computed(() => {
 
 // Mesh status
 const meshStatus = computed(() => ({
-  meshHealth: discoveredStations.value.length > 0 ? 'good' : 'warning',
-  discoveredNodes: discoveredStations.value.length,
-  connectedNodes: discoveredStations.value.filter(s => !s.is_self).length,
+  meshHealth: stationsWithStatus.value.length > 0 ? 'good' : 'warning',
+  discoveredNodes: stationsWithStatus.value.length,
+  connectedNodes: stationsWithStatus.value.filter(s => !s.is_self && s.status.status === 'online').length,
 }));
 
 // Computed properties
@@ -534,12 +568,40 @@ async function scanForStations() {
     const stations = await backendApi.getDiscoveredStations();
     discoveredStations.value = stations;
     
+    // Update station statuses
+    updateStationStatuses(stations);
+    
     console.log(`🔍 Scanned for stations: ${stations.length} found`);
   } catch (error) {
     console.error('Failed to scan for stations:', error);
   } finally {
     isScanning.value = false;
   }
+}
+
+/**
+ * Update station statuses based on discovered stations
+ */
+function updateStationStatuses(stations: BackendStation[]) {
+  // Load current statuses
+  stationStatuses.value = stationStatusService.getStationStatuses();
+  
+  // Get IDs of stations seen in this discovery
+  const seenStationIds = stations.map(s => s.id);
+  
+  // Update statuses for seen stations
+  stations.forEach(station => {
+    stationStatusService.updateStationSeen(station);
+  });
+  
+  // Update request counts for missed stations
+  stationStatusService.updateMissedStations(seenStationIds);
+  
+  // Reload statuses after updates
+  stationStatuses.value = stationStatusService.getStationStatuses();
+  
+  // Clean up old offline stations
+  stationStatusService.cleanupOldStations();
 }
 
 function connectToStation(station: BackendStation) {
@@ -617,9 +679,13 @@ async function refreshMeshDiscovery() {
     const stations = await backendApi.getDiscoveredStations();
     discoveredStations.value = stations;
     
+    // Update station statuses
+    updateStationStatuses(stations);
+    
     console.log(`📡 Refreshed mesh discovery: ${stations.length} stations found`);
     stations.forEach((station, index) => {
-      console.log(`  Station ${index + 1}: ${station.call_sign} (${station.class}) at ${station.ip_address}:${station.port} - Self: ${station.is_self}`);
+      const statusInfo = stationStatuses.value.get(station.id);
+      console.log(`  Station ${index + 1}: ${station.call_sign} (${station.class}) at ${station.ip_address}:${station.port} - Self: ${station.is_self}, Status: ${statusInfo?.status || 'unknown'}`);
     });
   } catch (error) {
     console.error('Failed to refresh mesh discovery:', error);
@@ -662,19 +728,12 @@ function getNetworkModeButtonText(): string {
   }
 }
 
-function formatLastSeen(timestamp: string): string {
-  const time = new Date(timestamp).getTime();
-  const seconds = Math.floor((Date.now() - time) / 1000);
-  if (seconds < 60) return `${seconds}s ago`;
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  return `${hours}h ago`;
-}
-
 // Load initial data on mount
 onMounted(async () => {
   await refreshStationInfo();
+  
+  // Load station statuses from localStorage
+  stationStatuses.value = stationStatusService.getStationStatuses();
   
   // Listen for station info updates from config modal
   window.addEventListener('stationInfoUpdate', refreshStationInfo);
@@ -685,6 +744,10 @@ onMounted(async () => {
       console.log('🔍 Fetching discovered stations on mount...');
       const stations = await backendApi.getDiscoveredStations();
       discoveredStations.value = stations;
+      
+      // Update station statuses
+      updateStationStatuses(stations);
+      
       console.log(`📡 Found ${stations.length} discovered stations on mount`);
     } catch (error) {
       console.error('Failed to fetch discovered stations on mount:', error);
@@ -705,6 +768,9 @@ onMounted(async () => {
           console.log(`📡 Station count changed: ${discoveredStations.value.length} -> ${stations.length}`);
         }
         discoveredStations.value = stations;
+        
+        // Update station statuses
+        updateStationStatuses(stations);
       } catch (error) {
         console.error('Failed to refresh discovered stations:', error);
       }
@@ -753,6 +819,10 @@ watch(() => props.isOpen, async (isOpen) => {
       console.log('📱 Network modal opened - fetching discovered stations...');
       const stations = await backendApi.getDiscoveredStations();
       discoveredStations.value = stations;
+      
+      // Update station statuses
+      updateStationStatuses(stations);
+      
       console.log(`📡 Modal opened: ${stations.length} stations loaded from backend`);
       
       // Also trigger discovery if in mesh mode to ensure fresh data
@@ -765,7 +835,11 @@ watch(() => props.isOpen, async (isOpen) => {
           try {
             const updatedStations = await backendApi.getDiscoveredStations();
             discoveredStations.value = updatedStations;
-            console.log(`� After discovery: ${updatedStations.length} stations found`);
+            
+            // Update station statuses again
+            updateStationStatuses(updatedStations);
+            
+            console.log(`After discovery: ${updatedStations.length} stations found`);
           } catch (error) {
             console.error('Failed to get updated stations after discovery:', error);
           }
@@ -1134,6 +1208,47 @@ watch(() => props.isOpen, async (isOpen) => {
   border-radius: 12px;
   font-size: 0.7rem;
   font-weight: 500;
+
+  &.warning {
+    background-color: #f59e0b;
+  }
+}
+
+.node-status {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.8rem;
+  font-weight: 500;
+  padding: 0.15rem 0.4rem;
+  border-radius: 3px;
+
+  .status-indicator {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+  }
+
+  &.status-online {
+    background-color: rgba(34, 197, 94, 0.1);
+    color: #15803d;
+  }
+
+  &.status-warning {
+    background-color: rgba(245, 158, 11, 0.1);
+    color: #92400e;
+  }
+
+  &.status-offline {
+    background-color: rgba(239, 68, 68, 0.1);
+    color: #dc2626;
+  }
+
+  &.status-unknown {
+    background-color: rgba(156, 163, 175, 0.1);
+    color: #6b7280;
+  }
 }
 
 .mesh-actions {
