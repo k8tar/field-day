@@ -1,7 +1,6 @@
 import { ref, reactive, nextTick } from 'vue';
 import { fileStorage } from './fileStorage';
 import { startPeriodicQsoRefresh, stopPeriodicQsoRefresh } from '@/store/qso';
-import { meshNetworkService, type MeshNode } from './meshNetworkService';
 
 export interface NetworkStation {
   id: string;
@@ -381,434 +380,57 @@ class NetworkService {
     }
   }
 
-  // Start hosting a network
+  // Legacy host network method - no longer used (mesh only)
   async startHost(): Promise<boolean> {
-    const port = 8080; // All instances use port 8080
-    
-    // In Electron, skip server-based networking and run in standalone mode
-    if (this.isElectron()) {
-      this.hostPort = port;
-      this.isHost = false; // Don't act as a network host in Electron
-      this.status.isConnected = false;
-      this.status.networkId = 'ELECTRON-STANDALONE';
-      return true;
-    }
-    
-    try {
-      
-      // Register this instance as a host
-      const response = await fetch('/api/network/host', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        }
-      });
-      
-      if (!response.ok) {
-        throw new Error(`Failed to register as host: ${response.status}`);
-      }
-      
-      this.hostPort = port;
-      this.isHost = true;
-      this.connectedStations.splice(0); // Clear any existing connections
-      
-      // Mark as connected
-      this.status.isConnected = true;
-      this.status.networkId = `FD-HOST-${Date.now()}`;
-      this.status.lastSync = Date.now();
-      
-      // Save network settings
-      this.networkSettings.isHost = true;
-      this.networkSettings.hostPort = port;
-      this.networkSettings.autoReconnect = true;
-      this.saveNetworkSettings().catch(error => {
-        console.error('Failed to save network settings:', error);
-      });
-      
-      // Cancel any pending reconnects
-      this.cancelReconnect();
-      
-      // Emit network connected event
-      this.emit('network:connected', { type: 'host', port });
-      
-      // Start periodic sync and station monitoring
-      this.startPeriodicSync();
-      this.startStationMonitoring();
-      
-      // Start periodic QSO refresh to sync data from network
-      startPeriodicQsoRefresh();
-      
-      return true;
-    } catch (error) {
-      console.error('Failed to start host:', error);
-      this.emit('network:error', { message: 'Failed to start host', error });
-      return false;
-    }
+    console.log('⚠️ [NetworkService] startHost() is deprecated - use mesh networking instead');
+    return false;
   }
 
-  // Start monitoring connected stations (for hosts)
+  // Legacy station monitoring method - no longer used (mesh only)
   private startStationMonitoring(): void {
-    if (!this.isHost) return;
-    
-    // Poll for connected stations every 5 seconds
-    setInterval(async () => {
-      if (this.isHost && this.status.isConnected) {
-        try {
-          // Get our local QSO count first
-          const localQsoData = await fileStorage.getQsoData();
-          const localQsoCount = localQsoData.length;
-          
-          const response = await fetch('/api/network/stations');
-          if (response.ok) {
-            const data = await response.json();
-            
-            // Update connected stations with fresh data from server
-            this.connectedStations.splice(0, this.connectedStations.length, ...data.connectedStations);
-            
-            // Also update QSO counts by fetching from each connected station
-            for (const station of this.connectedStations) {
-              try {
-                const qsoResponse = await this.fetchWithProtocolFallback(`https://${station.ip}:${station.port}/api/station-info`);
-                if (qsoResponse.ok) {
-                  const stationInfo = await qsoResponse.json();
-                  const remoteQsoCount = stationInfo.qsoCount || 0;
-                  
-                  // Check if QSO counts differ and trigger sync if needed
-                  if (localQsoCount !== remoteQsoCount) {
-                    
-                    if (remoteQsoCount > localQsoCount) {
-                      
-                      // Fetch QSOs directly from the remote client
-                      try {
-                        const clientQsoResponse = await this.fetchWithProtocolFallback(`https://${station.ip}:${station.port}/api/qsos`);
-                        if (clientQsoResponse.ok) {
-                          const clientQsoData = await clientQsoResponse.json();
-                          const clientQsos = clientQsoData.qsos || [];
-                          
-                          
-                          // Merge client QSOs with local QSOs
-                          const { qsos } = await import('@/store/qso');
-                          const currentQsos = [...qsos.value];
-                          
-                          // Create a map of existing QSOs by ID for quick lookup
-                          const existingQsoMap = new Map();
-                          currentQsos.forEach(qso => {
-                            if (qso.id) {
-                              existingQsoMap.set(qso.id, qso);
-                            }
-                          });
-                          
-                          // Add client QSOs that don't exist locally
-                          let newQsosAdded = 0;
-                          clientQsos.forEach((clientQso: any) => {
-                            if (clientQso.id && !existingQsoMap.has(clientQso.id)) {
-                              currentQsos.push(clientQso);
-                              newQsosAdded++;
-                            }
-                          });
-                          
-                          if (newQsosAdded > 0) {
-                            qsos.value = currentQsos;
-                            
-                            // Save to local file storage
-                            const { fileStorage } = await import('@/services/fileStorage');
-                            await fileStorage.saveQsoData(currentQsos);
-                          }
-                        }
-                      } catch (clientQsoError) {
-                      }
-                    } else if (localQsoCount > remoteQsoCount) {
-                      // The client will pick this up via its own heartbeat cycle
-                    }
-                  } else {
-                  }
-                  
-                  station.qsoCount = remoteQsoCount;
-                  station.score = stationInfo.score || 0;
-                  station.lastSeen = Date.now();
-                  station.online = true;
-                } else {
-                }
-              } catch (error) {
-                station.online = false;
-              }
-            }
-            
-            // Force Vue reactivity update
-            await nextTick();
-            this.triggerStationUpdate();
-            
-            this.connectedStations.forEach(station => {
-            });
-            
-            // Trigger Vue reactivity by notifying that stations have been updated
-          }
-        } catch (error) {
-        }
-      }
-    }, 5000);
+    console.log('⚠️ [NetworkService] startStationMonitoring() is deprecated - backend handles station monitoring');
   }
 
-  // Start heartbeat (for clients)
+  // Legacy heartbeat method - no longer used (mesh only)
   private startHeartbeat(hostAddress: string): void {
-    if (this.isHost) return;
-    
-    setInterval(async () => {
-      if (!this.isHost && this.status.isConnected) {
-        try {
-          const localStationId = await this.getLocalStationId();
-          const [ip, port] = hostAddress.split(':');
-          
-          // Get current local QSO stats for heartbeat
-          const qsoData = await fileStorage.getQsoData();
-          const localQsoCount = qsoData.length;
-          const score = qsoData.reduce((total, qso) => {
-            return total + (qso.mode === 'CW' || qso.mode === 'DIG' ? 2 : 1);
-          }, 0);
-          
-          
-          // Check for new messages from host
-          try {
-            const messageResponse = await this.fetchWithProtocolFallback(`https://${ip}:${port}/api/messages?limit=20`);
-            if (messageResponse.ok) {
-              const messageData = await messageResponse.json();
-              const remoteMessages = messageData.messages || [];
-              
-              // Emit new messages to the local message component
-              remoteMessages.forEach((message: any) => {
-                this.emit('message:received', message);
-              });
-            }
-          } catch (messageError) {
-          }
-          
-          // Get remote QSO count from host
-          let remoteQsoCount = 0;
-          let remoteQsos = [];
-          try {
-            const qsoResponse = await this.fetchWithProtocolFallback(`https://${ip}:${port}/api/qsos`);
-            if (qsoResponse.ok) {
-              const qsoData = await qsoResponse.json();
-              remoteQsos = qsoData.qsos || [];
-              remoteQsoCount = remoteQsos.length;
-              
-              // Check if counts differ and trigger sync if needed
-              if (localQsoCount !== remoteQsoCount) {
-                
-                // Instead of using refreshQsosFromServer (which only gets local server data),
-                // directly merge the remote QSOs with local ones
-                const { qsos } = await import('@/store/qso');
-                const currentQsos = [...qsos.value];
-                
-                // Create a map of existing QSOs by ID for quick lookup
-                const existingQsoMap = new Map();
-                currentQsos.forEach(qso => {
-                  if (qso.id) {
-                    existingQsoMap.set(qso.id, qso);
-                  }
-                });
-                
-                // Add remote QSOs that don't exist locally
-                let newQsosAdded = 0;
-                remoteQsos.forEach((remoteQso: any) => {
-                  if (remoteQso.id && !existingQsoMap.has(remoteQso.id)) {
-                    currentQsos.push(remoteQso);
-                    newQsosAdded++;
-                  }
-                });
-                
-                if (newQsosAdded > 0) {
-                  qsos.value = currentQsos;
-                  
-                  // Save to local file storage
-                  const { fileStorage } = await import('@/services/fileStorage');
-                  await fileStorage.saveQsoData(currentQsos);
-                } else {
-                }
-              } else {
-              }
-            }
-          } catch (qsoError) {
-          }
-          
-          // Send heartbeat to host
-          const heartbeatResponse = await this.fetchWithProtocolFallback(`https://${ip}:${port}/api/network/heartbeat`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-              stationId: localStationId,
-              qsoCount: localQsoCount,
-              score: score,
-              timestamp: Date.now()
-            })
-          });
-          
-          if (heartbeatResponse.ok) {
-          }
-          
-        } catch (error) {
-        }
-      }
-    }, 10000); // Every 10 seconds
+    console.log('⚠️ [NetworkService] startHeartbeat() is deprecated - backend handles heartbeat');
   }
 
-  // Start monitoring for client (to update host stats)
+  // Legacy client monitoring method - no longer used (mesh only)
   private startClientMonitoring(hostAddress: string): void {
-    if (this.isHost) return;
-    
-    setInterval(async () => {
-      if (!this.isHost && this.status.isConnected && this.connectedStations.length > 0) {
-        try {
-          const [ip, port] = hostAddress.split(':');
-          const hostStation = this.connectedStations[0]; // Should be the host
-          
-          // Get updated host stats
-          const response = await this.fetchWithProtocolFallback(`https://${ip}:${port}/api/station-info`);
-          if (response.ok) {
-            const stationInfo = await response.json();
-            hostStation.qsoCount = stationInfo.qsoCount || 0;
-            hostStation.score = stationInfo.score || 0;
-            hostStation.lastSeen = Date.now();
-            hostStation.online = true;
-            
-          }
-        } catch (error) {
-          if (this.connectedStations.length > 0) {
-            this.connectedStations[0].online = false;
-          }
-        }
-      }
-    }, 5000); // Every 5 seconds
+    console.log('⚠️ [NetworkService] startClientMonitoring() is deprecated - backend handles monitoring');
   }
 
-  // Connect to a host station
+  // Legacy join network method - no longer used (mesh only)
   async connectToHost(address: string): Promise<boolean> {
-    try {
-      const [ip, portStr] = address.split(':');
-      const port = parseInt(portStr) || 8080;
-      
-      
-      // First, verify the host is reachable
-      const hostStation = await this.checkStationAt(ip, port);
-      if (!hostStation) {
-        throw new Error(`No Field Day station found at ${address}`);
-      }
-      
-      // Get our station info to register with the host
-      const localStationId = await this.getLocalStationId();
-      const stationConfig = await fileStorage.getStationConfig();
-      
-      // Get current QSO data for accurate registration
-      const qsoData = await fileStorage.getQsoData();
-      const qsoCount = qsoData.length;
-      const score = qsoData.reduce((total, qso) => {
-        return total + (qso.mode === 'CW' || qso.mode === 'DIG' ? 2 : 1);
-      }, 0);
-      
-      // Get our current port from the URL or API call
-      let currentPort = 8080;
-      try {
-        // Get the current port by making a request to our own server
-        const serverResponse = await fetch('/api/station-info');
-        if (serverResponse.ok) {
-          const serverInfo = await serverResponse.json();
-          if (serverInfo.port) {
-            currentPort = serverInfo.port;
-          }
-        }
-        
-        // Fallback: extract from current URL
-        if (!currentPort || currentPort === 8080) {
-          const urlParts = window.location.href.split(':');
-          if (urlParts.length >= 3) {
-            const portPart = urlParts[2].split('/')[0];
-            const extractedPort = parseInt(portPart);
-            if (extractedPort && extractedPort > 0) {
-              currentPort = extractedPort;
-            }
-          }
-        }
-      } catch (error) {
-      }
-      
-      
-      const clientInfo = {
-        id: localStationId,
-        callsign: stationConfig.callsign,
-        designator: stationConfig.designator,
-        ip: 'localhost', // Client IP from host's perspective
-        port: currentPort,
-        qsoCount: qsoCount,
-        score: score,
-        online: true,
-        software: 'K8TAR Field Day Logger',
-        version: '1.0.0'
-      };
-      
-      // Register with the host
-      const registerResponse = await this.fetchWithProtocolFallback(`https://${ip}:${port}/api/network/register`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(clientInfo)
-      });
-      
-      if (!registerResponse.ok) {
-        throw new Error(`Failed to register with host: ${registerResponse.status}`);
-      }
-      
-      const registerResult = await registerResponse.json();
-      
-      this.isHost = false;
-      this.connectedStations.splice(0); // Clear existing connections
-      
-      // Add the host station to our connected list (not ourselves)
-      this.connectedStations.push(hostStation);
-      
-      this.status.isConnected = true;
-      this.status.networkId = `FD-CLIENT-${Date.now()}`;
-      this.status.lastSync = Date.now();
-      
-      // Save network settings
-      this.networkSettings.isHost = false;
-      this.networkSettings.lastHostAddress = address;
-      this.networkSettings.autoReconnect = true;
-      this.networkSettings.lastConnectedStations = [hostStation];
-      this.saveNetworkSettings().catch(error => {
-        console.error('Failed to save network settings:', error);
-      });
-      
-      // Cancel any pending reconnects
-      this.cancelReconnect();
-      
-      // Emit network connected event
-      this.emit('network:connected', { type: 'client', address, station: hostStation });
-      
-      // Start periodic sync and heartbeat
-      this.startPeriodicSync();
-      this.startHeartbeat(address);
-      
-      // Start monitoring for host updates (clients need to see host stats too)
-      this.startClientMonitoring(address);
-      
-      // Start periodic QSO refresh to sync data from network
-      startPeriodicQsoRefresh();
-      
-      // Perform initial full sync
-      await this.performInitialSync();
-      
-      return true;
-    } catch (error) {
-      console.error('❌ Failed to connect to host:', error);
-      this.status.isConnected = false;
-      return false;
-    }
+    console.log('⚠️ [NetworkService] connectToHost() is deprecated - use mesh networking instead');
+    return false;
   }
 
   private disconnect(): void {
+    console.log('🔌 [NetworkService] Disconnecting from network');
+    
+    // Legacy mesh network stop - now handled by backend
+    console.log('⚠️ [NetworkService] Frontend mesh network stop is deprecated');
+    
+    // Clear connection state
+    this.status.isConnected = false;
+    this.isHost = false;
+    this.connectedStations.splice(0);
+    
+    // Stop periodic operations
+    if (this.syncInterval) {
+      clearInterval(this.syncInterval);
+      this.syncInterval = null;
+    }
+    
+    // Cancel any reconnection attempts
+    this.cancelReconnect();
+    
+    // Stop QSO refresh
+    stopPeriodicQsoRefresh();
+    
+    console.log('🔌 [NetworkService] Disconnected from network');
   }
 
   // Sync QSOs from connected stations (polling)
@@ -992,18 +614,9 @@ class NetworkService {
     }
     
     
-    // Check the last network mode first, defaulting to mesh
-    const lastMode = this.networkSettings.lastNetworkMode || 'mesh';
-    
-    if (lastMode === 'mesh') {
-      this.startMesh();
-    } else if (this.networkSettings.isHost) {
-      this.startHost();
-    } else if (this.networkSettings.lastHostAddress) {
-      this.connectToHost(this.networkSettings.lastHostAddress);
-    } else {
-      this.startMesh();
-    }
+    // Auto-reconnect disabled - all mesh discovery now handled by backend service
+    console.log('ℹ️ [NetworkService] Auto-reconnect disabled - using backend mesh discovery only');
+    console.log('ℹ️ [NetworkService] Frontend mesh network service disabled to prevent connection conflicts');
   }
 
   private cancelReconnect(): void {
@@ -1118,6 +731,7 @@ class NetworkService {
   // Broadcast QSO update to network
   async broadcastQsoUpdate(qso: any, action: 'add' | 'update' | 'delete'): Promise<void> {
     if (!this.status.isConnected) {
+      console.log('🔇 [NetworkService] Not connected to network, skipping QSO broadcast');
       return;
     }
     
@@ -1130,53 +744,16 @@ class NetworkService {
       stationId: localStationId
     };
 
+    console.log(`📡 [NetworkService] Broadcasting QSO ${action} to mesh network:`, {
+      qsoId: qso.id,
+      action,
+      stationId: localStationId
+    });
     
-    if (this.isHost) {
-      // Host: broadcast to all connected clients
-      if (this.connectedStations.length === 0) {
-        return;
-      }
-      
-      this.connectedStations.forEach(async (station) => {
-        try {
-          
-          const response = await this.fetchWithProtocolFallback(`https://${station.ip}:${station.port}/api/qsos`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(update)
-          });
-
-          if (response.ok) {
-            const result = await response.json();
-          } else {
-          }
-        } catch (error) {
-        }
-      });
-    } else {
-      // Client: send update to host
-      if (!this.networkSettings.lastHostAddress) {
-        return;
-      }
-      
-      try {
-        const response = await this.fetchWithProtocolFallback(`https://${this.networkSettings.lastHostAddress}/api/qsos`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify(update)
-        });
-
-        if (response.ok) {
-          const result = await response.json();
-        } else {
-        }
-      } catch (error) {
-      }
-    }
+    // Legacy mesh node discovery - now handled by backend
+    console.log('⚠️ [NetworkService] QSO broadcast via frontend mesh is deprecated');
+    console.log('🔍 [NetworkService] QSO sync is now handled automatically by backend mesh discovery');
+    return;
   }
 
   // Send a chat message across the network
@@ -1501,18 +1078,10 @@ class NetworkService {
     await fileStorage.migrateFromLocalStorage();
   }
 
-  // Public method to get current network mode for UI
-  getCurrentNetworkMode(): 'host' | 'join' | 'auto' | 'mesh' {
-    if (meshNetworkService.isMeshActive()) {
-      return 'mesh';
-    } else if (this.networkSettings.isHost) {
-      return 'host';
-    } else if (this.networkSettings.lastHostAddress) {
-      return 'join';
-    } else {
-      // Return the last saved mode, defaulting to mesh
-      return (this.networkSettings.lastNetworkMode as 'host' | 'join' | 'auto' | 'mesh') || 'mesh';
-    }
+  // Public method to get current network mode for UI - now always mesh
+  getCurrentNetworkMode(): 'mesh' {
+    // Only mesh mode is supported
+    return 'mesh';
   }
 
   // Public method to get host address for UI
@@ -1527,147 +1096,19 @@ class NetworkService {
 
   // Mesh network methods
   async startMesh(): Promise<boolean> {
-    // In Electron, skip mesh networking
-    if (this.isElectron()) {
-      return false;
-    }
-
-    try {
-      
-      // Stop any existing connections first
-      this.disconnect();
-      
-      // Clear any duplicate stations that might have accumulated
-      this.removeDuplicateStations();
-      
-      // Start mesh network
-      const success = await meshNetworkService.startMesh();
-      
-      if (success) {
-        
-        // Clean up any existing duplicates before starting fresh
-        this.removeDuplicateStations();
-        
-        // Update network status to reflect mesh mode (use the persistent network ID directly)
-        this.status.isConnected = true;
-        this.status.networkId = meshNetworkService.getMeshStatus().nodeId;
-        this.status.lastSync = Date.now();
-        
-        // Set up mesh event handlers
-        this.setupMeshEventHandlers();
-        
-        this.emit('network:connected', { type: 'mesh' });
-      } else {
-      }
-      
-      return success;
-    } catch (error) {
-      console.error('❌ NetworkService: Failed to start mesh network:', error);
-      console.error('❌ NetworkService: Error details:', error instanceof Error ? error.message : 'Unknown error');
-      console.error('❌ NetworkService: Error stack:', error instanceof Error ? error.stack : 'No stack trace');
-      this.emit('network:error', { message: 'Failed to start mesh network', error });
-      return false;
-    }
+    // Mesh networking now handled entirely by backend - disable frontend mesh
+    console.log('ℹ️ [NetworkService] Mesh networking disabled - using backend mesh discovery only');
+    return false;
   }
 
   async stopMesh(): Promise<void> {
-    try {
-      
-      await meshNetworkService.stopMesh();
-      
-      // Clear all connected stations when mesh stops
-      this.connectedStations.splice(0);
-      
-      // Update network status
-      this.status.isConnected = false;
-      this.status.networkId = '';
-      
-      this.emit('network:disconnected', { type: 'mesh' });
-    } catch (error) {
-      console.error('❌ Failed to stop mesh network:', error);
-    }
+    // Mesh networking disabled - no-op
+    console.log('ℹ️ [NetworkService] Mesh stop called - no action needed (backend handles mesh)');
   }
 
   private setupMeshEventHandlers(): void {
-    // Handle mesh node discovery
-    meshNetworkService.on('mesh:node-discovered', (node: MeshNode) => {
-      
-      // Skip our own node by comparing network instance IDs
-      if (node.id === this.networkInstanceId) {
-        return;
-      }
-      
-      // Convert mesh node to network station format
-      const station: NetworkStation = {
-        id: node.id,
-        callsign: node.callsign,
-        designator: node.designator,
-        ip: node.ip,
-        port: node.port,
-        qsoCount: node.qsoCount,
-        score: node.score,
-        online: node.online,
-        lastSeen: node.lastSeen
-      };
-      
-      // More robust duplicate check - check by station identity (callsign+designator), not IP
-      // Same station can have multiple IPs (localhost + local network), so dedupe by station identity only
-      const stationKey = `${station.callsign}-${station.designator}`;
-      const existingStationIndex = this.connectedStations.findIndex(s => 
-        `${s.callsign}-${s.designator}` === stationKey
-      );
-      
-      if (existingStationIndex >= 0) {
-        // Update existing station with new info, prefer non-localhost IP
-        const existing = this.connectedStations[existingStationIndex];
-        
-        // Prefer non-localhost IP for display
-        if (existing.ip === '127.0.0.1' && station.ip !== '127.0.0.1') {
-          existing.ip = station.ip;
-          existing.id = station.id;
-        }
-        
-        // Update other fields
-        existing.qsoCount = station.qsoCount;
-        existing.score = station.score;
-        existing.online = station.online;
-        existing.lastSeen = station.lastSeen;
-        
-        return; // Skip adding duplicate
-      }
-      
-      // Only add if truly new
-      this.connectedStations.push(station);
-      
-      this.triggerStationUpdate();
-    });
-
-    // Handle mesh node removal
-    meshNetworkService.on('mesh:node-removed', (node: MeshNode) => {
-      
-      const index = this.connectedStations.findIndex(s => s.id === node.id);
-      if (index >= 0) {
-        this.connectedStations.splice(index, 1);
-        this.triggerStationUpdate();
-      }
-    });
-
-    // Handle mesh sync completion
-    meshNetworkService.on('mesh:sync-completed', (data: any) => {
-      
-      const meshStatus = meshNetworkService.getMeshStatus();
-      this.status.lastSync = meshStatus.lastSync;
-      this.status.syncedQsos = meshStatus.syncedQsos;
-      this.status.conflictsResolved = meshStatus.conflictsResolved;
-    });
-
-    // Handle mesh health changes
-    meshNetworkService.on('mesh:health-changed', (health: string) => {
-      
-      // Keep the same network ID regardless of health (no more degraded suffix)
-      const meshStatus = meshNetworkService.getMeshStatus();
-      this.status.networkId = meshStatus.nodeId;
-    });
+    // Legacy mesh event handlers - no longer used
+    console.log('⚠️ [NetworkService] setupMeshEventHandlers() is deprecated - backend handles mesh events');
   }
 
   // Remove duplicate stations from the connected stations list
@@ -1706,24 +1147,26 @@ class NetworkService {
     }
   }
 
-  // Get mesh nodes for UI
-  getMeshNodes(): MeshNode[] {
-    return meshNetworkService.getDiscoveredNodes();
+  // Legacy mesh methods - no longer used (backend handles mesh discovery)
+  getMeshNodes(): any[] {
+    console.log('⚠️ [NetworkService] getMeshNodes() is deprecated - use backend API');
+    return [];
   }
 
-  // Get mesh status for UI
+  // Legacy mesh status - no longer used (backend handles mesh discovery)
   getMeshStatus() {
-    return meshNetworkService.getMeshStatus();
+    console.log('⚠️ [NetworkService] getMeshStatus() is deprecated - use backend API');
+    return { isActive: false, connectedNodes: 0, discoveredNodes: 0, meshHealth: 'unknown' };
   }
 
-  // Force mesh discovery refresh
+  // Legacy mesh discovery refresh - no longer used (backend handles mesh discovery)
   async refreshMeshDiscovery(): Promise<void> {
-    await meshNetworkService.refreshDiscovery();
+    console.log('⚠️ [NetworkService] refreshMeshDiscovery() is deprecated - use backend API');
   }
 
-  // Force mesh sync
+  // Legacy mesh sync - no longer used (backend handles mesh discovery)
   async forceMeshSync(): Promise<void> {
-    await meshNetworkService.forceMeshSync();
+    console.log('⚠️ [NetworkService] forceMeshSync() is deprecated - use backend API');
   }
 }
 

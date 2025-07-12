@@ -68,9 +68,10 @@ Field Day operations typically involve multiple logging stations. This applicati
 3. Begin logging QSOs
 
 ### Multi-Station Network
-1. **Host Station**: Start app, click Network icon, select "Host"
-2. **Additional Stations**: Start app, click Network icon, select "Auto" for discovery
-3. All QSOs, messages, and scores sync automatically in real-time
+1. **All Stations**: Start app, mesh networking is automatic
+2. **Backend Service**: Runs on port 3030 and handles station discovery
+3. **Frontend Service**: Runs on port 8080 and displays discovered stations
+4. All QSOs, messages, and scores sync automatically in real-time via mesh discovery
 
 ### Quick Scripts
 ```bash

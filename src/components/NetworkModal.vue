@@ -68,22 +68,10 @@
           <div class="setting-group">
             <label for="network-mode">Mode:</label>
             <select id="network-mode" v-model="networkMode" @change="onNetworkModeChange">
-              <option value="mesh">Mesh Network (Recommended)</option>
-              <option value="auto">Auto-discover</option>
-              <option value="host">Host Network</option>
-              <option value="join">Join Network</option>
+              <option value="mesh">Mesh Network</option>
             </select>
           </div>
           
-          <div v-if="networkMode === 'join'" class="setting-group">
-            <label for="host-address">Host Address:</label>
-            <input 
-              id="host-address" 
-              type="text" 
-              v-model="hostAddress"
-              placeholder="192.168.1.100:8080"
-            >
-          </div>
         </div>
 
         <!-- Mesh Network Nodes -->
@@ -164,67 +152,10 @@
             </button>
           </div>
         </div>
-
-        <!-- Discovered Stations (Auto mode) -->
-        <div v-if="networkMode === 'auto' && stationsWithStatus.length > 0" class="discovered-stations">
-          <h3>
-            <span class="material-icons">search</span>
-            Discovered Stations ({{ stationsWithStatus.length }})
-          </h3>
-          
-          <div class="stations-list">
-            <div 
-              v-for="station in stationsWithStatus" 
-              :key="station.id" 
-              class="station-card"
-            >
-              <div class="station-info">
-                <div class="station-header">
-                  <span class="station-callsign">{{ station.call_sign }}</span>
-                  <span v-if="station.class" class="station-designator">{{ station.class }}</span>
-                  <span v-else class="station-designator unknown">Unknown</span>
-                  <span class="node-status" :class="stationStatusService.getStatusClass(station.status.status)">
-                    <span class="status-indicator" :style="{ backgroundColor: stationStatusService.getStatusColor(station.status.status) }"></span>
-                    {{ stationStatusService.getStatusDescription(station.status) }}
-                  </span>
-                </div>
-                <div class="station-details">
-                  <span class="station-ip">{{ station.ip_address }}:{{ station.port }}</span>
-                </div>
-                <div class="station-status">
-                  <span class="last-seen">{{ stationStatusService.formatLastSeen(station.status.lastSeen) }}</span>
-                </div>
-              </div>
-              <button 
-                class="connect-button" 
-                @click="connectToStation(station)"
-                :disabled="station.status.status === 'offline'"
-              >
-                Connect
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <!-- No Stations Found -->
-        <div v-if="(networkMode === 'auto') && stationsWithStatus.length === 0 && !isScanning" class="no-stations">
-          <p><strong>No stations found</strong></p>
-          <p>Make sure other Field Day Logger instances are running on the network.</p>
-          <p>Try using <strong>Mesh Network</strong> mode for better discovery.</p>
-        </div>
       </div>
 
       <div class="modal-footer">
         <div class="footer-left">
-          <button 
-            v-if="networkMode === 'auto'" 
-            class="scan-button" 
-            @click="scanForStations"
-            :disabled="isScanning"
-          >
-            <span class="material-icons" :class="{ 'spinning': isScanning }">search</span>
-            {{ isScanning ? 'Scanning...' : 'Scan Network' }}
-          </button>
         </div>
         
         <div class="footer-right">
@@ -280,8 +211,7 @@ const emit = defineEmits<{
 // Backend connection state
 const isConnected = computed(() => backendApi.connected.value);
 const backendError = computed(() => backendApi.error.value);
-const networkMode = ref<'auto' | 'mesh' | 'host' | 'join'>('mesh');
-const hostAddress = ref('');
+const networkMode = ref<'mesh'>('mesh');
 
 // Station information
 const localStationInfo = ref({
@@ -347,7 +277,6 @@ const stationsWithStatus = computed(() => {
 // Status tracking
 const isRefreshing = ref(false);
 const isSyncing = ref(false);
-const isScanning = ref(false);
 const connectionStatus = ref<string>('');
 const isConnecting = ref(false);
 const isRestarting = ref(false);
@@ -372,13 +301,7 @@ const meshStatus = computed(() => {
 
 // Computed properties
 const canConnect = computed(() => {
-  if (networkMode.value === 'host' || networkMode.value === 'mesh') {
-    return true;
-  } else if (networkMode.value === 'join') {
-    return hostAddress.value.trim().length > 0;
-  } else {
-    return discoveredStations.value.length > 0;
-  }
+  return networkMode.value === 'mesh';
 });
 
 // Load station info on mount
@@ -587,32 +510,7 @@ async function retryConnection() {
 
 function onNetworkModeChange() {
   discoveredStations.value = [];
-  if (networkMode.value === 'auto') {
-    scanForStations();
-  }
-}
-
-async function scanForStations() {
-  if (!isConnected.value) return;
-  
-  isScanning.value = true;
-  try {
-    // First trigger discovery
-    await backendApi.discoverStations();
-    
-    // Then get the current list of discovered stations
-    const stations = await backendApi.getDiscoveredStations();
-    discoveredStations.value = stations;
-    
-    // Update station statuses
-    updateStationStatuses(stations);
-    
-    console.log(`🔍 Scanned for stations: ${stations.length} found`);
-  } catch (error) {
-    console.error('Failed to scan for stations:', error);
-  } finally {
-    isScanning.value = false;
-  }
+  // Only mesh mode is supported
 }
 
 /**
@@ -664,12 +562,6 @@ async function startConnection() {
       
       console.log(`🚀 Mesh network started: ${stations.length} stations discovered`);
       connectionStatus.value = 'Mesh network started successfully!';
-    } else if (networkMode.value === 'host') {
-      connectionStatus.value = 'Starting as host...';
-      connectionStatus.value = 'Host started successfully!';
-    } else if (networkMode.value === 'join') {
-      connectionStatus.value = `Connecting to ${hostAddress.value}...`;
-      connectionStatus.value = 'Connected successfully!';
     }
     
     // Clear status after 3 seconds
@@ -698,31 +590,14 @@ function disconnect() {
 }
 
 async function refreshMeshDiscovery() {
-  if (isRefreshing.value || !isConnected.value) return;
+  if (!isConnected.value) return;
   
   isRefreshing.value = true;
   try {
-    console.log('🔍 Starting mesh discovery...');
-    
-    // First trigger discovery
     await backendApi.discoverStations();
-    console.log('✅ Discovery triggered successfully');
-    
-    // Wait a moment for discovery to complete
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    // Then get the current list of discovered stations
     const stations = await backendApi.getDiscoveredStations();
     discoveredStations.value = stations;
-    
-    // Update station statuses
     updateStationStatuses(stations);
-    
-    console.log(`📡 Refreshed mesh discovery: ${stations.length} stations found`);
-    stations.forEach((station, index) => {
-      const statusInfo = stationStatuses.value.get(station.id);
-      console.log(`  Station ${index + 1}: ${station.call_sign} (${station.class}) at ${station.ip_address}:${station.port} - Self: ${station.is_self}, Status: ${statusInfo?.status || 'unknown'}`);
-    });
   } catch (error) {
     console.error('Failed to refresh mesh discovery:', error);
   } finally {
@@ -731,12 +606,15 @@ async function refreshMeshDiscovery() {
 }
 
 async function forceMeshSync() {
-  if (isSyncing.value || !isConnected.value) return;
+  if (!isConnected.value) return;
   
   isSyncing.value = true;
   try {
-    // Backend handles QSO synchronization
-    await backendApi.getQsoCount();
+    // Force mesh discovery to refresh data
+    await backendApi.discoverStations();
+    const stations = await backendApi.getDiscoveredStations();
+    discoveredStations.value = stations;
+    updateStationStatuses(stations);
   } catch (error) {
     console.error('Failed to force mesh sync:', error);
   } finally {
@@ -745,23 +623,11 @@ async function forceMeshSync() {
 }
 
 function getNetworkModeIcon(): string {
-  switch (networkMode.value) {
-    case 'host': return 'router';
-    case 'mesh': return 'device_hub';
-    case 'join': return 'wifi';
-    case 'auto': return 'wifi_find';
-    default: return 'wifi';
-  }
+  return 'device_hub';
 }
 
 function getNetworkModeButtonText(): string {
-  switch (networkMode.value) {
-    case 'host': return 'Start Hosting';
-    case 'mesh': return 'Start Mesh Network';
-    case 'join': return 'Connect';
-    case 'auto': return 'Connect';
-    default: return 'Connect';
-  }
+  return 'Start Mesh Network';
 }
 
 // Load initial data on mount
