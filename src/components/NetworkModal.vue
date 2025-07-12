@@ -527,8 +527,14 @@ async function scanForStations() {
   
   isScanning.value = true;
   try {
-    const stations = await backendApi.discoverStations();
+    // First trigger discovery
+    await backendApi.discoverStations();
+    
+    // Then get the current list of discovered stations
+    const stations = await backendApi.getDiscoveredStations();
     discoveredStations.value = stations;
+    
+    console.log(`🔍 Scanned for stations: ${stations.length} found`);
   } catch (error) {
     console.error('Failed to scan for stations:', error);
   } finally {
@@ -552,9 +558,13 @@ async function startConnection() {
       connectionStatus.value = 'Starting mesh network discovery...';
       
       // Trigger mesh discovery via backend
-      const stations = await backendApi.discoverStations();
+      await backendApi.discoverStations();
+      
+      // Get the current list of discovered stations
+      const stations = await backendApi.getDiscoveredStations();
       discoveredStations.value = stations;
       
+      console.log(`🚀 Mesh network started: ${stations.length} stations discovered`);
       connectionStatus.value = 'Mesh network started successfully!';
     } else if (networkMode.value === 'host') {
       connectionStatus.value = 'Starting as host...';
@@ -594,8 +604,23 @@ async function refreshMeshDiscovery() {
   
   isRefreshing.value = true;
   try {
-    const stations = await backendApi.discoverStations();
+    console.log('🔍 Starting mesh discovery...');
+    
+    // First trigger discovery
+    await backendApi.discoverStations();
+    console.log('✅ Discovery triggered successfully');
+    
+    // Wait a moment for discovery to complete
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    
+    // Then get the current list of discovered stations
+    const stations = await backendApi.getDiscoveredStations();
     discoveredStations.value = stations;
+    
+    console.log(`📡 Refreshed mesh discovery: ${stations.length} stations found`);
+    stations.forEach((station, index) => {
+      console.log(`  Station ${index + 1}: ${station.call_sign} (${station.class}) at ${station.ip_address}:${station.port} - Self: ${station.is_self}`);
+    });
   } catch (error) {
     console.error('Failed to refresh mesh discovery:', error);
   } finally {
@@ -654,21 +679,101 @@ onMounted(async () => {
   // Listen for station info updates from config modal
   window.addEventListener('stationInfoUpdate', refreshStationInfo);
   
-  // Auto-start mesh discovery if connected to backend
-  if (isConnected.value && networkMode.value === 'mesh') {
-    await refreshMeshDiscovery();
+  // Always fetch discovered stations on mount if connected
+  if (isConnected.value) {
+    try {
+      console.log('🔍 Fetching discovered stations on mount...');
+      const stations = await backendApi.getDiscoveredStations();
+      discoveredStations.value = stations;
+      console.log(`📡 Found ${stations.length} discovered stations on mount`);
+    } catch (error) {
+      console.error('Failed to fetch discovered stations on mount:', error);
+    }
+    
+    // Auto-start mesh discovery if in mesh mode
+    if (networkMode.value === 'mesh') {
+      await refreshMeshDiscovery();
+    }
   }
+  
+  // Set up periodic refresh of discovered stations every 10 seconds for better responsiveness
+  const refreshInterval = setInterval(async () => {
+    if (isConnected.value && (networkMode.value === 'mesh' || networkMode.value === 'auto') && !isRefreshing.value) {
+      try {
+        const stations = await backendApi.getDiscoveredStations();
+        if (stations.length !== discoveredStations.value.length) {
+          console.log(`📡 Station count changed: ${discoveredStations.value.length} -> ${stations.length}`);
+        }
+        discoveredStations.value = stations;
+      } catch (error) {
+        console.error('Failed to refresh discovered stations:', error);
+      }
+    }
+  }, 10000); // 10 seconds for more responsive updates
+  
+  // Store interval ID for cleanup
+  (window as any).networkModalRefreshInterval = refreshInterval;
 });
 
 // Clean up event listeners on unmount
 onUnmounted(() => {
   window.removeEventListener('stationInfoUpdate', refreshStationInfo);
+  
+  // Clean up periodic refresh interval
+  if ((window as any).networkModalRefreshInterval) {
+    clearInterval((window as any).networkModalRefreshInterval);
+    delete (window as any).networkModalRefreshInterval;
+  }
 });
 
 // Watch for backend connection changes
 watch(isConnected, async (connected) => {
   if (connected && networkMode.value === 'mesh') {
     await refreshMeshDiscovery();
+  } else if (!connected) {
+    // Clear discovered stations when disconnected
+    discoveredStations.value = [];
+  }
+});
+
+// Watch for network mode changes
+watch(networkMode, async (newMode) => {
+  if (newMode === 'mesh' && isConnected.value) {
+    await refreshMeshDiscovery();
+  } else {
+    discoveredStations.value = [];
+  }
+});
+
+// Watch for modal opening/closing
+watch(() => props.isOpen, async (isOpen) => {
+  if (isOpen && isConnected.value) {
+    // Refresh discovered stations when modal opens, regardless of mode
+    try {
+      console.log('📱 Network modal opened - fetching discovered stations...');
+      const stations = await backendApi.getDiscoveredStations();
+      discoveredStations.value = stations;
+      console.log(`📡 Modal opened: ${stations.length} stations loaded from backend`);
+      
+      // Also trigger discovery if in mesh mode to ensure fresh data
+      if (networkMode.value === 'mesh') {
+        console.log('🔍 Triggering mesh discovery for fresh data...');
+        await backendApi.discoverStations();
+        
+        // Wait a moment then fetch updated list
+        setTimeout(async () => {
+          try {
+            const updatedStations = await backendApi.getDiscoveredStations();
+            discoveredStations.value = updatedStations;
+            console.log(`� After discovery: ${updatedStations.length} stations found`);
+          } catch (error) {
+            console.error('Failed to get updated stations after discovery:', error);
+          }
+        }, 2000);
+      }
+    } catch (error) {
+      console.error('Failed to load discovered stations on modal open:', error);
+    }
   }
 });
 </script>

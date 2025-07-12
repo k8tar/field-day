@@ -71,7 +71,7 @@ async fn main() -> anyhow::Result<()> {
     ));
     
     let mesh_manager = Arc::new(RwLock::new(
-        MeshManager::new(args.discovery_port, station_manager.clone()).await?
+        MeshManager::new(args.discovery_port, args.port, station_manager.clone()).await?
     ));
     
     let qso_manager = Arc::new(RwLock::new(

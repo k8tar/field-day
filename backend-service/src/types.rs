@@ -38,6 +38,7 @@ pub struct MeshDiscoveryRequest {
     pub section: String,
     pub class: String,
     pub port: u16,
+    pub api_port: u16,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

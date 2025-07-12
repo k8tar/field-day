@@ -14,16 +14,18 @@ use crate::types::{Station, MeshDiscoveryRequest, MeshDiscoveryResponse};
 
 pub struct MeshManager {
     discovery_port: u16,
+    api_port: u16,
     station_manager: Arc<RwLock<StationManager>>,
-    discovered_stations: HashMap<String, Station>,
+    discovered_stations: Arc<RwLock<HashMap<String, Station>>>,
 }
 
 impl MeshManager {
-    pub async fn new(discovery_port: u16, station_manager: Arc<RwLock<StationManager>>) -> Result<Self> {
+    pub async fn new(discovery_port: u16, api_port: u16, station_manager: Arc<RwLock<StationManager>>) -> Result<Self> {
         Ok(Self {
             discovery_port,
+            api_port,
             station_manager,
-            discovered_stations: HashMap::new(),
+            discovered_stations: Arc::new(RwLock::new(HashMap::new())),
         })
     }
     
@@ -37,6 +39,7 @@ impl MeshManager {
         // Start discovery listener
         let socket_clone = Arc::clone(&socket);
         let station_manager = self.station_manager.clone();
+        let discovered_stations = self.discovered_stations.clone();
         
         tokio::spawn(async move {
             let mut buf = [0; 1024];
@@ -52,6 +55,27 @@ impl MeshManager {
                             let station_info = station_manager.read().await.get_station_info().cloned();
                             if let Some(station) = station_info {
                                 if station.id != request.station_id {
+                                    // Create station from discovery request
+                                    let discovered_station = Station {
+                                        id: request.station_id.clone(),
+                                        call_sign: request.call_sign.clone(),
+                                        name: request.name.clone(),
+                                        section: request.section.clone(),
+                                        class: request.class.clone(),
+                                        ip_address: addr.ip().to_string(),
+                                        port: request.api_port, // Use the API port from the request
+                                        last_seen: Utc::now(),
+                                        is_self: false,
+                                    };
+                                    
+                                    // Store the discovered station
+                                    discovered_stations.write().await.insert(
+                                        request.station_id.clone(),
+                                        discovered_station.clone()
+                                    );
+                                    
+                                    info!("Discovered station via UDP: {} ({})", request.call_sign, addr.ip());
+                                    
                                     Self::send_discovery_response(&socket_clone, addr, &station).await;
                                 }
                             }
@@ -68,6 +92,8 @@ impl MeshManager {
         // Start periodic discovery broadcast
         let socket_clone2 = Arc::clone(&socket);
         let station_manager2 = self.station_manager.clone();
+        let discovery_port = self.discovery_port;
+        let api_port = self.api_port;
         
         tokio::spawn(async move {
             loop {
@@ -76,7 +102,7 @@ impl MeshManager {
                 let station_info = station_manager2.read().await.get_station_info().cloned();
                 if let Some(station) = station_info {
                     if station_manager2.read().await.is_configured() {
-                        Self::broadcast_discovery(&socket_clone2, &station).await;
+                        Self::broadcast_discovery(&socket_clone2, &station, discovery_port, api_port).await;
                     }
                 }
             }
@@ -99,7 +125,7 @@ impl MeshManager {
         }
     }
     
-    async fn broadcast_discovery(socket: &Arc<UdpSocket>, station: &Station) {
+    async fn broadcast_discovery(socket: &Arc<UdpSocket>, station: &Station, discovery_port: u16, api_port: u16) {
         let request = MeshDiscoveryRequest {
             station_id: station.id.clone(),
             call_sign: station.call_sign.clone(),
@@ -107,19 +133,20 @@ impl MeshManager {
             section: station.section.clone(),
             class: station.class.clone(),
             port: station.port,
+            api_port,
         };
         
         if let Ok(data) = serde_json::to_vec(&request) {
-            // Broadcast to local network
-            let broadcast_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::BROADCAST), 8080);
+            // Broadcast to local network on discovery port
+            let broadcast_addr = SocketAddr::new(IpAddr::V4(Ipv4Addr::BROADCAST), discovery_port);
             
             if let Err(e) = socket.send_to(&data, broadcast_addr).await {
                 debug!("Broadcast failed: {}", e);
             }
             
-            // Also try common subnet broadcasts
+            // Also try common subnet broadcasts on discovery port
             for subnet in &["192.168.1.255", "192.168.0.255", "10.0.0.255"] {
-                if let Ok(addr) = format!("{}:8080", subnet).parse::<SocketAddr>() {
+                if let Ok(addr) = format!("{}:{}", subnet, discovery_port).parse::<SocketAddr>() {
                     let _ = socket.send_to(&data, addr).await;
                 }
             }
@@ -129,13 +156,14 @@ impl MeshManager {
     pub async fn discover_stations(&mut self) -> Result<Vec<Station>> {
         info!("Starting manual station discovery");
         
-        self.discovered_stations.clear();
+        self.discovered_stations.write().await.clear();
         
         // Perform network scan
         self.scan_network().await?;
         
         // Return discovered stations (excluding self)
         let stations: Vec<Station> = self.discovered_stations
+            .read().await
             .values()
             .filter(|station| !station.is_self)
             .cloned()
@@ -166,9 +194,10 @@ impl MeshManager {
         for i in 1..255 {
             let ip = format!("{}.{}", base_ip, i);
             let station_id = our_station_id.clone();
+            let api_port = self.api_port;
             
             let handle = tokio::spawn(async move {
-                Self::check_station(&ip, 8080, &station_id).await
+                Self::check_station(&ip, api_port, &station_id).await
             });
             
             handles.push(handle);
@@ -178,7 +207,7 @@ impl MeshManager {
         for handle in handles {
             if let Ok(result) = timeout(Duration::from_secs(2), handle).await {
                 if let Ok(Ok(Some(station))) = result {
-                    self.discovered_stations.insert(station.id.clone(), station);
+                    self.discovered_stations.write().await.insert(station.id.clone(), station);
                 }
             }
         }
@@ -201,7 +230,7 @@ impl MeshManager {
                         }
                     }
                     Err(_) => {
-                        // Might be a different service on port 8080
+                        // Might be a different service on this port
                     }
                 }
             }
@@ -241,17 +270,26 @@ impl MeshManager {
     }
     
     pub fn get_discovered_stations(&self) -> Vec<Station> {
-        self.discovered_stations
-            .values()
-            .filter(|station| !station.is_self)
-            .cloned()
-            .collect()
+        // This should be async but we'll make a blocking call for now
+        if let Ok(stations) = self.discovered_stations.try_read() {
+            stations
+                .values()
+                .filter(|station| !station.is_self)
+                .cloned()
+                .collect()
+        } else {
+            Vec::new()
+        }
     }
     
     pub fn get_station_count(&self) -> usize {
-        self.discovered_stations
-            .values()
-            .filter(|station| !station.is_self)
-            .count()
+        if let Ok(stations) = self.discovered_stations.try_read() {
+            stations
+                .values()
+                .filter(|station| !station.is_self)
+                .count()
+        } else {
+            0
+        }
     }
 }

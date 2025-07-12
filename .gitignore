@@ -43,6 +43,10 @@ shared-qsos.json
 *.backup.json
 *.log
 
+# User configuration files
+station-config.json
+operators.json
+
 # Test files and screenshots
 test-*.png
 test-*.jpg
