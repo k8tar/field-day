@@ -61,8 +61,20 @@ impl MessageManager {
         Ok(())
     }
     
-    pub async fn add_message(&mut self, message: MessageEntry) -> Result<()> {
+    pub async fn add_message(&mut self, mut message: MessageEntry) -> Result<()> {
         debug!("Adding message: {} from {}", message.id, message.from_station_id);
+        
+        // If from_station_id is empty, set it from the current station config
+        if message.from_station_id.is_empty() {
+            let config = self.config_manager.read().await;
+            let station_config = &config.get().station;
+            if !station_config.call_sign.is_empty() {
+                message.from_station_id = format!("{}-{}", station_config.call_sign, station_config.name);
+            } else {
+                message.from_station_id = "UNKNOWN-1A".to_string();
+            }
+        }
+        
         self.messages.insert(message.id.clone(), message);
         self.save_messages().await?;
         Ok(())

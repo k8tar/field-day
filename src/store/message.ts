@@ -122,8 +122,8 @@ export async function addMessage(
     messages.value = messages.value.slice(-100);
   }
   
-  // Send to backend if connected and not already from sync
-  if (backendApi.connected.value && type === 'chat' && !from) {
+  // Send to backend if connected and this is a chat message from us
+  if (backendApi.connected.value && type === 'chat' && from) {
     try {
       const backendMessage = await convertToBackendMessage(message);
       await backendApi.addMessage(backendMessage);

@@ -166,6 +166,13 @@ async function refreshQsosFromBackend(): Promise<void> {
     
     backendQsos.forEach((backendQso: BackendQso) => {
       if (!existingQsoMap.has(backendQso.id)) {
+        // Extract station designator from station_id (e.g., "K8TAR-PHONE" -> "PHONE")
+        let stationDesignator = '';
+        if (backendQso.station_id) {
+          const parts = backendQso.station_id.split('-');
+          stationDesignator = parts.length > 1 ? parts[parts.length - 1] : backendQso.station_id;
+        }
+        
         const localQso: QSO = {
           id: parseInt(backendQso.id),
           call: backendQso.call_sign,
@@ -175,6 +182,7 @@ async function refreshQsosFromBackend(): Promise<void> {
           band: backendQso.frequency,
           mode: backendQso.mode,
           operator: backendQso.operator,
+          stationDesignator: stationDesignator, // Add the station designator
           timestamp: new Date(backendQso.timestamp).getTime(),
         };
         currentQsos.push(localQso);
