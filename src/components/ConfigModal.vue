@@ -327,8 +327,6 @@ onMounted(async () => {
   try {
     // Load station config from file storage
     const stationConfig = await fileStorage.getStationConfig();
-    console.log('ConfigModal: Loaded station config:', stationConfig);
-    
     stationCallsign.value = stationConfig.callsign || '';
     stationDesignator.value = stationConfig.designator || '';
     stationClass.value = stationConfig.stationClass || '';
@@ -336,16 +334,7 @@ onMounted(async () => {
 
     // Load operators from file storage
     const savedOperators = await fileStorage.getOperators();
-    console.log('ConfigModal: Loaded operators:', savedOperators);
     operators.value = savedOperators.length > 0 ? savedOperators : [];
-    
-    console.log('ConfigModal: Set form values:', {
-      callsign: stationCallsign.value,
-      designator: stationDesignator.value,
-      class: stationClass.value,
-      section: stationSection.value,
-      operators: operators.value
-    });
   } catch (error) {
     console.error('Failed to load configuration from file storage:', error);
     // Initialize with defaults instead of localStorage fallback
@@ -395,6 +384,15 @@ async function saveConfig() {
   const normalizedClass = stationClass.value ? 
     normalizeArrlClass(stationClass.value) : '';
   
+  console.log('ConfigModal: About to save station config:', {
+    callsign: stationCallsign.value,
+    designator: stationDesignator.value,
+    stationClass: normalizedClass,
+    stationSection: normalizedSection,
+    originalClass: stationClass.value,
+    originalSection: stationSection.value
+  });
+  
   try {
     // Save station config to file storage
     await fileStorage.saveStationConfig({
@@ -403,6 +401,11 @@ async function saveConfig() {
       stationClass: normalizedClass || '',
       stationSection: normalizedSection || ''
     });
+
+    console.log('ConfigModal: Station config saved successfully');
+
+    // Emit a custom event to notify other components that station config has been updated
+    window.dispatchEvent(new CustomEvent('stationInfoUpdate'));
 
     // Save operators to file storage
     await fileStorage.saveOperators(operators.value);
@@ -806,6 +809,9 @@ async function confirmJsonImport() {
     });
     await fileStorage.saveOperators(operators.value);
     await fileStorage.saveQsoData(qsos.value);
+
+    // Emit a custom event to notify other components that station config has been updated
+    window.dispatchEvent(new CustomEvent('stationInfoUpdate'));
 
   } catch (error) {
     console.error('Failed to save imported data to file storage:', error);

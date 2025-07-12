@@ -85,8 +85,8 @@ import { isDark, toggleTheme } from '@/store/theme';
 import ConfigModal from '@/components/ConfigModal.vue';
 import NetworkModal from '@/components/NetworkModal.vue';
 import DocsModal from '@/components/DocsModal.vue';
-import { networkService } from '@/services/networkService';
 import { fileStorage } from '@/services/fileStorage';
+import { backendApi } from '@/services/backendApiService';
 
 // Station designator
 const stationDesignator = ref('');
@@ -181,10 +181,10 @@ function handleConfigClose() {
 
 // Network modal and status
 const networkModalOpen = ref(false);
-const networkConnected = computed(() => networkService.status.isConnected);
+const networkConnected = computed(() => backendApi.connected.value);
 const connectedStationCount = computed(() => {
-  const stations = networkService.getConnectedStations();
-  return stations.filter(station => station.online).length;
+  // For now, return 0 since we don't have station discovery in the new backend yet
+  return 0;
 });
 
 function openNetworkModal() {

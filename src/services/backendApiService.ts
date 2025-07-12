@@ -52,10 +52,10 @@ class BackendApiService {
   constructor() {
     this.checkConnection();
     
-    // Check connection every 2 minutes to avoid excessive polling
+    // Check connection every 10 minutes to minimize connection refused spam
     setInterval(() => {
       this.checkConnection();
-    }, 120000);
+    }, 600000); // 10 minutes
   }
 
   public get connected() {
@@ -82,19 +82,23 @@ class BackendApiService {
       this.isConnected.value = response.ok;
       this.lastError.value = null;
       
-      // If we just connected, emit an event so other services can react
+      // Only log successful connections to reduce console noise
       if (!wasConnected && this.isConnected.value) {
+        console.log('✅ Backend service connected');
         window.dispatchEvent(new CustomEvent('backendConnected'));
       } else if (wasConnected && !this.isConnected.value) {
+        console.log('❌ Backend service disconnected');
         window.dispatchEvent(new CustomEvent('backendDisconnected'));
       }
       
     } catch (error) {
       const wasConnected = this.isConnected.value;
       this.isConnected.value = false;
-      this.lastError.value = error instanceof Error ? error.message : 'Unknown error';
       
+      // Only log the first disconnection to avoid spam
       if (wasConnected) {
+        this.lastError.value = error instanceof Error ? error.message : 'Unknown error';
+        console.log('❌ Backend service disconnected:', this.lastError.value);
         window.dispatchEvent(new CustomEvent('backendDisconnected'));
       }
     }

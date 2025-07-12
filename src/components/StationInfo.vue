@@ -27,20 +27,27 @@ const stationSection = ref('');
 
 // Function to refresh data from file storage
 const refreshData = async () => {
+  console.log('StationInfo: refreshData() called');
   try {
     const config = await fileStorage.getStationConfig();
     console.log('StationInfo: Loaded config:', config);
+    
+    // Update all fields from config, with proper fallbacks
     stationCallsign.value = config.callsign || '';
-    // Only use stationClass field, not designator as fallback
-    stationClass.value = config.stationClass || '';
+    stationClass.value = config.stationClass || '';  // Keep this simple, one source of truth
     stationSection.value = config.stationSection || '';
+
     console.log('StationInfo: Set values:', {
       callsign: stationCallsign.value,
       class: stationClass.value,
       section: stationSection.value
     });
   } catch (error) {
-    console.error('Error loading station info:', error);
+    console.error('❌ Error loading station info:', error);
+    // Set default values on error
+    stationCallsign.value = '';
+    stationClass.value = '';
+    stationSection.value = '';
   }
 };
 
