@@ -35,13 +35,13 @@ cargo run -- --verbose
 ### Production Mode
 ```bash
 cd backend-service
-cargo run --release -- --port 3030 --discovery-port 8080
+cargo run --release -- --port 3030 --discovery-port 3030
 ```
 
 ### Command Line Options
 
 - `--port, -p`: API server port (default: 3030)
-- `--discovery-port, -d`: Mesh discovery port (default: 8080)
+- `--discovery-port, -d`: Mesh discovery port (default: 3030)
 - `--config-path, -c`: Path to configuration file
 - `--verbose, -v`: Enable verbose logging
 
@@ -140,7 +140,7 @@ cargo clippy
 ## Troubleshooting
 
 ### Port Conflicts
-If port 3030 or 8080 are already in use, specify different ports:
+If port 3030 is already in use, specify different ports:
 ```bash
 cargo run -- --port 3031 --discovery-port 8081
 ```

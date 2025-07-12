@@ -1,6 +1,7 @@
 import { ref, reactive, nextTick } from 'vue';
 import { fileStorage } from './fileStorage';
 import { startPeriodicQsoRefresh, stopPeriodicQsoRefresh } from '@/store/qso';
+import { backendApi } from './backendApiService';
 
 export interface NetworkStation {
   id: string;
@@ -767,95 +768,16 @@ class NetworkService {
   }
 
   async sendMessage(text: string, target = 'all', messageId?: string): Promise<void> {
-    if (!this.status.isConnected) {
-      return;
-    }
-    
     try {
-      const stationConfig = await fileStorage.getStationConfig();
-      const stationId = `${stationConfig.callsign}-${stationConfig.designator}`;
+      // Use backend API to send message - backend handles mesh distribution
+      const success = await backendApi.sendMessage(text, target, messageId);
       
-      const message = {
-        id: messageId || this.generateMessageId(),
-        type: 'chat',
-        text,
-        from: stationId,
-        target,
-        timestamp: Date.now(),
-        stationId
-      };
-
-      
-      if (this.isHost) {
-        // Host: Add to local storage and broadcast to clients
-        const response = await fetch(`https://localhost:8080/api/messages`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify(message)
-        });
-        
-        if (response.ok) {
-          
-          // Broadcast to connected clients
-          if (target === 'all') {
-            this.connectedStations.forEach(async (station) => {
-              try {
-                const clientResponse = await this.fetchWithProtocolFallback(`https://${station.ip}:${station.port}/api/messages`, {
-                  method: 'POST',
-                  headers: {
-                    'Content-Type': 'application/json'
-                  },
-                  body: JSON.stringify(message)
-                });
-                
-                if (clientResponse.ok) {
-                } else {
-                }
-              } catch (error) {
-              }
-            });
-          } else {
-            // Send to specific station
-            const targetStation = this.connectedStations.find(s => `${s.callsign}-${s.designator}` === target);
-            if (targetStation) {
-              try {
-                const clientResponse = await this.fetchWithProtocolFallback(`https://${targetStation.ip}:${targetStation.port}/api/messages`, {
-                  method: 'POST',
-                  headers: {
-                    'Content-Type': 'application/json'
-                  },
-                  body: JSON.stringify(message)
-                });
-                
-                if (clientResponse.ok) {
-                } else {
-                }
-              } catch (error) {
-              }
-            } else {
-            }
-          }
-        }
-      } else {
-        // Client: Send to host
-        if (!this.networkSettings.lastHostAddress) {
-          return;
-        }
-        
-        const response = await this.fetchWithProtocolFallback(`https://${this.networkSettings.lastHostAddress}/api/messages`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify(message)
-        });
-        
-        if (response.ok) {
-        } else {
-        }
+      if (!success) {
+        console.error('❌ Failed to send message via backend API');
+        throw new Error('Failed to send message');
       }
+      
+      console.log(`📨 Message sent via backend API: "${text}" to ${target}`);
     } catch (error) {
       console.error('❌ Error sending message:', error);
       throw error;

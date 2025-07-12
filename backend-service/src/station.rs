@@ -35,7 +35,7 @@ impl StationManager {
             section: station_config.section.clone(),
             class: station_config.class.clone(),
             ip_address: self.get_local_ip().await,
-            port: 8080, // Default Field Day port
+            port: 3030, // Backend API port
             last_seen: Utc::now(),
             is_self: true,
         });

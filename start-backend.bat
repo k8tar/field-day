@@ -14,6 +14,6 @@ if not exist "target\release\fieldday-backend.exe" (
 )
 
 echo Starting backend service on port 3030...
-target\release\fieldday-backend.exe --port 3030 --discovery-port 8080 --verbose
+target\release\fieldday-backend.exe --port 3030 --discovery-port 3030 --verbose
 
 pause

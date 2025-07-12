@@ -87,8 +87,8 @@ class BackgroundNetworkService {
    */
   private async performMeshDiscovery(): Promise<void> {
     try {
-      // Use the API endpoint to get discovered stations
-      const response = await fetch('/api/mesh/stations');
+      // Use the backend API endpoint to get discovered stations
+      const response = await fetch('http://localhost:3030/api/mesh/stations');
       if (response.ok) {
         const stations = await response.json();
         this.updateKnownStations(stations);
@@ -103,8 +103,8 @@ class BackgroundNetworkService {
    */
   private async performQsoSync(): Promise<void> {
     try {
-      // Trigger server-side QSO sync
-      await fetch('/api/qsos/sync', { method: 'POST' });
+      // Trigger backend QSO sync
+      await fetch('http://localhost:3030/api/qso/sync', { method: 'POST' });
     } catch (error) {
       // Silently handle errors to avoid UI blocking
     }

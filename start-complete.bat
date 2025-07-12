@@ -15,7 +15,7 @@ if errorlevel 1 (
 
 echo.
 echo [2/3] Starting Backend Service...
-start "Field Day Backend" cmd /k "target\release\fieldday-backend.exe --port 3030 --discovery-port 8080 --verbose"
+start "Field Day Backend" cmd /k "target\release\fieldday-backend.exe --port 3030 --discovery-port 3030 --verbose"
 
 echo.
 echo [3/3] Starting Frontend Development Server...

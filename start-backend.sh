@@ -14,4 +14,4 @@ if [ ! -f "target/release/fieldday-backend" ]; then
 fi
 
 echo "Starting backend service on port 3030..."
-./target/release/fieldday-backend --port 3030 --discovery-port 8080 --verbose
+./target/release/fieldday-backend --port 3030 --discovery-port 3030 --verbose

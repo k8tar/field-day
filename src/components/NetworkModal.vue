@@ -61,21 +61,8 @@
           </div>
         </div>
 
-        <!-- Connection Settings -->
-        <div class="connection-settings" v-if="isConnected">
-          <h3>Network Mode</h3>
-          
-          <div class="setting-group">
-            <label for="network-mode">Mode:</label>
-            <select id="network-mode" v-model="networkMode" @change="onNetworkModeChange">
-              <option value="mesh">Mesh Network</option>
-            </select>
-          </div>
-          
-        </div>
-
         <!-- Mesh Network Nodes -->
-        <div v-if="isConnected && networkMode === 'mesh'" class="mesh-nodes">
+        <div v-if="isConnected" class="mesh-nodes">
           <h3>
             <span class="material-icons">device_hub</span>
             Mesh Network Stations ({{ discoveredStations.length }})
@@ -211,7 +198,6 @@ const emit = defineEmits<{
 // Backend connection state
 const isConnected = computed(() => backendApi.connected.value);
 const backendError = computed(() => backendApi.error.value);
-const networkMode = ref<'mesh'>('mesh');
 
 // Station information
 const localStationInfo = ref({
@@ -301,7 +287,7 @@ const meshStatus = computed(() => {
 
 // Computed properties
 const canConnect = computed(() => {
-  return networkMode.value === 'mesh';
+  return true; // Always can connect since we only support mesh
 });
 
 // Load station info on mount
@@ -509,8 +495,8 @@ async function retryConnection() {
 }
 
 function onNetworkModeChange() {
+  // No longer needed - only mesh mode supported
   discoveredStations.value = [];
-  // Only mesh mode is supported
 }
 
 /**
@@ -550,19 +536,18 @@ async function startConnection() {
   connectionStatus.value = 'Starting connection...';
   
   try {
-    if (networkMode.value === 'mesh') {
-      connectionStatus.value = 'Starting mesh network discovery...';
-      
-      // Trigger mesh discovery via backend
-      await backendApi.discoverStations();
-      
-      // Get the current list of discovered stations
-      const stations = await backendApi.getDiscoveredStations();
-      discoveredStations.value = stations;
-      
-      console.log(`🚀 Mesh network started: ${stations.length} stations discovered`);
-      connectionStatus.value = 'Mesh network started successfully!';
-    }
+    // Start mesh network discovery (only mode supported)
+    connectionStatus.value = 'Starting mesh network discovery...';
+    
+    // Trigger mesh discovery via backend
+    await backendApi.discoverStations();
+    
+    // Get the current list of discovered stations
+    const stations = await backendApi.getDiscoveredStations();
+    discoveredStations.value = stations;
+    
+    console.log(`🚀 Mesh network started: ${stations.length} stations discovered`);
+    connectionStatus.value = 'Mesh network started successfully!';
     
     // Clear status after 3 seconds
     setTimeout(() => {
@@ -658,10 +643,8 @@ onMounted(async () => {
       console.error('Failed to fetch discovered stations on mount:', error);
     }
     
-    // Auto-start mesh discovery if in mesh mode
-    if (networkMode.value === 'mesh') {
-      await refreshMeshDiscovery();
-    }
+    // Auto-start mesh discovery (only mode supported)
+    await refreshMeshDiscovery();
   }
   
   // Set up real-time refresh for station status updates when modal is open
@@ -695,19 +678,10 @@ onUnmounted(() => {
 
 // Watch for backend connection changes
 watch(isConnected, async (connected) => {
-  if (connected && networkMode.value === 'mesh') {
-    await refreshMeshDiscovery();
-  } else if (!connected) {
-    // Clear discovered stations when disconnected
-    discoveredStations.value = [];
-  }
-});
-
-// Watch for network mode changes
-watch(networkMode, async (newMode) => {
-  if (newMode === 'mesh' && isConnected.value) {
+  if (connected) {
     await refreshMeshDiscovery();
   } else {
+    // Clear discovered stations when disconnected
     discoveredStations.value = [];
   }
 });
@@ -726,26 +700,24 @@ watch(() => props.isOpen, async (isOpen) => {
       
       console.log(`📡 Modal opened: ${stations.length} stations loaded from backend`);
       
-      // Also trigger discovery if in mesh mode to ensure fresh data
-      if (networkMode.value === 'mesh') {
-        console.log('🔍 Triggering mesh discovery for fresh data...');
-        await backendApi.discoverStations();
+      // Also trigger discovery to ensure fresh data
+      console.log('🔍 Triggering mesh discovery for fresh data...');
+      await backendApi.discoverStations();
         
-        // Wait a moment then fetch updated list
-        setTimeout(async () => {
-          try {
-            const updatedStations = await backendApi.getDiscoveredStations();
-            discoveredStations.value = updatedStations;
-            
-            // Update station statuses again
-            updateStationStatuses(updatedStations);
-            
-            console.log(`After discovery: ${updatedStations.length} stations found`);
-          } catch (error) {
-            console.error('Failed to get updated stations after discovery:', error);
-          }
-        }, 2000);
-      }
+      // Wait a moment then fetch updated list
+      setTimeout(async () => {
+        try {
+          const updatedStations = await backendApi.getDiscoveredStations();
+          discoveredStations.value = updatedStations;
+          
+          // Update station statuses again
+          updateStationStatuses(updatedStations);
+          
+          console.log(`After discovery: ${updatedStations.length} stations found`);
+        } catch (error) {
+          console.error('Failed to get updated stations after discovery:', error);
+        }
+      }, 2000);
     } catch (error) {
       console.error('Failed to load discovered stations on modal open:', error);
     }

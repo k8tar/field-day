@@ -53,6 +53,6 @@ if errorlevel 1 (
 echo.
 echo Build successful! Starting backend service...
 echo.
-target\release\fieldday-backend.exe --port 3030 --discovery-port 8080 --verbose
+target\release\fieldday-backend.exe --port 3030 --discovery-port 3030 --verbose
 
 pause

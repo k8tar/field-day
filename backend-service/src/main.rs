@@ -25,7 +25,7 @@ struct Args {
     #[arg(short, long, default_value = "3030")]
     port: u16,
     
-    #[arg(short, long, default_value = "8080")]
+    #[arg(short, long, default_value = "3030")]
     discovery_port: u16,
     
     #[arg(short, long)]

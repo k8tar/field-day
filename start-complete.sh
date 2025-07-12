@@ -15,7 +15,7 @@ fi
 
 echo
 echo "[2/3] Starting Backend Service..."
-gnome-terminal -- bash -c "./target/release/fieldday-backend --port 3030 --discovery-port 8080 --verbose; exec bash" &
+gnome-terminal -- bash -c "./target/release/fieldday-backend --port 3030 --discovery-port 3030 --verbose; exec bash" &
 
 echo
 echo "[3/3] Starting Frontend Development Server..."
