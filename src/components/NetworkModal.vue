@@ -113,7 +113,8 @@
               <div class="station-info">
                 <div class="station-header">
                   <span class="station-callsign">{{ station.call_sign }}</span>
-                  <span class="station-designator">{{ station.class }}</span>
+                  <span v-if="station.class" class="station-designator">{{ station.class }}</span>
+                  <span v-else class="station-designator unknown">Unknown</span>
                   <span class="node-status" :class="stationStatusService.getStatusClass(station.status.status)">
                     <span class="status-indicator" :style="{ backgroundColor: stationStatusService.getStatusColor(station.status.status) }"></span>
                     {{ station.is_self ? 'Self' : stationStatusService.getStatusDescription(station.status) }}
@@ -121,7 +122,8 @@
                 </div>
                 <div class="station-details">
                   <span class="station-ip">{{ station.ip_address }}:{{ station.port }}</span>
-                  <span class="station-section">{{ station.section }}</span>
+                  <span v-if="station.section" class="station-section">{{ station.section }}</span>
+                  <span v-else class="station-section unknown">Unknown Section</span>
                 </div>
                 <div class="node-capabilities">
                   <span class="capability-tag">Field Day</span>
@@ -179,7 +181,8 @@
               <div class="station-info">
                 <div class="station-header">
                   <span class="station-callsign">{{ station.call_sign }}</span>
-                  <span class="station-designator">{{ station.class }}</span>
+                  <span v-if="station.class" class="station-designator">{{ station.class }}</span>
+                  <span v-else class="station-designator unknown">Unknown</span>
                   <span class="node-status" :class="stationStatusService.getStatusClass(station.status.status)">
                     <span class="status-indicator" :style="{ backgroundColor: stationStatusService.getStatusColor(station.status.status) }"></span>
                     {{ stationStatusService.getStatusDescription(station.status) }}
@@ -297,9 +300,12 @@ const stationStatusService = stationService;
 
 // Combined view of stations with status
 const stationsWithStatus = computed(() => {
-  return discoveredStations.value.map(station => {
+  const stationMap = new Map();
+  
+  // First, add all currently discovered stations
+  discoveredStations.value.forEach(station => {
     const status = stationStatuses.value.get(station.id);
-    return {
+    stationMap.set(station.id, {
       ...station,
       status: status || {
         id: station.id,
@@ -312,8 +318,30 @@ const stationsWithStatus = computed(() => {
         isOnline: true,
         status: 'online' as const
       }
-    };
+    });
   });
+  
+  // Then, add any stations from status service that might not be in current discovery
+  // (these would be offline/warning stations)
+  stationStatuses.value.forEach((status, stationId) => {
+    if (!stationMap.has(stationId)) {
+      // Create a minimal station object for offline stations
+      stationMap.set(stationId, {
+        id: status.id,
+        call_sign: status.callSign,
+        name: status.callSign,
+        section: '', // Unknown for offline stations
+        class: '', // Unknown for offline stations  
+        ip_address: status.ipAddress,
+        port: status.port,
+        last_seen: new Date(status.lastSeen).toISOString(),
+        is_self: false,
+        status: status
+      });
+    }
+  });
+  
+  return Array.from(stationMap.values());
 });
 
 // Status tracking
@@ -769,12 +797,34 @@ onMounted(async () => {
       await refreshMeshDiscovery();
     }
   }
+  
+  // Set up real-time refresh for station status updates when modal is open
+  const modalRefreshInterval = setInterval(async () => {
+    if (props.isOpen && isConnected.value && !isRefreshing.value) {
+      try {
+        const stations = await backendApi.getDiscoveredStations();
+        discoveredStations.value = stations;
+        updateStationStatuses(stations);
+      } catch (error) {
+        // Silently handle errors to avoid console spam
+      }
+    }
+  }, 3000); // Refresh every 3 seconds when modal is open
+  
+  // Store interval for cleanup
+  (window as any).networkModalRefreshInterval = modalRefreshInterval;
 });
 
 // Clean up event listeners on unmount
 onUnmounted(() => {
   window.removeEventListener('stationInfoUpdate', refreshStationInfo);
   window.removeEventListener('stationStatusUpdate', handleStationStatusUpdate);
+  
+  // Clean up the refresh interval
+  const modalRefreshInterval = (window as any).networkModalRefreshInterval;
+  if (modalRefreshInterval) {
+    clearInterval(modalRefreshInterval);
+  }
 });
 
 // Watch for backend connection changes
@@ -1190,6 +1240,19 @@ function handleStationStatusUpdate(event: Event) {
   border-radius: 3px;
   font-size: 0.7rem;
   font-weight: 500;
+  
+  &.unknown {
+    background-color: #9ca3af;
+    color: white;
+    font-style: italic;
+  }
+}
+
+.station-section {
+  &.unknown {
+    color: #9ca3af;
+    font-style: italic;
+  }
 }
 
 .station-details {

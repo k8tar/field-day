@@ -14,8 +14,8 @@ export interface StationStatus {
 class StationStatusService {
   private readonly STORAGE_KEY = 'fieldday-station-status';
   private readonly DISCOVERED_KEY = 'fieldday-discovered-stations';
-  private readonly MAX_WARNING_REQUESTS = 3; // Yellow after 3 missed requests
-  private readonly MAX_OFFLINE_REQUESTS = 10; // Red after 10 missed requests
+  private readonly MAX_WARNING_REQUESTS = 2; // Yellow after 2 missed requests (10 seconds)
+  private readonly MAX_OFFLINE_REQUESTS = 4; // Red after 4 missed requests (20 seconds)
 
   /**
    * Get count of total unique stations discovered this session
@@ -105,8 +105,12 @@ class StationStatusService {
     this.addToDiscovered(station.id);
     
     let stationStatus = statuses.get(station.id);
+    let statusChanged = false;
     
     if (stationStatus) {
+      // Check if status changed from offline/warning to online
+      const wasOffline = stationStatus.status !== 'online';
+      
       // Update existing station
       stationStatus.lastSeen = now;
       stationStatus.requestCount = 0; // Reset request count since we've seen it
@@ -117,6 +121,8 @@ class StationStatusService {
       stationStatus.callSign = station.call_sign;
       stationStatus.ipAddress = station.ip_address;
       stationStatus.port = station.port;
+      
+      statusChanged = wasOffline;
     } else {
       // New station
       stationStatus = {
@@ -130,10 +136,15 @@ class StationStatusService {
         isOnline: true,
         status: 'online'
       };
+      statusChanged = true;
     }
     
     statuses.set(station.id, stationStatus);
     this.saveStationStatuses(statuses);
+    
+    if (statusChanged) {
+      this.emitStatusUpdateEvent();
+    }
   }
 
   /**
@@ -142,9 +153,11 @@ class StationStatusService {
   updateMissedStations(seenStationIds: string[]): void {
     const statuses = this.getStationStatuses();
     let hasChanges = false;
+    let statusChanges = 0;
     
     for (const [stationId, station] of statuses) {
       if (!seenStationIds.includes(stationId)) {
+        const oldStatus = station.status;
         station.requestCount++;
         hasChanges = true;
         
@@ -155,11 +168,17 @@ class StationStatusService {
         } else if (station.requestCount >= this.MAX_WARNING_REQUESTS) {
           station.status = 'warning';
         }
+        
+        // Count status changes for event details
+        if (oldStatus !== station.status) {
+          statusChanges++;
+        }
       }
     }
     
     if (hasChanges) {
       this.saveStationStatuses(statuses);
+      this.emitStatusUpdateEvent();
     }
   }
 
@@ -213,6 +232,7 @@ class StationStatusService {
     
     if (hasChanges) {
       this.saveStationStatuses(statuses);
+      this.emitStatusUpdateEvent();
     }
   }
 
@@ -256,8 +276,10 @@ class StationStatusService {
       case 'offline':
         if (hours > 0) {
           return `Offline (${hours}h ago)`;
-        } else {
+        } else if (minutes > 0) {
           return `Offline (${minutes}m ago)`;
+        } else {
+          return 'Offline';
         }
       default:
         return 'Unknown';
@@ -279,6 +301,29 @@ class StationStatusService {
     if (hours < 24) return `${hours}h ago`;
     const days = Math.floor(hours / 24);
     return `${days}d ago`;
+  }
+
+  /**
+   * Emit station status update event for UI components
+   */
+  private emitStatusUpdateEvent(): void {
+    const statuses = this.getAllStationsWithStatus();
+    const total = statuses.length;
+    const online = statuses.filter(s => s.status === 'online').length;
+    const warning = statuses.filter(s => s.status === 'warning').length;
+    const offline = statuses.filter(s => s.status === 'offline').length;
+    
+    const event = new CustomEvent('stationStatusUpdate', {
+      detail: {
+        total,
+        online,
+        warning,
+        offline,
+        timestamp: Date.now()
+      }
+    });
+    
+    window.dispatchEvent(event);
   }
 }
 
