@@ -26,7 +26,6 @@ const stationSection = ref('');
 const refreshData = async () => {
   try {
     const config = await fileStorage.getStationConfig();
-    console.log('StationInfo: Loaded config:', config); // Debug log
     stationCallsign.value = config.callsign || '';
     // Only use stationClass field, not designator as fallback
     stationClass.value = config.stationClass || '';

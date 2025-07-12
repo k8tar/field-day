@@ -27,13 +27,11 @@ class WebSocketSyncService {
 
   private setupMessageHandlers(): void {
     this.on('qso-update', (data: any) => {
-      console.log('📡 WebSocket QSO update received:', data);
       // Forward to QSO store handlers
       this.emit('network-qso-update', data);
     });
 
     this.on('station-info', (data: any) => {
-      console.log('📊 WebSocket station info received:', data);
       this.emit('station-discovered', data);
     });
 
@@ -53,7 +51,6 @@ class WebSocketSyncService {
       // Instead, we'll use a discovery mechanism via localStorage
       this.setupHostDiscovery();
       
-      console.log(`🌐 WebSocket host started on port ${port} (discovery mode)`);
       return true;
     } catch (error) {
       console.error('❌ Failed to start WebSocket host:', error);
@@ -65,7 +62,6 @@ class WebSocketSyncService {
   async connectToHost(address: string): Promise<boolean> {
     try {
       const wsUrl = `ws://${address}`;
-      console.log(`🔌 Connecting to WebSocket host: ${wsUrl}`);
       
       // In browser environment, try to connect to actual WebSocket if available
       // Otherwise fall back to localStorage-based communication
@@ -75,12 +71,10 @@ class WebSocketSyncService {
         return new Promise((resolve) => {
           if (this.ws) {
             this.ws.onopen = () => {
-              console.log('✅ WebSocket connected');
               this.startPingPong();
               resolve(true);
             };
             this.ws.onerror = () => {
-              console.log('⚠️ WebSocket connection failed, using fallback');
               this.setupClientDiscovery(address);
               resolve(true);
             };
@@ -111,7 +105,6 @@ class WebSocketSyncService {
     };
 
     this.ws.onclose = () => {
-      console.log('🔌 WebSocket connection closed');
       this.scheduleReconnect();
     };
 
@@ -164,7 +157,6 @@ class WebSocketSyncService {
         try {
           const info = JSON.parse(hostInfo);
           if (Date.now() - info.timestamp < 10000) { // Host seen in last 10 seconds
-            console.log('📡 Found WebSocket host via discovery:', info);
             this.emit('station-discovered', info);
           }
         } catch (error) {
@@ -285,7 +277,6 @@ class WebSocketSyncService {
     }
 
     this.reconnectTimer = window.setTimeout(() => {
-      console.log('🔄 Attempting WebSocket reconnect...');
       // Reconnection logic would go here
     }, 5000);
   }
@@ -308,7 +299,6 @@ class WebSocketSyncService {
     }
 
     this.isHost = false;
-    console.log('🛑 WebSocket sync disconnected');
   }
 
   // Helper methods

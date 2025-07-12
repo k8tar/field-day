@@ -78,14 +78,11 @@ applyTheme(isDark.value);
 watch(isDark, (newValue) => {
   applyTheme(newValue);
   saveTheme(newValue);
-  console.log('Theme changed to:', newValue ? 'dark' : 'light');
 }, { immediate: false });
 
 // Toggle function
 function toggleTheme() {
-  console.log('toggleTheme called, current value:', isDark.value);
   isDark.value = !isDark.value;
-  console.log('toggleTheme new value:', isDark.value);
 }
 
 export { isDark, toggleTheme };

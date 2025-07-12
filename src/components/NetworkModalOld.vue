@@ -10,87 +10,148 @@
       </div>
       
       <div class="modal-body">
-        <!-- Backend Connection Status -->
+        <!-- Network Status Section -->
         <div class="network-status">
           <div class="status-header">
             <h3>
               <span class="material-icons" :class="{ 'connected': isConnected, 'disconnected': !isConnected }">
                 {{ isConnected ? 'wifi' : 'wifi_off' }}
               </span>
-              Backend Status: {{ isConnected ? 'Connected' : 'Disconnected' }}
+              Network Status: {{ isConnected ? 'Connected' : 'Disconnected' }}
             </h3>
           </div>
           
           <div class="connection-info" v-if="isConnected">
-            <p><strong>Backend Service:</strong> http://localhost:3030</p>
+            <p><strong>Network ID:</strong> {{ networkId }}</p>
             <p><strong>Your Station:</strong> {{ localStationInfo.callsign }} ({{ localStationInfo.designator }})</p>
-            <p><strong>Discovered Stations:</strong> {{ discoveredStations.length }}</p>
+            <p><strong>Connected Stations:</strong> {{ connectedStations.length }}</p>
+          </div>
+        </div>
+
+        <!-- Connection Settings -->
+        <div class="connection-settings">
+          <h3>Connection Settings</h3>
+          
+          <div class="setting-group">
+            <label>
+              <input 
+                type="checkbox" 
+                v-model="autoReconnect" 
+                @change="onAutoReconnectChange"
+              >
+              Auto-reconnect on startup and connection loss
+            </label>
+            <p class="help-text">Automatically reconnect to the last network when the app starts or if connection is lost</p>
           </div>
           
-          <div v-if="!isConnected" class="connection-error">
-            <div class="error-header">
-              <span class="material-icons error-icon">error</span>
-              <h4>Backend Service Required</h4>
+          <div class="setting-group">
+            <label for="network-mode">Network Mode:</label>
+            <select id="network-mode" v-model="networkMode" @change="onNetworkModeChange">
+              <option value="auto">Auto-discover (LAN)</option>
+              <option value="mesh">Mesh Network (P2P)</option>
+              <option value="host">Host Network</option>
+              <option value="join">Join Network</option>
+            </select>
+          </div>
+
+          <div v-if="networkMode === 'mesh'" class="setting-group">
+            <div class="mesh-info">
+              <h4>🕸️ Mesh Network Mode</h4>
+              <p class="help-text">
+                In mesh mode, each station operates independently and discovers other stations automatically.
+                No central server is required - all stations communicate directly with each other.
+                This provides maximum resilience for Field Day operations.
+              </p>
+              <ul class="help-list">
+                <li>• Each station discovers others automatically</li>
+                <li>• Direct peer-to-peer connections</li>
+                <li>• No single point of failure</li>
+                <li>• Stations continue operating if others go offline</li>
+              </ul>
             </div>
-            
-            <div class="error-details">
-              <p v-if="backendError"><strong>Error:</strong> {{ backendError }}</p>
-              <p>The Field Day Logger requires the Rust backend service to be running for mesh networking and QSO synchronization.</p>
-              
-              <div class="error-actions">
-                <div class="action-item">
-                  <span class="material-icons">play_arrow</span>
-                  <span>Start the backend service using <code>start-backend.bat</code> or <code>start-backend.sh</code></span>
+          </div>
+
+          <div v-if="networkMode === 'host'" class="setting-group">
+            <label for="network-port">Port (Hardcoded):</label>
+            <input 
+              id="network-port" 
+              type="number" 
+              v-model.number="hostPort" 
+              disabled
+              value="8080"
+            >
+            <p class="help-text">All Field Day instances use port 8080. Other stations can connect to: {{ localIP }}:8080</p>
+          </div>
+
+          <div v-if="networkMode === 'join'" class="setting-group">
+            <label for="host-address">Host Address:</label>
+            <input 
+              id="host-address" 
+              type="text" 
+              v-model="hostAddress" 
+              placeholder="192.168.1.100:8080"
+            >
+            <p class="help-text">Enter the IP address and port of the host station</p>
+          </div>
+
+          <div class="setting-group">
+            <label for="station-callsign">Your Callsign:</label>
+            <input 
+              id="station-callsign" 
+              type="text" 
+              v-model="localStationInfo.callsign" 
+              placeholder="K8TAR"
+              style="text-transform: uppercase;"
+            >
+          </div>
+
+          <div class="setting-group">
+            <label for="station-designator">Station Designator:</label>
+            <input 
+              id="station-designator" 
+              type="text" 
+              v-model="localStationInfo.designator" 
+              placeholder="1A"
+              style="text-transform: uppercase;"
+            >
+          </div>
+        </div>
+
+
+
+        <!-- Connected Stations -->
+        <div v-if="connectedStations.length > 0" class="connected-stations">
+          <h3>Connected Stations ({{ connectedStations.length }})</h3>
+          <div class="stations-list">
+            <div 
+              v-for="station in connectedStations" 
+              :key="station.id" 
+              class="station-card"
+            >
+              <div class="station-info">
+                <div class="station-header">
+                  <span class="station-designator-main">{{ station.class }}</span>
+                  <span class="station-callsign-sub">{{ station.call_sign }}</span>
                 </div>
-                
-                <div class="action-item" v-if="isElectron">
-                  <button class="restart-button" @click="attemptRestart" :disabled="isRestarting">
-                    <span class="material-icons">refresh</span>
-                    {{ isRestarting ? 'Restarting...' : 'Attempt Restart' }}
-                  </button>
+                <div class="station-details">
+                  <span class="station-ip">{{ station.ip_address }}:{{ station.port }}</span>
+                  <span class="station-qsos">{{ 0 }} QSOs</span>
+                  <span class="station-score">{{ 0 }} pts</span>
                 </div>
-                
-                <div class="action-item">
-                  <button class="retry-button" @click="retryConnection" :disabled="isRetrying">
-                    <span class="material-icons">sync</span>
-                    {{ isRetrying ? 'Checking...' : 'Retry Connection' }}
-                  </button>
+                <div class="station-status">
+                  <span class="status-indicator" :class="{ 'online': !station.is_self }"></span>
+                  <span class="last-seen">{{ formatLastSeen(station.last_seen) }}</span>
                 </div>
               </div>
             </div>
           </div>
         </div>
 
-        <!-- Connection Settings -->
-        <div class="connection-settings" v-if="isConnected">
-          <h3>Network Mode</h3>
-          
-          <div class="setting-group">
-            <label for="network-mode">Mode:</label>
-            <select id="network-mode" v-model="networkMode" @change="onNetworkModeChange">
-              <option value="mesh">Mesh Network (Recommended)</option>
-              <option value="auto">Auto-discover</option>
-              <option value="host">Host Network</option>
-              <option value="join">Join Network</option>
-            </select>
-          </div>
-          
-          <div v-if="networkMode === 'join'" class="setting-group">
-            <label for="host-address">Host Address:</label>
-            <input 
-              id="host-address" 
-              type="text" 
-              v-model="hostAddress"
-              placeholder="192.168.1.100:8080"
-            >
-          </div>
-        </div>
-
         <!-- Mesh Network Nodes -->
-        <div v-if="isConnected && networkMode === 'mesh'" class="mesh-nodes">
+        <div v-if="networkMode === 'mesh'" class="mesh-nodes">
           <h3>
             <span class="material-icons">device_hub</span>
-            Mesh Network Stations ({{ discoveredStations.length }})
+            Mesh Network Nodes ({{ meshNodes.length }})
           </h3>
           
           <div class="mesh-status-summary">
@@ -101,72 +162,63 @@
             <div class="mesh-stats">
               <span>Discovered: {{ meshStatus.discoveredNodes }}</span>
               <span>Connected: {{ meshStatus.connectedNodes }}</span>
+              <span>Last Sync: {{ formatLastSync(meshStatus.lastSync) }}</span>
             </div>
           </div>
           
-          <div v-if="discoveredStations.length > 0" class="stations-list">
+          <div v-if="meshNodes.length > 0" class="stations-list">
             <div 
-              v-for="station in discoveredStations" 
-              :key="station.id" 
+              v-for="node in meshNodes" 
+              :key="node.id" 
               class="station-card mesh-node"
             >
               <div class="station-info">
                 <div class="station-header">
-                  <span class="station-callsign">{{ station.call_sign }}</span>
-                  <span class="station-designator">{{ station.class }}</span>
-                  <span class="node-status" :class="{ 'online': !station.is_self }">
-                    {{ !station.is_self ? '🟢' : '🔴' }}
+                  <span class="station-callsign">{{ node.call_sign }}</span>
+                  <span class="station-designator">{{ node.class }}</span>
+                  <span class="node-status" :class="{ 'online': !node.is_self }">
+                    {{ !node.is_self ? '🟢' : '🔴' }}
                   </span>
                 </div>
                 <div class="station-details">
-                  <span class="station-ip">{{ station.ip_address }}:{{ station.port }}</span>
-                  <span class="station-section">{{ station.section }}</span>
+                  <span class="station-ip">{{ node.ip_address }}:{{ node.port }}</span>
+                  <span class="station-qsos">{{ 0 }} QSOs</span>
+                  <span class="station-score">{{ 0 }} pts</span>
                 </div>
                 <div class="node-capabilities">
                   <span class="capability-tag">Field Day</span>
                 </div>
                 <div class="station-status">
-                  <span class="last-seen">{{ formatLastSeen(station.last_seen) }}</span>
+                  <span class="last-seen">{{ formatLastSeen(node.last_seen) }}</span>
                 </div>
               </div>
             </div>
           </div>
           
           <div v-else class="no-nodes">
-            <div class="material-icons" style="font-size: 3rem; opacity: 0.3;">device_hub</div>
-            <p><strong>No Field Day stations discovered</strong></p>
-            <p>Make sure other stations are running Field Day Logger with the backend service.</p>
+            <p>No other mesh nodes found on the network.</p>
+            <p class="help-text">
+              🕸️ Mesh nodes discover each other automatically.<br>
+              Start another Field Day Logger instance on a different machine to see it appear here.
+            </p>
           </div>
-
+          
           <div class="mesh-actions">
-            <button 
-              class="refresh-button" 
-              @click="refreshMeshDiscovery"
-              :disabled="isRefreshing"
-            >
-              <span class="material-icons" :class="{ 'spinning': isRefreshing }">refresh</span>
-              {{ isRefreshing ? 'Discovering...' : 'Refresh Discovery' }}
+            <button @click="refreshMeshDiscovery" :disabled="isRefreshing" class="refresh-button">
+              <span v-if="isRefreshing">🔄 Refreshing...</span>
+              <span v-else>🔍 Refresh Discovery</span>
             </button>
-            
-            <button 
-              class="sync-button" 
-              @click="forceMeshSync"
-              :disabled="isSyncing"
-            >
-              <span class="material-icons" :class="{ 'spinning': isSyncing }">sync</span>
-              {{ isSyncing ? 'Syncing...' : 'Force Sync' }}
+            <button @click="forceMeshSync" :disabled="isSyncing" class="sync-button">
+              <span v-if="isSyncing">🔄 Syncing...</span>
+              <span v-else>🔄 Force Sync</span>
             </button>
           </div>
         </div>
 
-        <!-- Discovered Stations (Auto mode) -->
-        <div v-if="networkMode === 'auto' && discoveredStations.length > 0" class="discovered-stations">
-          <h3>
-            <span class="material-icons">search</span>
-            Discovered Stations ({{ discoveredStations.length }})
-          </h3>
-          
-          <div class="stations-list">
+        <!-- Auto-Discovery Results -->
+        <div v-if="networkMode === 'auto'" class="discovered-stations">
+          <h3>Discovered Stations</h3>
+          <div v-if="discoveredStations.length > 0" class="stations-list">
             <div 
               v-for="station in discoveredStations" 
               :key="station.id" 
@@ -174,31 +226,46 @@
             >
               <div class="station-info">
                 <div class="station-header">
-                  <span class="station-callsign">{{ station.call_sign }}</span>
-                  <span class="station-designator">{{ station.class }}</span>
+                  <span class="station-callsign">{{ station.callsign }}</span>
+                  <span class="station-designator">{{ station.designator }}</span>
                 </div>
                 <div class="station-details">
-                  <span class="station-ip">{{ station.ip_address }}:{{ station.port }}</span>
-                </div>
-                <div class="station-status">
-                  <span class="last-seen">{{ formatLastSeen(station.last_seen) }}</span>
+                  <span class="station-ip">{{ station.ip }}:{{ station.port }}</span>
                 </div>
               </div>
-              <button 
-                class="connect-button" 
-                @click="connectToStation(station)"
-              >
+              <button class="connect-button" @click="connectToStation(station)">
                 Connect
               </button>
             </div>
           </div>
+          <div v-else class="no-stations">
+            <p>No other Field Day stations found on the network.</p>
+            <p class="help-text">
+              To test network features:
+              <br>• Start another instance on a different machine (all use port 8080)
+              <br>• Or manually connect using "Join Network" mode with address: <code>[other-machine-ip]:8080</code>
+              <br>• For testing on same machine, use different directories and start another server
+            </p>
+          </div>
         </div>
 
-        <!-- No Stations Found -->
-        <div v-if="(networkMode === 'auto') && discoveredStations.length === 0 && !isScanning" class="no-stations">
-          <p><strong>No stations found</strong></p>
-          <p>Make sure other Field Day Logger instances are running on the network.</p>
-          <p>Try using <strong>Mesh Network</strong> mode for better discovery.</p>
+        <!-- Sync Status -->
+        <div v-if="isConnected" class="sync-status">
+          <h3>Synchronization Status</h3>
+          <div class="sync-info">
+            <div class="sync-item">
+              <span class="sync-label">Last Sync:</span>
+              <span class="sync-value">{{ formatLastSync(lastSyncTime) }}</span>
+            </div>
+            <div class="sync-item">
+              <span class="sync-label">QSOs Synced:</span>
+              <span class="sync-value">{{ syncedQsoCount }}</span>
+            </div>
+            <div class="sync-item">
+              <span class="sync-label">Conflicts Resolved:</span>
+              <span class="sync-value">{{ conflictsResolved }}</span>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -210,30 +277,31 @@
             @click="scanForStations"
             :disabled="isScanning"
           >
-            <span class="material-icons" :class="{ 'spinning': isScanning }">search</span>
+            <span class="material-icons">search</span>
             {{ isScanning ? 'Scanning...' : 'Scan Network' }}
           </button>
         </div>
-        
         <div class="footer-right">
           <button 
-            v-if="canConnect && !isConnected" 
+            v-if="!isConnected" 
             class="connect-button primary" 
-            @click="startConnection"
-            :disabled="isConnecting"
+            @click.stop="startConnection"
+            :disabled="!canConnect || isConnecting"
+            type="button"
           >
-            <span class="material-icons" :class="getNetworkModeIcon()">{{ getNetworkModeIcon() }}</span>
-            {{ isConnecting ? 'Starting...' : getNetworkModeButtonText() }}
+            <span v-if="isConnecting" class="material-icons spinning">hourglass_empty</span>
+            <span v-else class="material-icons">{{ getNetworkModeIcon() }}</span>
+            {{ isConnecting ? 'Connecting...' : getNetworkModeButtonText() }}
           </button>
           
+          <!-- Connection Status Display -->
           <div v-if="connectionStatus" class="connection-status" :class="{ 
             'status-error': connectionStatus.includes('failed') || connectionStatus.includes('error'),
             'status-success': connectionStatus.includes('success'),
-            'status-progress': connectionStatus.includes('Starting') || connectionStatus.includes('Discovering')
+            'status-progress': connectionStatus.includes('Connecting') || connectionStatus.includes('Starting')
           }">
             {{ connectionStatus }}
           </div>
-          
           <button 
             v-if="isConnected" 
             class="disconnect-button" 
@@ -256,6 +324,18 @@ import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import { backendApi, type BackendStation } from '@/services/backendApiService';
 import { fileStorage } from '@/services/fileStorage';
 
+interface StationInfo {
+  id: string;
+  callsign: string;
+  designator: string;
+  ip: string;
+  port?: number;
+  qsoCount: number;
+  score: number;
+  online: boolean;
+  lastSeen: number;
+}
+
 const props = defineProps<{
   isOpen: boolean;
 }>();
@@ -267,8 +347,12 @@ const emit = defineEmits<{
 // Backend connection state
 const isConnected = computed(() => backendApi.connected.value);
 const backendError = computed(() => backendApi.error.value);
-const networkMode = ref<'auto' | 'mesh' | 'host' | 'join'>('mesh');
+const networkMode = ref<'auto' | 'mesh' | 'host' | 'join'>('mesh'); // Default to mesh
+const networkId = ref('mesh-network-' + Date.now());
+const hostPort = ref(8080);
 const hostAddress = ref('');
+const localIP = ref('127.0.0.1');
+const autoReconnect = ref(false);
 
 // Station information
 const localStationInfo = ref({
@@ -278,6 +362,7 @@ const localStationInfo = ref({
 
 // Discovered stations from backend
 const discoveredStations = ref<BackendStation[]>([]);
+const meshNodes = computed(() => discoveredStations.value);
 
 // Status tracking
 const isRefreshing = ref(false);
@@ -285,31 +370,24 @@ const isSyncing = ref(false);
 const isScanning = ref(false);
 const connectionStatus = ref<string>('');
 const isConnecting = ref(false);
-const isRestarting = ref(false);
-const isRetrying = ref(false);
-
-// Environment detection
-const isElectron = computed(() => {
-  return typeof window !== 'undefined' && (window as any).Electron;
-});
 
 // Mesh status
 const meshStatus = computed(() => ({
   meshHealth: discoveredStations.value.length > 0 ? 'good' : 'warning',
   discoveredNodes: discoveredStations.value.length,
   connectedNodes: discoveredStations.value.filter(s => !s.is_self).length,
+  lastSync: Date.now()
 }));
 
-// Computed properties
-const canConnect = computed(() => {
-  if (networkMode.value === 'host' || networkMode.value === 'mesh') {
-    return true;
-  } else if (networkMode.value === 'join') {
-    return hostAddress.value.trim().length > 0;
-  } else {
-    return discoveredStations.value.length > 0;
-  }
-});
+// Sync information
+const lastSyncTime = ref<number | null>(null);
+const syncedQsoCount = ref(0);
+const conflictsResolved = ref(0);
+
+// Connected stations (excluding self)
+const connectedStations = computed(() => 
+  discoveredStations.value.filter(station => !station.is_self)
+);
 
 // Load station info on mount
 async function refreshStationInfo() {
@@ -318,76 +396,19 @@ async function refreshStationInfo() {
     localStationInfo.value.callsign = stationConfig.callsign || '';
     localStationInfo.value.designator = stationConfig.designator || '1A';
     
-    // Sync with backend if connected
-    await syncStationConfigWithBackend();
+    // Update backend with station info if configured
+    if (localStationInfo.value.callsign) {
+      await backendApi.updateStationInfo({
+        call_sign: localStationInfo.value.callsign,
+        name: localStationInfo.value.callsign,
+        section: 'CT', // TODO: Get from config
+        class: localStationInfo.value.designator,
+      });
+    }
   } catch (error) {
     console.error('Error loading station config:', error);
     localStationInfo.value.callsign = '';
     localStationInfo.value.designator = '1A';
-  }
-}
-
-// Sync station configuration between file storage and backend
-async function syncStationConfigWithBackend() {
-  if (!backendApi.connected.value) {
-    console.log('Backend not connected - skipping sync');
-    return;
-  }
-  
-  try {
-    // Get current backend station info
-    const backendStationInfo = await backendApi.getStationInfo();
-    
-    // Get current file storage config
-    const fileConfig = await fileStorage.getStationConfig();
-    
-    if (!backendStationInfo) {
-      // Backend has no station info - update it with file storage data
-      console.log('📝 Backend has no station info - updating from file storage');
-      await backendApi.updateStationInfo({
-        call_sign: fileConfig.callsign || '',
-        name: fileConfig.callsign || '',
-        section: fileConfig.stationSection || 'CT',
-        class: fileConfig.designator || '1A',
-      });
-    } else {
-      // Backend has station info - check if file storage differs
-      if (fileConfig.callsign !== backendStationInfo.call_sign || 
-          fileConfig.designator !== backendStationInfo.class) {
-        
-        // Determine which is more recent based on file storage timestamp
-        const fileConfigTime = fileConfig.lastUpdated || 0;
-        const currentTime = Date.now();
-        
-        // If file config was updated recently (within last hour), prefer it
-        if (currentTime - fileConfigTime < 3600000) { // 1 hour
-          console.log('📝 File storage updated recently - updating backend configuration');
-          await backendApi.updateStationInfo({
-            call_sign: fileConfig.callsign || '',
-            name: fileConfig.callsign || '',
-            section: fileConfig.stationSection || 'CT',
-            class: fileConfig.designator || '1A',
-          });
-        } else {
-          // Use backend data as source of truth
-          console.log('📝 Using backend as source of truth - updating file storage');
-          await fileStorage.saveStationConfig({
-            callsign: backendStationInfo.call_sign || '',
-            designator: backendStationInfo.class || '1A',
-            stationSection: backendStationInfo.section || 'CT',
-            lastUpdated: currentTime
-          });
-          
-          // Update local state
-          localStationInfo.value.callsign = backendStationInfo.call_sign || '';
-          localStationInfo.value.designator = backendStationInfo.class || '1A';
-        }
-      }
-    }
-    
-    console.log('✅ Station configuration synchronized successfully');
-  } catch (error) {
-    console.error('❌ Failed to sync station configuration:', error);
   }
 }
 
@@ -396,25 +417,16 @@ watch(() => localStationInfo.value.callsign, async (newCallsign) => {
   try {
     const currentConfig = await fileStorage.getStationConfig();
     if (newCallsign !== currentConfig.callsign) {
-      await fileStorage.saveStationConfig({ 
-        callsign: newCallsign,
-        lastUpdated: Date.now()
-      });
+      await fileStorage.saveStationConfig({ callsign: newCallsign });
       
       // Update backend
-      if (newCallsign && isConnected.value) {
-        const success = await backendApi.updateStationInfo({
+      if (newCallsign) {
+        await backendApi.updateStationInfo({
           call_sign: newCallsign,
-          name: newCallsign, // Use callsign as name
-          section: currentConfig.stationSection || 'CT', // Use saved section or default
-          class: localStationInfo.value.designator
+          name: newCallsign,
+          section: 'CT', // TODO: Get from config
+          class: localStationInfo.value.designator,
         });
-        
-        if (success) {
-          console.log('✅ Station callsign updated in backend');
-        } else {
-          console.error('❌ Failed to update station callsign in backend');
-        }
       }
       
       window.dispatchEvent(new CustomEvent('stationInfoUpdate'));
@@ -428,25 +440,16 @@ watch(() => localStationInfo.value.designator, async (newDesignator) => {
   try {
     const currentConfig = await fileStorage.getStationConfig();
     if (newDesignator !== currentConfig.designator) {
-      await fileStorage.saveStationConfig({ 
-        designator: newDesignator,
-        lastUpdated: Date.now()
-      });
+      await fileStorage.saveStationConfig({ designator: newDesignator });
       
       // Update backend
-      if (localStationInfo.value.callsign && isConnected.value) {
-        const success = await backendApi.updateStationInfo({
+      if (localStationInfo.value.callsign) {
+        await backendApi.updateStationInfo({
           call_sign: localStationInfo.value.callsign,
           name: localStationInfo.value.callsign,
-          section: currentConfig.stationSection || 'CT',
-          class: newDesignator
+          section: 'CT', // TODO: Get from config
+          class: newDesignator,
         });
-        
-        if (success) {
-          console.log('✅ Station designator updated in backend');
-        } else {
-          console.error('❌ Failed to update station designator in backend');
-        }
       }
       
       window.dispatchEvent(new CustomEvent('stationInfoUpdate'));
@@ -456,63 +459,25 @@ watch(() => localStationInfo.value.designator, async (newDesignator) => {
   }
 });
 
+// Computed properties
+const canConnect = computed(() => {
+  if (networkMode.value === 'host' || networkMode.value === 'mesh') {
+    return true;
+  } else if (networkMode.value === 'join') {
+    return hostAddress.value.trim().length > 0;
+  } else {
+    return discoveredStations.value.length > 0;
+  }
+});
+
 // Functions
 function close() {
   emit('close');
 }
 
-// Attempt to restart the backend service
-async function attemptRestart() {
-  if (isRestarting.value) return;
-  
-  isRestarting.value = true;
-  try {
-    console.log('🔄 Attempting to restart backend service...');
-    
-    if (isElectron.value) {
-      const restartFunction = (window as any).restartBackendService;
-      if (restartFunction) {
-        const success = await restartFunction();
-        if (success) {
-          console.log('✅ Backend service restarted successfully');
-        } else {
-          console.error('❌ Failed to restart backend service');
-        }
-      } else {
-        console.error('❌ Restart function not available');
-      }
-    }
-  } catch (error) {
-    console.error('❌ Error restarting backend service:', error);
-  } finally {
-    isRestarting.value = false;
-  }
-}
-
-// Retry connection to backend service
-async function retryConnection() {
-  if (isRetrying.value) return;
-  
-  isRetrying.value = true;
-  try {
-    console.log('🔄 Retrying backend connection...');
-    
-    // Try to get station info to test connection
-    await backendApi.getStationInfo();
-    
-    // Wait a moment for the connection to establish
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    if (backendApi.connected.value) {
-      console.log('✅ Backend connection successful');
-    } else {
-      console.log('❌ Backend still not available');
-    }
-  } catch (error) {
-    console.error('❌ Error retrying connection:', error);
-  } finally {
-    isRetrying.value = false;
-  }
+function onAutoReconnectChange() {
+  // Save auto-reconnect setting
+  saveNetworkSettings();
 }
 
 function onNetworkModeChange() {
@@ -520,11 +485,23 @@ function onNetworkModeChange() {
   if (networkMode.value === 'auto') {
     scanForStations();
   }
+  saveNetworkSettings();
+}
+
+async function saveNetworkSettings() {
+  try {
+    const settings = await fileStorage.getSettings();
+    await fileStorage.saveSettings({
+      ...settings,
+      networkMode: networkMode.value,
+      autoReconnect: autoReconnect.value,
+    });
+  } catch (error) {
+    console.error('Failed to save network settings:', error);
+  }
 }
 
 async function scanForStations() {
-  if (!isConnected.value) return;
-  
   isScanning.value = true;
   try {
     const stations = await backendApi.discoverStations();
@@ -537,12 +514,13 @@ async function scanForStations() {
 }
 
 function connectToStation(station: BackendStation) {
+  // For now, just add to connected list
+  // Backend handles the actual connection logic
   console.log('Connecting to station:', station.call_sign);
-  // Backend handles the connection logic
 }
 
 async function startConnection() {
-  if (isConnecting.value || !isConnected.value) return;
+  if (isConnecting.value) return;
   
   isConnecting.value = true;
   connectionStatus.value = 'Starting connection...';
@@ -558,9 +536,11 @@ async function startConnection() {
       connectionStatus.value = 'Mesh network started successfully!';
     } else if (networkMode.value === 'host') {
       connectionStatus.value = 'Starting as host...';
+      // Backend automatically handles hosting
       connectionStatus.value = 'Host started successfully!';
     } else if (networkMode.value === 'join') {
       connectionStatus.value = `Connecting to ${hostAddress.value}...`;
+      // Backend handles connection logic
       connectionStatus.value = 'Connected successfully!';
     }
     
@@ -590,7 +570,7 @@ function disconnect() {
 }
 
 async function refreshMeshDiscovery() {
-  if (isRefreshing.value || !isConnected.value) return;
+  if (isRefreshing.value) return;
   
   isRefreshing.value = true;
   try {
@@ -604,12 +584,14 @@ async function refreshMeshDiscovery() {
 }
 
 async function forceMeshSync() {
-  if (isSyncing.value || !isConnected.value) return;
+  if (isSyncing.value) return;
   
   isSyncing.value = true;
   try {
     // Backend handles QSO synchronization
-    await backendApi.getQsoCount();
+    const qsoCount = await backendApi.getQsoCount();
+    syncedQsoCount.value = qsoCount;
+    lastSyncTime.value = Date.now();
   } catch (error) {
     console.error('Failed to force mesh sync:', error);
   } finally {
@@ -637,9 +619,8 @@ function getNetworkModeButtonText(): string {
   }
 }
 
-function formatLastSeen(timestamp: string): string {
-  const time = new Date(timestamp).getTime();
-  const seconds = Math.floor((Date.now() - time) / 1000);
+function formatLastSeen(timestamp: number): string {
+  const seconds = Math.floor((Date.now() - timestamp) / 1000);
   if (seconds < 60) return `${seconds}s ago`;
   const minutes = Math.floor(seconds / 60);
   if (minutes < 60) return `${minutes}m ago`;
@@ -647,16 +628,41 @@ function formatLastSeen(timestamp: string): string {
   return `${hours}h ago`;
 }
 
-// Load initial data on mount
+function formatLastSync(timestamp: number): string {
+  if (!timestamp) return 'Never';
+  return new Date(timestamp).toLocaleTimeString();
+}
+
+
+
+// Auto-scan on mount if in auto mode
 onMounted(async () => {
+  // Detect local IP (mock)
+  localIP.value = '192.168.1.100';
+  
+  // Initialize auto-reconnect setting from network service
+  const settings = networkService.getNetworkSettings();
+  autoReconnect.value = settings.autoReconnect;
+  
+  // Load saved network settings into UI
+  const currentMode = networkService.getCurrentNetworkMode();
+  networkMode.value = currentMode;
+  
+  if (currentMode === 'host') {
+    hostPort.value = networkService.getHostPort();
+  } else if (currentMode === 'join') {
+    hostAddress.value = networkService.getHostAddress();
+  }
+  
+  // Load initial data from file storage
   await refreshStationInfo();
   
   // Listen for station info updates from config modal
   window.addEventListener('stationInfoUpdate', refreshStationInfo);
   
-  // Auto-start mesh discovery if connected to backend
-  if (isConnected.value && networkMode.value === 'mesh') {
-    await refreshMeshDiscovery();
+  // Only auto-scan if in auto mode and not already connected
+  if (networkMode.value === 'auto' && !networkService.status.isConnected) {
+    scanForStations();
   }
 });
 
@@ -665,12 +671,31 @@ onUnmounted(() => {
   window.removeEventListener('stationInfoUpdate', refreshStationInfo);
 });
 
-// Watch for backend connection changes
-watch(isConnected, async (connected) => {
-  if (connected && networkMode.value === 'mesh') {
-    await refreshMeshDiscovery();
+// Watch for changes to persist settings
+watch(hostPort, (newPort) => {
+  if (networkMode.value === 'host') {
+    saveNetworkSettings();
   }
 });
+
+watch(hostAddress, (newAddress) => {
+  if (networkMode.value === 'join') {
+    saveNetworkSettings();
+  }
+});
+
+// Save network settings to persistence
+async function saveNetworkSettings() {
+  try {
+    const settings = await fileStorage.getSettings();
+    await fileStorage.saveSettings({
+      ...settings,
+      autoReconnect: autoReconnect.value,
+    });
+  } catch (error) {
+    console.error('Failed to save network settings:', error);
+  }
+}
 </script>
 
 <style lang="scss" scoped>
@@ -768,101 +793,6 @@ watch(isConnected, async (connected) => {
   margin: 0.5rem 0;
 }
 
-.connection-error {
-  background-color: var(--error-bg, #fee);
-  border: 1px solid var(--error-border, #fcc);
-  border-radius: 8px;
-  padding: 1.5rem;
-  margin: 1rem 0;
-}
-
-.error-header {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  margin-bottom: 1rem;
-  
-  .error-icon {
-    color: var(--error-color, #d63384);
-    font-size: 1.25rem;
-  }
-  
-  h4 {
-    margin: 0;
-    color: var(--error-color, #d63384);
-  }
-}
-
-.error-details {
-  p {
-    margin: 0.5rem 0;
-    color: var(--text-color);
-  }
-  
-  code {
-    background-color: var(--code-bg, #f8f9fa);
-    padding: 0.25rem 0.5rem;
-    border-radius: 4px;
-    font-family: 'Courier New', monospace;
-    font-size: 0.9rem;
-  }
-}
-
-.error-actions {
-  margin-top: 1.5rem;
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-}
-
-.action-item {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  
-  .material-icons {
-    color: var(--primary-color);
-    font-size: 1.1rem;
-  }
-}
-
-.restart-button,
-.retry-button {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.5rem 1rem;
-  background-color: var(--primary-color);
-  color: white;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 0.9rem;
-  transition: background-color 0.2s ease;
-  
-  &:hover:not(:disabled) {
-    background-color: var(--primary-hover);
-  }
-  
-  &:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-  }
-  
-  .material-icons {
-    font-size: 1rem;
-    color: inherit;
-  }
-}
-
-.retry-button {
-  background-color: var(--secondary-color, #6c757d);
-  
-  &:hover:not(:disabled) {
-    background-color: var(--secondary-hover, #545b62);
-  }
-}
-
 .connection-settings {
   margin-bottom: 2rem;
 }
@@ -893,63 +823,22 @@ watch(isConnected, async (connected) => {
   font-size: 0.9rem;
 }
 
-.mesh-nodes {
+.help-text {
+  font-size: 0.8rem;
+  color: var(--text-color);
+  opacity: 0.7;
+  margin: 0.25rem 0 0 0;
+}
+
+.connected-stations,
+.discovered-stations {
   margin-bottom: 2rem;
-
-  h3 {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    margin: 0 0 1rem 0;
-    font-size: 1.1rem;
-  }
 }
 
-.mesh-status-summary {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 1rem;
-  background-color: var(--bg-color);
-  border: 1px solid var(--border-color);
-  border-radius: 6px;
-  margin-bottom: 1rem;
-  flex-wrap: wrap;
-  gap: 1rem;
-}
-
-.mesh-health {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-weight: 600;
-
-  .health-indicator {
-    width: 12px;
-    height: 12px;
-    border-radius: 50%;
-    background-color: #ccc;
-  }
-
-  &.good .health-indicator {
-    background-color: #4CAF50;
-  }
-
-  &.warning .health-indicator {
-    background-color: #FF9800;
-  }
-}
-
-.mesh-stats {
-  display: flex;
-  gap: 1rem;
-  font-size: 0.9rem;
-  opacity: 0.8;
-  flex-wrap: wrap;
-
-  span {
-    white-space: nowrap;
-  }
+.connected-stations h3,
+.discovered-stations h3 {
+  margin: 0 0 1rem 0;
+  font-size: 1.1rem;
 }
 
 .stations-list {
@@ -984,35 +873,103 @@ watch(isConnected, async (connected) => {
   margin-bottom: 0.25rem;
 }
 
-.station-callsign {
-  font-weight: 600;
-  font-size: 1.1rem;
-  color: var(--primary-color);
+/* Mesh Network Styles */
+.mesh-nodes {
+  margin-bottom: 2rem;
+
+  h3 {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 0 0 1rem 0;
+    font-size: 1.1rem;
+  }
 }
 
-.station-designator {
-  background-color: var(--primary-color);
-  color: white;
-  padding: 0.15rem 0.4rem;
-  border-radius: 3px;
-  font-size: 0.7rem;
-  font-weight: 500;
+.mesh-info {
+  padding: 1rem;
+  background-color: var(--bg-color);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  margin-bottom: 1rem;
+
+  h4 {
+    margin: 0 0 0.5rem 0;
+    color: var(--primary-color);
+    font-size: 1rem;
+  }
+
+  .help-list {
+    margin: 0.5rem 0 0 1rem;
+    
+    li {
+      margin: 0.25rem 0;
+      font-size: 0.8rem;
+      color: var(--text-color);
+      opacity: 0.8;
+    }
+  }
 }
 
-.station-details {
+.mesh-status-summary {
   display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem;
+  background-color: var(--bg-color);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
   gap: 1rem;
-  font-size: 0.85rem;
-  color: var(--text-color);
-  opacity: 0.8;
-  margin-bottom: 0.25rem;
 }
 
-.station-status {
+.mesh-health {
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  font-size: 0.8rem;
+  font-weight: 600;
+
+  .health-indicator {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background-color: #ccc;
+  }
+
+  &.healthy .health-indicator {
+    background-color: #4CAF50;
+  }
+
+  &.degraded .health-indicator {
+    background-color: #FF9800;
+  }
+
+  &.isolated .health-indicator {
+    background-color: #F44336;
+  }
+}
+
+.mesh-stats {
+  display: flex;
+  gap: 1rem;
+  font-size: 0.9rem;
+  opacity: 0.8;
+  flex-wrap: wrap;
+
+  span {
+    white-space: nowrap;
+  }
+}
+
+.mesh-node {
+  .station-header {
+    gap: 0.75rem;
+  }
+
+  .node-status {
+    font-size: 0.8rem;
+  }
 }
 
 .node-capabilities {
@@ -1048,9 +1005,6 @@ watch(isConnected, async (connected) => {
   cursor: pointer;
   font-size: 0.9rem;
   transition: background-color 0.2s ease;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
 
   &:hover:not(:disabled) {
     background-color: var(--primary-hover);
@@ -1062,8 +1016,7 @@ watch(isConnected, async (connected) => {
   }
 }
 
-.no-nodes,
-.no-stations {
+.no-nodes {
   text-align: center;
   padding: 2rem;
   color: var(--text-color);
@@ -1072,6 +1025,85 @@ watch(isConnected, async (connected) => {
   p {
     margin: 0.5rem 0;
   }
+}
+
+.station-designator-main {
+  font-weight: 600;
+  font-size: 1.1rem;
+  color: var(--primary-color);
+}
+
+.station-callsign-sub {
+  font-size: 0.85rem;
+  color: var(--text-color);
+  opacity: 0.8;
+  margin-left: 0.5rem;
+}
+
+.station-designator {
+  background-color: var(--primary-color);
+  color: white;
+  padding: 0.15rem 0.4rem;
+  border-radius: 3px;
+  font-size: 0.7rem;
+  font-weight: 500;
+}
+
+.station-details {
+  display: flex;
+  gap: 1rem;
+  font-size: 0.85rem;
+  color: var(--text-color);
+  opacity: 0.8;
+  margin-bottom: 0.25rem;
+}
+
+.station-status {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+}
+
+.status-indicator {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: #ef4444;
+}
+
+.status-indicator.online {
+  background-color: #22c55e;
+}
+
+.sync-status {
+  margin-bottom: 1rem;
+}
+
+.sync-status h3 {
+  margin: 0 0 1rem 0;
+  font-size: 1.1rem;
+}
+
+.sync-info {
+  background-color: var(--bg-color);
+  padding: 1rem;
+  border-radius: 6px;
+  border: 1px solid var(--border-color);
+}
+
+.sync-item {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+
+.sync-item:last-child {
+  margin-bottom: 0;
+}
+
+.sync-label {
+  font-weight: 500;
 }
 
 .modal-footer {
@@ -1092,7 +1124,6 @@ watch(isConnected, async (connected) => {
 .footer-right {
   display: flex;
   gap: 0.5rem;
-  align-items: center;
 }
 
 .scan-button,
@@ -1137,6 +1168,28 @@ watch(isConnected, async (connected) => {
   cursor: not-allowed;
 }
 
+.no-stations {
+  text-align: center;
+  padding: 2rem;
+  background-color: var(--bg-color);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  color: var(--text-color);
+}
+
+.no-stations p {
+  margin: 0.5rem 0;
+}
+
+.no-stations code {
+  background-color: var(--border-color);
+  padding: 0.2rem 0.4rem;
+  border-radius: 3px;
+  font-family: 'Consolas', monospace;
+  font-size: 0.85rem;
+}
+
+/* Connection Status */
 .connection-status {
   margin-top: 0.5rem;
   padding: 0.75rem;
@@ -1166,6 +1219,7 @@ watch(isConnected, async (connected) => {
   color: #dc2626;
 }
 
+/* Spinning animation for connecting state */
 .spinning {
   animation: spin 1s linear infinite;
 }

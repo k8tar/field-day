@@ -1,5 +1,5 @@
-// Simple API endpoint for station discovery using file-based storage
-import { fileStorage } from '@/services/fileStorage';
+// Simple API endpoint for station discovery using centralized station info service
+import { StationInfoService } from '../services/stationInfoService';
 
 export function setupStationInfoAPI() {
   // In development, we can intercept fetch requests to provide station info
@@ -23,107 +23,74 @@ export function setupStationInfoAPI() {
 }
 
 async function handleStationInfoRequest(): Promise<Response> {
-  // Get actual stored values from file storage
-  const stationConfig = await fileStorage.getStationConfig();
-  const qsos = await fileStorage.getQsoData();
-  const currentPort = window.location.port;
-  
-  // Debug logging to see what's actually stored
-  console.log(`🏠 Station Info Request on port ${currentPort}:`);
-  console.log(`   📡 Station config:`, stationConfig);
-  
-  const qsoCount = qsos.length;
-  const score = calculateTotalScore(qsos);
-  
-  console.log(`   📊 QSO count: ${qsoCount}`);
-  console.log(`   🎯 Score: ${score}`);
-  
-  const stationInfo = {
-    callsign: stationConfig.callsign,
-    designator: stationConfig.designator,
-    qsoCount: qsoCount,
-    score: score,
-    software: 'K8TAR Field Day Logger',
-    version: '1.0.0',
-    timestamp: Date.now(),
-    port: currentPort ? parseInt(currentPort) : undefined // Include port for debugging
-  };
-  
-  console.log(`   ✅ Returning station info:`, stationInfo);
-  
-  return Promise.resolve(new Response(JSON.stringify(stationInfo), {
-    status: 200,
-    statusText: 'OK',
-    headers: {
-      'Content-Type': 'application/json',
-      'Access-Control-Allow-Origin': '*',
-      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type'
-    }
-  }));
-}
-
-function calculateTotalScore(qsos: any[]): number {
   try {
-    if (!Array.isArray(qsos)) {
-      return 0;
-    }
     
-    const score = qsos.reduce((total: number, qso: any) => {
-      if (!qso || typeof qso !== 'object') {
-        return total;
+    // Use the centralized StationInfoService
+    const stationInfo = await StationInfoService.getStationInfo(true); // Include port for debugging
+    
+    
+    return Promise.resolve(new Response(JSON.stringify(stationInfo), {
+      status: 200,
+      statusText: 'OK',
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type'
       }
-      
-      // Calculate points based on mode (CW/Digital = 2 points, Phone = 1 point)
-      const mode = qso.mode || qso.MODE || '';
-      const points = (mode === 'CW' || mode === 'DIG' || mode === 'DIGITAL') ? 2 : 1;
-      return total + points;
-    }, 0);
-    
-    console.log(`   🏆 Calculated score: ${score} points from ${qsos.length} QSOs`);
-    return score;
+    }));
   } catch (error) {
-    console.log(`   ❌ Error calculating score:`, error);
-    return 0;
+    console.error('❌ Error in handleStationInfoRequest:', error);
+    
+    // Return fallback error response
+    const errorInfo = {
+      callsign: 'ERROR',
+      designator: '1A',
+      networkId: `MESH-error-${Date.now()}`,
+      qsoCount: 0,
+      score: 0,
+      software: 'K8TAR Field Day Logger',
+      version: '2.0.0',
+      timestamp: Date.now(),
+      online: false,
+      error: 'Failed to get station info'
+    };
+    
+    return Promise.resolve(new Response(JSON.stringify(errorInfo), {
+      status: 500,
+      statusText: 'Internal Server Error',
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin': '*'
+      }
+    }));
   }
 }
 
-// Debug method to check file storage contents (exposed globally)
-async function debugFileStorage(): Promise<void> {
-  console.log('\n🔍 === FILE STORAGE DEBUG ===');
-  console.log(`🌐 Current URL: ${window.location.href}`);
-  console.log(`📍 Current port: ${window.location.port || 'default'}`);
+// Debug method to check station info service (exposed globally)
+async function debugStationInfo(): Promise<void> {
   
-  // Check file storage
+  // Check station info service
   try {
-    const storageInfo = await fileStorage.getStorageInfo();
-    console.log(`📊 Storage info:`, storageInfo);
+    const { StationInfoService } = await import('../services/stationInfoService');
     
-    const stationConfig = await fileStorage.getStationConfig();
-    console.log(`🏷️ Station config:`, stationConfig);
+    const stationInfo = await StationInfoService.getStationInfo(true);
     
-    const qsos = await fileStorage.getQsoData();
-    console.log(`📋 QSOs: ${qsos.length} items`);
-    if (qsos.length > 0) {
-      console.log(`   📝 Sample QSO:`, qsos[0]);
-    }
+    const isValid = StationInfoService.validateStationInfo(stationInfo);
+    
   } catch (error) {
-    console.error('❌ Error checking file storage:', error);
+    console.error('❌ Error checking station info service:', error);
   }
   
   // Test station info endpoint
-  console.log('\n📡 Testing local station info...');
   try {
     const response = await fetch('/api/station-info');
     const data = await response.json();
-    console.log('✅ Station info response:', data);
   } catch (err) {
-    console.log('❌ Station info error:', err);
   }
 }
 
 // Expose globally for debugging
 if (typeof window !== 'undefined') {
-  (window as any).debugFileStorage = debugFileStorage;
-  (window as any).fileStorage = fileStorage; // Also expose file storage directly
+  (window as any).debugStationInfo = debugStationInfo;
 }

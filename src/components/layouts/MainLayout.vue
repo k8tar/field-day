@@ -27,7 +27,8 @@
           :mode="modeVal"
           :qsos="qsos"
         />
-        <Messages class="messages" />
+        <!-- Messages component temporarily disabled while refactoring networking -->
+        <!--        <Messages class="messages" />-->
       </div>
       <div class="center-column">
         <!-- Placeholder for future component -->
@@ -170,6 +171,26 @@ watch(modeVal, (newMode) => {
 .messages {
   flex: 0.7; /* Give more space to the messages component */
   min-height: 0;
+}
+
+.messages-placeholder {
+  flex: 0.7; /* Give same space as messages component */
+  background-color: var(--bg-color);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 1rem;
+  text-align: center;
+  color: var(--text-color);
+  opacity: 0.7;
+  
+  h3 {
+    margin: 0 0 0.5rem 0;
+  }
+  
+  p {
+    margin: 0;
+    font-size: 0.9rem;
+  }
 }
 
 .future-component {

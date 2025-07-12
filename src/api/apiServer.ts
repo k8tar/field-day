@@ -31,7 +31,6 @@ class FieldDayApiServer {
   private async loadQsosFromStorage(): Promise<void> {
     try {
       this.qsoStore = await fileStorage.getQsoData();
-      console.log(`📚 API Server loaded ${this.qsoStore.length} QSOs from file storage`);
     } catch (error) {
       console.error('❌ Failed to load QSOs from file storage:', error);
       this.qsoStore = []; // Start with empty array if file storage fails
@@ -41,7 +40,6 @@ class FieldDayApiServer {
   private async saveQsosToStorage(): Promise<void> {
     try {
       await fileStorage.saveQsoData(this.qsoStore);
-      console.log(`💾 API Server saved ${this.qsoStore.length} QSOs to file storage`);
     } catch (error) {
       console.error('❌ Failed to save QSOs to file storage:', error);
     }
@@ -50,47 +48,50 @@ class FieldDayApiServer {
   private setupFetchInterceptor(): void {
     if (typeof window === 'undefined') return;
 
+    
     const originalFetch = window.fetch;
     
     window.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
       const url = input.toString();
       
-      // Handle our API endpoints
-      if (this.isApiRequest(url)) {
-        return this.handleApiRequest(url, init);
-      }
       
-      // For remote API requests, use protocol fallback
-      if (this.isRemoteApiRequest(url)) {
-        return this.handleRemoteApiRequest(url, init);
+      // More aggressive API endpoint detection
+      const isApiEndpoint = url.includes('/api/') || url.includes('/debug/');
+      
+      if (isApiEndpoint) {
+        
+        // Handle our API endpoints
+        if (this.isApiRequest(url)) {
+          return this.handleApiRequest(url, init);
+        }
+        
+        // For remote API requests, use protocol fallback
+        if (this.isRemoteApiRequest(url)) {
+          return this.handleRemoteApiRequest(url, init);
+        }
       }
       
       // For all other requests, use original fetch
       return originalFetch(input, init);
     };
     
-    console.log('🌐 API server fetch interceptor installed');
   }
 
   private isApiRequest(url: string): boolean {
     // Only intercept requests to the current host (localhost, 127.0.0.1, or current hostname)
     // Don't intercept requests to remote stations
     const currentHost = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
-    const currentPort = typeof window !== 'undefined' ? window.location.port : '8080';
     
     // Parse the URL to check if it's for the current host
     let targetHost = '';
-    let targetPort = '';
     
     try {
       const parsedUrl = new URL(url);
       targetHost = parsedUrl.hostname;
-      targetPort = parsedUrl.port || '8080';
     } catch (e) {
       // If it's a relative URL, it's for the current host
       if (!url.startsWith('http')) {
         targetHost = currentHost;
-        targetPort = currentPort;
       }
     }
     
@@ -98,12 +99,14 @@ class FieldDayApiServer {
     const isCurrentHost = targetHost === currentHost || 
                           targetHost === 'localhost' || 
                           targetHost === '127.0.0.1' ||
-                          (targetHost === '' && !url.startsWith('http')); // relative URLs
+                          targetHost === '';
     
-    const hasApiEndpoint = url.includes('/api/station-info') || 
+    const hasApiEndpoint = url.includes('/api/test') ||
+           url.includes('/api/station-info') || 
            url.includes('/api/qsos') || 
            url.includes('/station-info') ||
            url.includes('/api/status') ||
+           url.includes('/api/network/') ||
            url.includes('/api/mesh/discovery') ||
            url.includes('/api/files/') ||
            url.includes('/debug/config') ||
@@ -111,9 +114,7 @@ class FieldDayApiServer {
     
     const shouldIntercept = isCurrentHost && hasApiEndpoint;
     
-    if (hasApiEndpoint && !isCurrentHost) {
-      console.log(`🌐 Allowing remote API request to ${targetHost}:${targetPort} - NOT intercepting`);
-    }
+    // Debug logging
     
     return shouldIntercept;
   }
@@ -152,19 +153,15 @@ class FieldDayApiServer {
     for (const protocol of protocols) {
       try {
         const protocolUrl = url.replace(/^https?:/, `${protocol}:`);
-        console.log(`🔍 Trying ${protocol.toUpperCase()} for remote Field Day API: ${protocolUrl}`);
         
         const response = await fetch(protocolUrl, init);
-        console.log(`✅ ${protocol.toUpperCase()} connection successful to ${urlObj.hostname} (${response.status})`);
         return response;
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
         lastError = error;
         
         if (errorMessage.includes('certificate') || errorMessage.includes('SSL') || errorMessage.includes('TLS')) {
-          console.log(`🔒 ${protocol.toUpperCase()} ${urlObj.hostname}: SSL certificate error - trying HTTP fallback`);
         } else {
-          console.log(`⚠️ ${protocol.toUpperCase()} ${urlObj.hostname}: ${errorMessage}`);
         }
         
         // Continue to next protocol
@@ -191,21 +188,40 @@ class FieldDayApiServer {
     const pathname = parsedUrl.pathname;
     const searchParams = parsedUrl.searchParams;
 
-    console.log(`📡 API Request: ${method} ${pathname}`);
 
     try {
       let response: ApiResponse;
 
-      if (pathname.includes('/station-info') || pathname.includes('/status')) {
+      // Simple test endpoint
+      if (pathname === '/api/test') {
+        response = {
+          status: 200,
+          data: { 
+            message: 'API Server is working!',
+            timestamp: Date.now(),
+            pathname: pathname
+          }
+        };
+      } else if (pathname.includes('/station-info') || pathname.includes('/status')) {
         response = await this.handleStationInfo();
+      } else if (pathname.includes('/api/network/id')) {
+        response = await this.handleNetworkId();
+      } else if (pathname.includes('/api/network/status')) {
+        response = await this.handleNetworkStatus();
       } else if (pathname.includes('/api/mesh/discovery')) {
         response = await this.handleMeshDiscovery(init);
+      } else if (pathname.includes('/api/mesh/stations')) {
+        response = await this.handleBackgroundMeshDiscovery();
+      } else if (pathname.includes('/api/background/sync') && method === 'POST') {
+        response = await this.handleBackgroundQsoSync();
       } else if (pathname.includes('/debug/config')) {
         response = await this.handleDebugConfig();
       } else if (pathname.includes('/debug/network')) {
         response = await this.handleDebugNetwork();
       } else if (pathname.includes('/api/files/')) {
         response = await this.handleFileOperations(pathname, method, init, searchParams);
+      } else if (pathname.includes('/api/qsos/sync')) {
+        response = await this.handleQsoSync(method, init);
       } else if (pathname.includes('/qsos')) {
         if (method === 'GET') {
           response = this.handleGetQsos(searchParams);
@@ -241,55 +257,116 @@ class FieldDayApiServer {
   }
 
   private async handleStationInfo(): Promise<ApiResponse> {
-    const stationConfig = await fileStorage.getStationConfig();
-    
-    const stationInfo = {
-      callsign: stationConfig.callsign,
-      designator: stationConfig.designator,
-      qsoCount: this.qsoStore.length,
-      score: this.calculateTotalScore(),
-      software: 'K8TAR Field Day Logger',
-      version: '1.0.0',
-      timestamp: Date.now(),
-      online: true
-    };
-
-    console.log(`📊 Station info requested: ${stationInfo.callsign}-${stationInfo.designator} (${stationInfo.qsoCount} QSOs)`);
-    
-    return {
-      status: 200,
-      data: stationInfo
-    };
+    try {
+      
+      // Import and use the centralized StationInfoService
+      const { StationInfoService } = await import('../services/stationInfoService');
+      const stationInfo = await StationInfoService.getStationInfo(true); // Include port for debugging
+      
+      
+      return {
+        status: 200,
+        data: stationInfo
+      };
+    } catch (error) {
+      console.error('❌ Error in handleStationInfo:', error);
+      
+      // Return a fallback response using the service fallback method
+      try {
+        const { StationInfoService } = await import('../services/stationInfoService');
+        const fallbackInfo = StationInfoService.validateStationInfo({
+          callsign: 'ERROR',
+          designator: '1A',
+          networkId: `MESH-error-${Date.now()}`,
+          qsoCount: 0,
+          score: 0,
+          software: 'K8TAR Field Day Logger',
+          version: '2.0.0',
+          timestamp: Date.now(),
+          online: false,
+          error: 'Station config unavailable'
+        });
+        
+        return {
+          status: 200,
+          data: fallbackInfo ? {
+            callsign: 'ERROR',
+            designator: '1A',
+            networkId: `MESH-error-${Date.now()}`,
+            qsoCount: 0,
+            score: 0,
+            software: 'K8TAR Field Day Logger',
+            version: '2.0.0',
+            timestamp: Date.now(),
+            online: false,
+            error: 'Station config unavailable'
+          } : {
+            callsign: 'UNKNOWN',
+            designator: '1A',
+            networkId: `MESH-emergency-${Date.now()}`,
+            qsoCount: 0,
+            score: 0,
+            software: 'K8TAR Field Day Logger',
+            version: '2.0.0',
+            timestamp: Date.now(),
+            online: false
+          }
+        };
+      } catch (serviceError) {
+        console.error('❌ Error loading StationInfoService for fallback:', serviceError);
+        return {
+          status: 500,
+          data: {
+            error: 'Failed to get station info',
+            details: error instanceof Error ? error.message : String(error)
+          }
+        };
+      }
+    }
   }
 
   private async handleMeshDiscovery(init?: RequestInit): Promise<ApiResponse> {
     try {
-      const stationConfig = await fileStorage.getStationConfig();
-      console.log(`🔍 Mesh Discovery - Station Config:`, stationConfig);
       
-      // Use the persistent network ID from file storage
-      const networkId = await fileStorage.getNetworkId();
-      
-      const meshNodeInfo = {
-        nodeId: networkId,
-        callsign: stationConfig.callsign,
-        designator: stationConfig.designator,
-        qsoCount: this.qsoStore.length,
-        score: this.calculateTotalScore(),
-        software: 'K8TAR Field Day Logger',
-        version: '2.0.0',
-        capabilities: ['qso-sync', 'heartbeat', 'conflict-resolution'],
-        timestamp: Date.now(),
-        online: true,
-        port: stationConfig.port || 8080
-      };
+      // If this is a request for our own discovery info (from remote stations)
+      if (init && init.method === 'GET') {
+        // Use the centralized StationInfoService
+        const { StationInfoService } = await import('../services/stationInfoService');
+        const stationInfo = await StationInfoService.getStationInfo(true); // Include port
+        
+        // Convert to mesh node format for compatibility
+        const meshNodeInfo = {
+          nodeId: stationInfo.networkId,
+          callsign: stationInfo.callsign,
+          designator: stationInfo.designator,
+          qsoCount: stationInfo.qsoCount,
+          score: stationInfo.score,
+          software: stationInfo.software,
+          version: stationInfo.version,
+          capabilities: ['qso-sync', 'heartbeat', 'conflict-resolution'],
+          timestamp: stationInfo.timestamp,
+          online: stationInfo.online,
+          port: stationInfo.port || 8080
+        };
 
-      console.log(`🕸️ Mesh discovery request: ${meshNodeInfo.callsign}-${meshNodeInfo.designator} (Node: ${networkId}) from port ${stationConfig.port}`);
-      
-      return {
-        status: 200,
-        data: meshNodeInfo
-      };
+        
+        return {
+          status: 200,
+          data: meshNodeInfo
+        };
+      } else {
+        // This is a request to discover other stations
+        const discoveredStations = await this.discoverStations();
+        
+        return {
+          status: 200,
+          data: {
+            stations: discoveredStations,
+            count: discoveredStations.length,
+            timestamp: Date.now()
+          }
+        };
+      }
     } catch (error) {
       console.error('❌ Error handling mesh discovery:', error);
       return {
@@ -314,13 +391,10 @@ class FieldDayApiServer {
 
         // In browser mode, we'll just log the file write operation
         // since we can't actually write to the filesystem
-        console.log(`📁 File write request: ${filename}`);
-        console.log(`📄 Content length: ${content.length} characters`);
         
         // Store in localStorage as a fallback for browser environments
         try {
           localStorage.setItem(`fieldday_file_${filename}`, content);
-          console.log(`💾 Stored file in localStorage: ${filename}`);
         } catch (e) {
           console.warn(`⚠️ Could not store in localStorage: ${e instanceof Error ? e.message : String(e)}`);
         }
@@ -388,9 +462,7 @@ class FieldDayApiServer {
     if (since) {
       const sinceTimestamp = parseInt(since);
       qsos = qsos.filter(qso => (qso.timestamp || 0) > sinceTimestamp);
-      console.log(`📥 QSOs requested since ${sinceTimestamp}: ${qsos.length} QSOs`);
     } else {
-      console.log(`📥 All QSOs requested: ${qsos.length} QSOs`);
     }
 
     return {
@@ -430,7 +502,6 @@ class FieldDayApiServer {
         });
 
         this.saveQsosToStorage();
-        console.log(`📝 QSO batch processed: ${added} added, ${updated} updated`);
 
         return {
           status: 200,
@@ -467,14 +538,12 @@ class FieldDayApiServer {
   updateQsoStore(qsos: QSO[]): void {
     this.qsoStore = [...qsos];
     this.saveQsosToStorage();
-    console.log(`🔄 QSO store updated: ${this.qsoStore.length} QSOs`);
   }
 
   // Add a single QSO
   addQso(qso: QSO): void {
     this.qsoStore.push(qso);
     this.saveQsosToStorage();
-    console.log(`➕ QSO added: ${qso.call}`);
   }
 
   // Remove a QSO
@@ -483,7 +552,6 @@ class FieldDayApiServer {
     if (index >= 0) {
       const removed = this.qsoStore.splice(index, 1)[0];
       this.saveQsosToStorage();
-      console.log(`➖ QSO removed: ${removed.call}`);
     }
   }
 
@@ -496,13 +564,11 @@ class FieldDayApiServer {
   start(port = 8080): void {
     this.port = port;
     this.isRunning = true;
-    console.log(`🚀 Field Day API server started on port ${port}`);
   }
 
   // Stop the API server
   stop(): void {
     this.isRunning = false;
-    console.log('🛑 Field Day API server stopped');
   }
 
   // Check if server is running
@@ -516,7 +582,6 @@ class FieldDayApiServer {
       clearInterval(this.syncInterval);
     }
 
-    console.log('🔄 Starting automatic sync...');
     
     // Sync every 10 seconds
     this.syncInterval = setInterval(async () => {
@@ -536,7 +601,6 @@ class FieldDayApiServer {
         return; // No stations to sync with
       }
 
-      console.log(`🔄 Syncing with ${stations.length} stations...`);
 
       // Get the last sync timestamp
       let lastSync = '0';
@@ -560,7 +624,6 @@ class FieldDayApiServer {
           if (response.ok) {
             const data = await response.json();
             if (data.qsos && data.qsos.length > 0) {
-              console.log(`📥 Received ${data.qsos.length} QSOs from ${station.callsign}-${station.designator}`);
               
               // Process received QSOs
               let merged = 0;
@@ -571,13 +634,11 @@ class FieldDayApiServer {
               });
 
               if (merged > 0) {
-                console.log(`✅ Merged ${merged} new QSOs from ${station.callsign}-${station.designator}`);
                 this.saveQsosToStorage();
               }
             }
           }
         } catch (error) {
-          console.log(`⚠️ Failed to sync with ${station.callsign}-${station.designator}:`, error instanceof Error ? error.message : 'Unknown error');
         }
       }
 
@@ -658,16 +719,13 @@ class FieldDayApiServer {
               qsoCount: stationInfo.qsoCount || 0
             });
             
-            console.log(`✅ Discovered Field Day station: ${stationInfo.callsign}-${stationInfo.designator} at ${ip}:${fieldDayPort}`);
           }
         }
       } catch (error) {
         // Station not available or not a Field Day station
-        console.log(`⚠️ No Field Day station found at ${ip}:${fieldDayPort}`);
       }
     }
 
-    console.log(`🔍 Station discovery complete: found ${discovered.length} Field Day stations on port ${fieldDayPort}`);
     return discovered;
   }
 
@@ -675,7 +733,6 @@ class FieldDayApiServer {
     if (this.syncInterval) {
       clearInterval(this.syncInterval);
       this.syncInterval = null;
-      console.log('🛑 Auto sync stopped');
     }
   }
 
@@ -742,21 +799,338 @@ class FieldDayApiServer {
       try {
         // Use Node.js http module through Electron's main process
         // We'll need to expose this in the preload script
-        console.log('🚀 Starting HTTP server for Electron mesh discovery...');
         await this.startElectronHttpServer();
       } catch (error) {
         console.warn('⚠️ Could not start HTTP server in Electron mode:', error);
-        console.log('📝 Falling back to fetch interceptor only');
       }
     } else {
-      console.log('🌐 Running in browser mode - using fetch interceptor only');
     }
   }
 
   private async startElectronHttpServer(): Promise<void> {
     // This will be implemented when we have access to Node.js modules in Electron
     // For now, we'll rely on the Vite dev server or external HTTP server
-    console.log('🔧 Electron HTTP server setup pending - using fetch interceptor');
+  }
+
+  private async handleNetworkId(): Promise<ApiResponse> {
+    try {
+      const networkId = await fileStorage.getNetworkId();
+      
+      return {
+        status: 200,
+        data: { 
+          networkId: networkId,
+          timestamp: Date.now()
+        }
+      };
+    } catch (error) {
+      console.error('❌ Error handling network ID request:', error);
+      return {
+        status: 500,
+        data: { error: 'Failed to get network ID' }
+      };
+    }
+  }
+
+  private async handleNetworkStatus(): Promise<ApiResponse> {
+    try {
+      const stationConfig = await fileStorage.getStationConfig();
+      const networkId = await fileStorage.getNetworkId();
+      
+      // For now, always report connected since we're running
+      const networkStatus = {
+        isConnected: true,
+        mode: 'mesh',
+        networkId: networkId,
+        callsign: stationConfig.callsign,
+        designator: stationConfig.designator,
+        port: stationConfig.port || 8080,
+        timestamp: Date.now()
+      };
+
+      return {
+        status: 200,
+        data: networkStatus
+      };
+    } catch (error) {
+      console.error('❌ Error handling network status request:', error);
+      return {
+        status: 500,
+        data: { error: 'Failed to get network status' }
+      };
+    }
+  }
+
+  private async handleQsoSync(method: string, init?: RequestInit): Promise<ApiResponse> {
+    try {
+      if (method === 'POST') {
+        // Trigger a QSO sync with remote stations
+        
+        // Perform the sync
+        await this.performSync();
+        
+        return {
+          status: 200,
+          data: { 
+            success: true,
+            message: 'QSO sync completed',
+            qsoCount: this.qsoStore.length,
+            timestamp: Date.now()
+          }
+        };
+      } else {
+        return {
+          status: 405,
+          data: { error: 'Method not allowed. Use POST to trigger sync.' }
+        };
+      }
+    } catch (error) {
+      console.error('❌ Error handling QSO sync request:', error);
+      return {
+        status: 500,
+        data: { error: 'Failed to perform QSO sync' }
+      };
+    }
+  }
+
+  /**
+   * Background mesh discovery - scans for stations without blocking UI
+   */
+  private async handleBackgroundMeshDiscovery(): Promise<ApiResponse> {
+    try {
+      const stations = await this.performNetworkScan();
+      
+      return {
+        status: 200,
+        data: {
+          stations: stations,
+          timestamp: Date.now(),
+          scannedCount: stations.length
+        }
+      };
+    } catch (error) {
+      return {
+        status: 500,
+        data: { error: 'Background mesh discovery failed', details: String(error) }
+      };
+    }
+  }
+
+  /**
+   * Perform actual network scanning for Field Day stations
+   */
+  private async performNetworkScan(): Promise<any[]> {
+    const stations: any[] = [];
+    const localNetworkId = await fileStorage.getNetworkId();
+    
+    // Get local IP range for scanning
+    const localIPs = this.generateLocalIPRange();
+    
+    // Scan in batches to avoid overwhelming the network
+    const batchSize = 10;
+    for (let i = 0; i < localIPs.length; i += batchSize) {
+      const batch = localIPs.slice(i, i + batchSize);
+      const batchPromises = batch.map(ip => this.checkStationAtIP(ip, localNetworkId));
+      
+      const batchResults = await Promise.allSettled(batchPromises);
+      batchResults.forEach(result => {
+        if (result.status === 'fulfilled' && result.value) {
+          stations.push(result.value);
+        }
+      });
+      
+      // Small delay between batches to prevent network flooding
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    
+    return stations;
+  }
+
+  /**
+   * Generate local IP range for scanning
+   */
+  private generateLocalIPRange(): string[] {
+    const ips: string[] = [];
+    
+    // Common local network ranges
+    const ranges = [
+      '192.168.1.',
+      '192.168.0.',
+      '10.0.0.',
+      '172.16.0.'
+    ];
+    
+    ranges.forEach(range => {
+      for (let i = 1; i <= 254; i++) {
+        ips.push(range + i);
+      }
+    });
+    
+    return ips;
+  }
+
+  /**
+   * Check if there's a Field Day station at the given IP
+   */
+  private async checkStationAtIP(ip: string, localNetworkId: string): Promise<any | null> {
+    try {
+      const timeout = 2000; // 2 second timeout
+      
+      // Try HTTPS first, then HTTP
+      for (const protocol of ['https', 'http']) {
+        try {
+          const url = `${protocol}://${ip}:8080/api/station-info`;
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), timeout);
+          
+          const response = await fetch(url, {
+            signal: controller.signal,
+            headers: { 'Accept': 'application/json' }
+          });
+          
+          clearTimeout(timeoutId);
+          
+          if (response.ok) {
+            const stationInfo = await response.json();
+            
+            // Verify it's a Field Day station and not ourselves
+            if (stationInfo.software?.includes('Field Day') && 
+                stationInfo.networkId !== localNetworkId) {
+              
+              return {
+                ip: ip,
+                port: 8080,
+                callsign: stationInfo.callsign,
+                designator: stationInfo.designator,
+                networkId: stationInfo.networkId,
+                qsoCount: stationInfo.qsoCount || 0,
+                protocol: protocol.toUpperCase(),
+                lastSeen: Date.now()
+              };
+            }
+          }
+          
+          break; // If HTTPS worked, don't try HTTP
+        } catch (error) {
+          // Continue to next protocol
+        }
+      }
+      
+      return null;
+    } catch (error) {
+      return null;
+    }
+  }
+
+  /**
+   * Background QSO sync - syncs QSOs from other stations
+   */
+  private async handleBackgroundQsoSync(): Promise<ApiResponse> {
+    try {
+      // Get list of known stations
+      const stationsResponse = await this.handleBackgroundMeshDiscovery();
+      if (stationsResponse.status !== 200) {
+        throw new Error('Failed to get station list');
+      }
+      
+      const stations = stationsResponse.data.stations;
+      let totalSynced = 0;
+      
+      // Sync QSOs from each station
+      for (const station of stations) {
+        try {
+          const syncCount = await this.syncQsosFromStation(station);
+          totalSynced += syncCount;
+        } catch (error) {
+          // Continue with next station if one fails
+        }
+      }
+      
+      return {
+        status: 200,
+        data: {
+          synced: totalSynced,
+          stations: stations.length,
+          timestamp: Date.now()
+        }
+      };
+    } catch (error) {
+      return {
+        status: 500,
+        data: { error: 'Background QSO sync failed', details: String(error) }
+      };
+    }
+  }
+
+  /**
+   * Sync QSOs from a specific station
+   */
+  private async syncQsosFromStation(station: any): Promise<number> {
+    try {
+      const url = `${station.protocol.toLowerCase()}://${station.ip}:${station.port}/api/qsos`;
+      const response = await fetch(url, {
+        headers: { 'Accept': 'application/json' }
+      });
+      
+      if (!response.ok) {
+        return 0;
+      }
+      
+      const remoteQsos = await response.json();
+      if (!Array.isArray(remoteQsos)) {
+        return 0;
+      }
+      
+      // Merge remote QSOs with local ones (avoid duplicates)
+      let syncedCount = 0;
+      const existingIds = new Set(this.qsoStore.map(q => q.id));
+      
+      remoteQsos.forEach((remoteQso: any) => {
+        if (remoteQso.id && !existingIds.has(remoteQso.id)) {
+          this.qsoStore.push(remoteQso);
+          syncedCount++;
+        }
+      });
+      
+      if (syncedCount > 0) {
+        await this.saveQsosToStorage();
+      }
+      
+      return syncedCount;
+    } catch (error) {
+      return 0;
+    }
+  }
+
+  // Test method for debugging
+  testApiServer(): string {
+    return `API Server Status: ${this.isRunning ? 'Running' : 'Stopped'}, QSOs: ${this.qsoStore.length}`;
+  }
+
+  // Manual test method that bypasses fetch interceptor
+  async testEndpointDirect(endpoint: string): Promise<any> {
+    
+    try {
+      const response = await this.handleApiRequest(endpoint, { method: 'GET' });
+      return response;
+    } catch (error) {
+      console.error(`❌ Direct test failed for ${endpoint}:`, error);
+      throw error;
+    }
+  }
+
+  // Initialize API server and expose it globally
+  static initializeGlobal(): FieldDayApiServer {
+    if (typeof window !== 'undefined') {
+      
+      if (!(window as any).apiServer) {
+        (window as any).apiServer = apiServer;
+      }
+      
+      
+      return apiServer;
+    }
+    return apiServer;
   }
 }
 

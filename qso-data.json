@@ -1,0 +1,27 @@
+{
+  "qsos": [
+    {
+      "id": 2,
+      "call": "K8DTB",
+      "class": "2D",
+      "section": "OH",
+      "datetime": "2025-07-12T03:32:28.034Z",
+      "band": "40m",
+      "mode": "PH",
+      "operator": "",
+      "timestamp": 1752291148034
+    },
+    {
+      "id": 1,
+      "call": "K8RDM",
+      "class": "2D",
+      "section": "MI",
+      "datetime": "2025-07-12T03:32:28.034Z",
+      "band": "40m",
+      "mode": "PH",
+      "operator": "",
+      "timestamp": 1752291148034
+    }
+  ],
+  "lastUpdated": 1752291278787
+}

@@ -248,7 +248,6 @@ class AchievementService {
   }
 
   private sendNotification(type: string, message: string) {
-    console.log(`🔔 Achievement notification: [${type}] ${message}`);
     
     if (this.messageCallback) {
       this.messageCallback(type, message);

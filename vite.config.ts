@@ -13,7 +13,6 @@ function loadQsosFromFile(): any[] {
     if (fs.existsSync(QSO_STORAGE_FILE)) {
       const data = fs.readFileSync(QSO_STORAGE_FILE, 'utf8');
       const qsos = JSON.parse(data);
-      console.log(`📂 Loaded ${qsos.length} QSOs from shared file`);
       return qsos;
     }
   } catch (error) {
@@ -25,7 +24,6 @@ function loadQsosFromFile(): any[] {
 function saveQsosToFile(qsos: any[]): void {
   try {
     fs.writeFileSync(QSO_STORAGE_FILE, JSON.stringify(qsos, null, 2));
-    console.log(`💾 Saved ${qsos.length} QSOs to shared file`);
   } catch (error) {
     console.error('❌ Error saving QSOs to file:', error);
   }
@@ -50,7 +48,6 @@ function loadMessagesFromFile(): NetworkMessage[] {
       return [];
     }
     const data = JSON.parse(fs.readFileSync(MESSAGE_STORAGE_FILE, 'utf8'));
-    console.log(`📨 Loaded ${data.length} messages from file`);
     return data;
   } catch (error) {
     console.error('❌ Error loading messages from file:', error);
@@ -69,7 +66,6 @@ function saveMessagesToFile(messages: NetworkMessage[]): void {
     // Keep only the latest 100 messages to prevent file from growing too large
     const recentMessages = messages.slice(-100);
     fs.writeFileSync(MESSAGE_STORAGE_FILE, JSON.stringify(recentMessages, null, 2));
-    console.log(`💾 Saved ${recentMessages.length} messages to file`);
   } catch (error) {
     console.error('❌ Error saving messages to file:', error);
   }
@@ -97,24 +93,19 @@ export default defineConfig({
           
           if (fs.existsSync(qsoPath)) {
             const portQsos = JSON.parse(fs.readFileSync(qsoPath, 'utf8'));
-            console.log(`📂 Found ${portQsos.length} QSOs in port-specific file vs ${stationQsos.length} in shared file`);
             
             // Use whichever has more QSOs (simple merge strategy)
             if (portQsos.length > stationQsos.length) {
-              console.log('📈 Using port-specific QSOs as they contain more data');
               stationQsos = portQsos;
               // Sync back to shared file
               saveQsosToFile(stationQsos);
             } else if (stationQsos.length > portQsos.length) {
-              console.log('📈 Syncing shared file QSOs to port-specific file');
               // Sync shared file data to port-specific file
               if (!fs.existsSync(dataDir)) {
                 fs.mkdirSync(dataDir, { recursive: true });
               }
               fs.writeFileSync(qsoPath, JSON.stringify(stationQsos, null, 2));
             }
-          } else {
-            console.log('📁 No port-specific QSO file found, will create on first sync');
           }
         } catch (error) {
           console.error('❌ Error checking port-specific QSO files:', error);
@@ -125,7 +116,6 @@ export default defineConfig({
         // Watch for file changes (for real-time updates between servers)
         if (fs.existsSync(QSO_STORAGE_FILE)) {
           fs.watchFile(QSO_STORAGE_FILE, () => {
-            console.log('📄 QSO file changed, reloading...');
             stationQsos = loadQsosFromFile();
           });
         }
@@ -133,7 +123,6 @@ export default defineConfig({
         // Watch for message file changes
         if (fs.existsSync(MESSAGE_STORAGE_FILE)) {
           fs.watchFile(MESSAGE_STORAGE_FILE, () => {
-            console.log('📨 Message file changed, reloading...');
             stationMessages = loadMessagesFromFile();
           });
         }
@@ -156,57 +145,21 @@ export default defineConfig({
             
             // Write QSOs to port-specific file
             fs.writeFileSync(qsoPath, JSON.stringify(qsos, null, 2));
-            console.log(`📁 Server: ${action} - Synced ${qsos.length} QSOs to port-specific file: ${qsoPath}`);
           } catch (error) {
             console.error(`❌ Server: Failed to sync QSOs to port-specific file during ${action}:`, error);
           }
         }
         
-        server.middlewares.use('/api/station-info', (req, res, next) => {
+        server.middlewares.use('/api/station-info', async (req, res, next) => {
           if (req.method === 'GET') {
             try {
               // Get port-specific data
               const port = server.config.server.port || 8080;
               const dataDir = path.join(__dirname, 'fieldday-data', `port_${port}`);
               
-              console.log(`🔍 Station-info request for port ${port}, reading from: ${dataDir}`);
-              
-              // Read station config from port-specific directory
-              let stationConfig = { callsign: 'K8TAR', designator: 'PHONE 1' };
-              try {
-                const configPath = path.join(dataDir, 'station-config.json');
-                if (fs.existsSync(configPath)) {
-                  const configData = fs.readFileSync(configPath, 'utf8');
-                  stationConfig = JSON.parse(configData);
-                  console.log(`📋 Read station config for port ${port}:`, stationConfig);
-                } else {
-                  console.log(`⚠️ No station config found at ${configPath}, using default`);
-                }
-              } catch (error) {
-                console.log(`❌ Error reading station config for port ${port}:`, error);
-              }
-              
-              // Use the same QSO data as the QSOs endpoint (from stationQsos)
-              const qsoData = stationQsos || [];
-              console.log(`📊 Using shared QSO data: ${qsoData.length} QSOs`);
-              
-              // Calculate score
-              const score = Array.isArray(qsoData) ? qsoData.reduce((sum: number, qso: any) => {
-                return sum + ((qso.mode === 'CW' || qso.mode === 'DIG') ? 2 : 1);
-              }, 0) : 0;
-              
-              const stationInfo = {
-                callsign: stationConfig.callsign,
-                designator: stationConfig.designator,
-                qsoCount: qsoData.length,
-                score: score,
-                software: 'K8TAR Field Day Logger',
-                version: '1.0.0',
-                timestamp: Date.now(),
-                port: port
-              };
-              
-              console.log(`📊 Station info response for port ${port}: ${stationConfig.callsign}-${stationConfig.designator} (${qsoData.length} QSOs, ${score} pts)`);
+              // Use the centralized NodeStationInfoService
+              const { NodeStationInfoService } = await import('./src/services/nodeStationInfoService');
+              const stationInfo = await NodeStationInfoService.getStationInfo(port, dataDir, stationQsos);
               
               res.setHeader('Content-Type', 'application/json');
               res.setHeader('Access-Control-Allow-Origin', '*');
@@ -238,6 +191,140 @@ export default defineConfig({
           }
         });
         
+        // Network status endpoint
+        server.middlewares.use('/api/network/status', async (req, res, next) => {
+          if (req.method === 'GET') {
+            try {
+              const port = server.config.server.port || 8080;
+              const dataDir = path.join(__dirname, 'fieldday-data', `port_${port}`);
+              
+              // Use the centralized NodeStationInfoService to get basic info
+              const { NodeStationInfoService } = await import('./src/services/nodeStationInfoService');
+              const stationInfo = await NodeStationInfoService.getStationInfo(port, dataDir, stationQsos);
+              
+              // Create network status response
+              const networkStatus = {
+                isConnected: true,
+                mode: 'mesh',
+                networkId: stationInfo.networkId,
+                callsign: stationInfo.callsign,
+                designator: stationInfo.designator,
+                port: port,
+                timestamp: Date.now()
+              };
+              
+              res.setHeader('Content-Type', 'application/json');
+              res.setHeader('Access-Control-Allow-Origin', '*');
+              res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+              res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+              res.end(JSON.stringify(networkStatus));
+            } catch (error) {
+              console.error('❌ Error getting network status:', error);
+              res.statusCode = 500;
+              res.end(JSON.stringify({ 
+                error: 'Failed to get network status',
+                details: error.message
+              }));
+            }
+          } else if (req.method === 'OPTIONS') {
+            res.setHeader('Access-Control-Allow-Origin', '*');
+            res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+            res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+            res.end();
+          } else {
+            next();
+          }
+        });
+        
+        // Network ID endpoint - returns the persistent network ID for this station
+        server.middlewares.use('/api/network/id', async (req, res, next) => {
+          if (req.method === 'GET') {
+            try {
+              const port = server.config.server.port || 8080;
+              const dataDir = path.join(__dirname, 'fieldday-data', `port_${port}`);
+              
+              // Use the centralized NodeStationInfoService to get network ID
+              const { NodeStationInfoService } = await import('./src/services/nodeStationInfoService');
+              const stationInfo = await NodeStationInfoService.getStationInfo(port, dataDir, stationQsos);
+              
+              // Return just the network ID
+              const response = {
+                networkId: stationInfo.networkId,
+                timestamp: Date.now()
+              };
+              
+              res.setHeader('Content-Type', 'application/json');
+              res.setHeader('Access-Control-Allow-Origin', '*');
+              res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+              res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+              res.end(JSON.stringify(response));
+            } catch (error) {
+              console.error('❌ Error getting network ID:', error);
+              res.statusCode = 500;
+              res.end(JSON.stringify({ 
+                error: 'Failed to get network ID',
+                details: error.message
+              }));
+            }
+          } else if (req.method === 'OPTIONS') {
+            res.setHeader('Access-Control-Allow-Origin', '*');
+            res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+            res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+            res.end();
+          } else {
+            next();
+          }
+        });
+        
+        // Mesh discovery endpoint - provides mesh node information for network discovery
+        server.middlewares.use('/api/mesh/discovery', async (req, res, next) => {
+          if (req.method === 'GET') {
+            try {
+              const port = server.config.server.port || 8080;
+              const dataDir = path.join(__dirname, 'fieldday-data', `port_${port}`);
+              
+              // Use the centralized NodeStationInfoService to get basic info
+              const { NodeStationInfoService } = await import('./src/services/nodeStationInfoService');
+              const stationInfo = await NodeStationInfoService.getStationInfo(port, dataDir, stationQsos);
+              
+              // Convert to mesh node format for compatibility
+              const meshNodeInfo = {
+                id: stationInfo.networkId,
+                callsign: stationInfo.callsign,
+                designator: stationInfo.designator,
+                networkId: stationInfo.networkId,
+                mode: 'mesh',
+                ip: 'localhost',
+                port: port,
+                qsoCount: stationInfo.qsoCount,
+                score: stationInfo.score,
+                timestamp: Date.now(),
+                isConnected: true
+              };
+              
+              res.setHeader('Content-Type', 'application/json');
+              res.setHeader('Access-Control-Allow-Origin', '*');
+              res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+              res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+              res.end(JSON.stringify(meshNodeInfo));
+            } catch (error) {
+              console.error('❌ Error handling mesh discovery:', error);
+              res.statusCode = 500;
+              res.end(JSON.stringify({ 
+                error: 'Failed to process mesh discovery request',
+                details: error.message
+              }));
+            }
+          } else if (req.method === 'OPTIONS') {
+            res.setHeader('Access-Control-Allow-Origin', '*');
+            res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+            res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+            res.end();
+          } else {
+            next();
+          }
+        });
+        
         // Network registration system for multi-station sync
         let connectedStations: any[] = [];
         let isNetworkHost = false;
@@ -247,7 +334,6 @@ export default defineConfig({
           if (req.method === 'POST') {
             isNetworkHost = true;
             connectedStations = []; // Reset connected stations
-            console.log('📡 Server: Registered as network host');
             
             res.setHeader('Content-Type', 'application/json');
             res.setHeader('Access-Control-Allow-Origin', '*');
@@ -270,16 +356,12 @@ export default defineConfig({
             req.on('end', () => {
               try {
                 const clientInfo = JSON.parse(body);
-                console.log('📡 Server: Client registration request received:');
-                console.log('  Client info:', JSON.stringify(clientInfo, null, 2));
                 
                 // Add client to connected stations if not already present
                 const existingIndex = connectedStations.findIndex(s => s.id === clientInfo.id);
                 if (existingIndex >= 0) {
-                  console.log(`📡 Server: Updating existing client ${clientInfo.callsign}-${clientInfo.designator}`);
                   connectedStations[existingIndex] = { ...clientInfo, lastSeen: Date.now() };
                 } else {
-                  console.log(`📡 Server: Adding new client ${clientInfo.callsign}-${clientInfo.designator}`);
                   connectedStations.push({ ...clientInfo, lastSeen: Date.now() });
                 }
                 
@@ -607,6 +689,16 @@ export default defineConfig({
                   return;
                 }
                 
+                // Ensure content is defined (it can be empty string, but not undefined)
+                if (content === undefined) {
+                  res.statusCode = 400;
+                  res.end(JSON.stringify({ error: 'Content is required' }));
+                  return;
+                }
+                
+                // Convert content to string if it's not already
+                const contentStr = typeof content === 'string' ? content : JSON.stringify(content);
+                
                 // Create full file path (don't double up fieldday-data)
                 const fullPath = path.join(__dirname, filename);
                 
@@ -617,8 +709,8 @@ export default defineConfig({
                 }
                 
                 // Write file
-                fs.writeFileSync(fullPath, content, 'utf8');
-                console.log(`📁 Server: Wrote file ${filename}`);
+                fs.writeFileSync(fullPath, contentStr, 'utf8');
+                console.log(`📁 Server: Wrote file ${filename} (${contentStr.length} chars)`);
                 
                 res.setHeader('Content-Type', 'application/json');
                 res.setHeader('Access-Control-Allow-Origin', '*');
@@ -642,7 +734,7 @@ export default defineConfig({
         server.middlewares.use('/api/files/read', (req, res, next) => {
           if (req.method === 'GET') {
             const url = new URL(req.url || '', 'http://localhost');
-            const filename = url.searchParams.get('path');
+            const filename = url.searchParams.get('filename');
             
             if (!filename || typeof filename !== 'string' || filename.includes('..')) {
               res.statusCode = 400;

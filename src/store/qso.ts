@@ -1,5 +1,5 @@
 import { ref, watch } from 'vue';
-import { networkService } from '@/services/networkService';
+import { backendApi, type BackendQso } from '@/services/backendApiService';
 import { fileStorage } from '@/services/fileStorage';
 
 export interface QSO {
@@ -20,6 +20,7 @@ const SETTINGS_KEY = 'qso_settings';
 
 // Periodic QSO refresh interval
 let refreshInterval: NodeJS.Timeout | null = null;
+let isRefreshing = false; // Prevent concurrent refreshes
 
 // Initialize QSOs from file storage
 export const qsos = ref<QSO[]>([]);
@@ -37,7 +38,6 @@ async function initializeQsos() {
       }
     });
     
-    console.log(`📚 Loaded ${qsos.value.length} QSOs from file storage`);
   } catch (error) {
     console.error('❌ Failed to load QSOs from file storage:', error);
     qsos.value = []; // Start with empty array if file storage fails
@@ -46,16 +46,6 @@ async function initializeQsos() {
 
 // Initialize immediately
 initializeQsos();
-
-// Start periodic refresh automatically for all instances
-// This ensures that multiple browser windows see each other's QSOs
-// Skip in Electron environment as we use local file storage
-if (typeof window !== 'undefined' && !(window as any).Electron) {
-  console.log('🌐 Auto-starting QSO refresh for UI sync...');
-  startPeriodicQsoRefresh();
-} else if (typeof window !== 'undefined' && (window as any).Electron) {
-  console.log('📱 Skipping auto QSO refresh in Electron mode (using local file storage)');
-}
 
 export const band = ref('40m');
 export const operator = ref('');
@@ -93,133 +83,121 @@ async function saveSettings() {
 // Initialize settings
 loadSettings();
 
-// Upload local QSOs to server (for network discovery/sync)
-async function uploadLocalQsosToServer(force = false): Promise<boolean> {
-  if (qsos.value.length === 0) {
-    console.log('📭 No local QSOs to upload');
-    return true;
-  }
-  
-  // Skip upload in Electron environment - we're already using local file storage
-  if (typeof window !== 'undefined' && (window as any).Electron) {
-    console.log('📱 Skipping QSO upload to server in Electron mode (already using local file storage)');
-    return true;
+// Force upload all QSOs (manual trigger) - now uses backend service
+export async function forceUploadAllQsos(): Promise<boolean> {
+  if (!backendApi.connected.value) {
+    console.error('❌ Backend service not available for QSO upload');
+    return false;
   }
   
   try {
-    console.log(`📤 Uploading ${qsos.value.length} local QSOs to server file storage...`);
-    
-    const response = await fetch('/api/qsos/bulk', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        qsos: qsos.value
-      })
-    });
-    
-    if (response.ok) {
-      const result = await response.json();
-      console.log(`✅ Successfully uploaded to file storage: ${result.added} new QSOs added, ${result.total} total on server`);
-      
-      // Mark as uploaded to avoid repeated uploads
-      try {
-        const currentSettings = await fileStorage.getSettings();
-        await fileStorage.saveSettings({
-          ...currentSettings,
-          qsosUploadedToServer: true
-        });
-      } catch (settingsError) {
-        console.warn('Failed to save upload flag to file storage:', settingsError);
+    // Get all QSOs and upload to backend
+    for (const qso of qsos.value) {
+      if (qso.id) {
+        const stationConfig = await fileStorage.getStationConfig();
+        const backendQso: BackendQso = {
+          id: qso.id.toString(),
+          timestamp: new Date(qso.datetime).toISOString(),
+          frequency: qso.band,
+          mode: qso.mode,
+          call_sign: qso.call,
+          name: qso.call,
+          section: qso.section,
+          class: qso.class,
+          station_id: `${stationConfig.callsign || 'UNKNOWN'}-${stationConfig.designator || '1A'}`,
+          operator: qso.operator,
+        };
+        
+        await backendApi.addQso(backendQso);
       }
-      return true;
-    } else {
-      console.error('❌ Failed to upload QSOs to server:', response.status, response.statusText);
-      return false;
     }
+    
+    console.log('✅ All QSOs uploaded to backend service');
+    return true;
   } catch (error) {
-    console.error('❌ Error uploading QSOs to server:', error);
+    console.error('❌ Failed to upload QSOs to backend:', error);
     return false;
   }
 }
 
-// Force upload all QSOs (manual trigger)
-export async function forceUploadAllQsos(): Promise<boolean> {
-  console.log('🔄 Force uploading all QSOs to server file storage...');
-  try {
-    // Clear upload flag from file storage
-    const currentSettings = await fileStorage.getSettings();
-    await fileStorage.saveSettings({
-      ...currentSettings,
-      qsosUploadedToServer: false
-    });
-  } catch (error) {
-    console.warn('Failed to clear upload flag in file storage:', error);
-  }
-  return await uploadLocalQsosToServer(true);
-}
-
-// Auto-upload QSOs when page loads (with delay to ensure server is ready)
+// Auto-sync with backend service when available
 setTimeout(async () => {
-  try {
-    const settings = await fileStorage.getSettings();
-    const wasUploaded = settings.qsosUploadedToServer;
-    if (!wasUploaded || qsos.value.length > 0) {
-      console.log('🚀 Auto-uploading local QSOs to server on page load...');
-      await uploadLocalQsosToServer();
+  if (backendApi.connected.value) {
+    console.log('✅ Backend service available - starting automatic QSO sync');
+    // Backend service will handle synchronization automatically
+    // Just upload existing QSOs if any
+    if (qsos.value.length > 0) {
+      await forceUploadAllQsos();
     }
-  } catch (error) {
-    console.warn('Failed to check upload status from file storage:', error);
-    // Default to upload if we can't check the status
-    console.log('🚀 Auto-uploading local QSOs to server on page load...');
-    await uploadLocalQsosToServer();
+  } else {
+    console.log('⚠️ Backend service not available - QSO sync disabled');
   }
 }, 1000); // 1 second delay
 
-// Register for network QSO updates
-networkService.onQsoUpdate((update) => {
-  console.log('📡 Received network QSO update:', update);
-  handleNetworkQsoUpdate(update);
-});
-
-// Auto-start sync functionality
+// Auto-start sync functionality - handled by backend service
 if (typeof window !== 'undefined') {
-  console.log('🌐 Starting automatic QSO sync...');
-  // The network service and API server will handle automatic syncing
+  // The backend service handles automatic syncing
 }
 
-// Set up network QSO synchronization
-networkService.onQsoUpdate((update) => {
-  handleNetworkQsoUpdate(update);
-});
+// Function to refresh QSOs from backend service
+async function refreshQsosFromBackend(): Promise<void> {
+  if (isRefreshing) {
+    return; // Prevent concurrent refreshes
+  }
+  
+  isRefreshing = true;
+  try {
+    if (!backendApi.connected.value) {
+      return;
+    }
+    
+    const backendQsos = await backendApi.getQsos();
+    
+    // Convert backend QSOs to local format and merge
+    const currentQsos = [...qsos.value];
+    let newQsosAdded = 0;
+    
+    const existingQsoMap = new Map();
+    currentQsos.forEach(qso => {
+      if (qso.id) {
+        existingQsoMap.set(qso.id.toString(), qso);
+      }
+    });
+    
+    backendQsos.forEach((backendQso: BackendQso) => {
+      if (!existingQsoMap.has(backendQso.id)) {
+        const localQso: QSO = {
+          id: parseInt(backendQso.id),
+          call: backendQso.call_sign,
+          class: backendQso.class,
+          section: backendQso.section,
+          datetime: new Date(backendQso.timestamp).toISOString(),
+          band: backendQso.frequency,
+          mode: backendQso.mode,
+          operator: backendQso.operator,
+          timestamp: new Date(backendQso.timestamp).getTime(),
+        };
+        currentQsos.push(localQso);
+        newQsosAdded++;
+      }
+    });
+    
+    if (newQsosAdded > 0) {
+      qsos.value = currentQsos;
+      await saveQsos();
+    }
+  } catch (error) {
+    console.error('Failed to refresh QSOs from backend:', error);
+  } finally {
+    isRefreshing = false;
+  }
+}
 
-// Handle QSO updates from network
-function handleNetworkQsoUpdate(update: any) {
-  console.log('Received network QSO update:', update);
-  
-  const { action, qso, stationId } = update;
-  const localStationId = getLocalStationId();
-  
-  // Don't process our own updates
-  if (stationId === localStationId) {
-    console.log('Skipping own QSO update');
-    return;
-  }
-  
-  console.log(`Processing ${action} from ${stationId} for QSO:`, qso);
-  
-  switch (action) {
-    case 'add':
-      addNetworkQso(qso);
-      break;
-    case 'update':
-      updateNetworkQso(qso);
-      break;
-    case 'delete':
-      deleteNetworkQso(qso.id);
-      break;
-  }
+// Handle QSO updates from network - simplified for backend
+function handleNetworkQsoUpdate(qso: QSO): void {
+  // Backend handles deduplication and conflict resolution
+  // Just add to local storage
+  addNetworkQso(qso);
 }
 
 function addNetworkQso(networkQso: any) {
@@ -257,7 +235,6 @@ function addNetworkQso(networkQso: any) {
     
     if (networkTime > existingTime) {
       // Network QSO is newer, drop it (keep existing)
-      console.log('Dropped newer duplicate network QSO:', networkQso.call);
       return;
     } else {
       // Network QSO is older, replace existing
@@ -265,7 +242,6 @@ function addNetworkQso(networkQso: any) {
       if (index >= 0) {
         qsos.value[index] = { ...networkQso };
         saveQsos(); // Use file storage
-        console.log('Replaced with older network QSO:', networkQso.call);
       }
       return;
     }
@@ -275,7 +251,6 @@ function addNetworkQso(networkQso: any) {
   qsos.value.push(networkQso);
   qsos.value.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0)); // Sort by timestamp
   saveQsos(); // Use file storage
-  console.log('Added network QSO:', networkQso.call);
 }
 
 function updateNetworkQso(networkQso: any) {
@@ -286,7 +261,6 @@ function updateNetworkQso(networkQso: any) {
     if ((networkQso.timestamp || 0) >= (existingQso.timestamp || 0)) {
       qsos.value[index] = { ...networkQso };
       saveQsos(); // Use file storage
-      console.log('Updated network QSO:', networkQso);
     }
   }
 }
@@ -296,7 +270,6 @@ function deleteNetworkQso(qsoId: number) {
   if (index >= 0) {
     qsos.value.splice(index, 1);
     saveQsos(); // Use file storage
-    console.log('Deleted network QSO:', qsoId);
   }
 }
 
@@ -339,50 +312,37 @@ export async function logQso(qso: any) {
   qsos.value.push(newQso);
   saveQsos(); // Use file storage
   
-  // Upload new QSO to local server for sharing
-  uploadSingleQsoToServer(newQso);
-  
-  // Broadcast QSO to network if connected
-  networkService.broadcastQsoUpdate(newQso, 'add').catch(error => {
-    console.error('Failed to broadcast QSO update:', error);
-  });
+  // Add QSO to backend service for network sync
+  if (backendApi.connected.value) {
+    const stationConfig = await fileStorage.getStationConfig();
+    const backendQso: BackendQso = {
+      id: newQso.id!.toString(),
+      timestamp: new Date(newQso.datetime).toISOString(),
+      frequency: newQso.band,
+      mode: newQso.mode,
+      call_sign: newQso.call,
+      name: newQso.call, // Use call sign as name for now
+      section: newQso.section,
+      class: newQso.class,
+      station_id: `${stationConfig.callsign || 'UNKNOWN'}-${stationConfig.designator || '1A'}`,
+      operator: newQso.operator,
+    };
+    
+    backendApi.addQso(backendQso).catch(error => {
+      console.error('Failed to add QSO to backend:', error);
+    });
+  } else {
+    console.warn('⚠️ Backend service not available - QSO will not be synced to network');
+  }
   
   // Trigger achievement check for new QSO
   triggerAchievementCheck();
-}
-
-// Upload a single QSO to the server
-async function uploadSingleQsoToServer(qso: any): Promise<void> {
-  // Skip upload in Electron environment - we're already using local file storage
-  if (typeof window !== 'undefined' && (window as any).Electron) {
-    console.log('📱 Skipping single QSO upload to server in Electron mode (already using local file storage)');
-    return;
-  }
-  
-  try {
-    const response = await fetch('/api/qsos/bulk', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        qsos: [qso]
-      })
-    });
-    
-    if (response.ok) {
-      console.log(`📤 Uploaded QSO to server: ${qso.call}`);
-    }
-  } catch (error) {
-    console.error('❌ Failed to upload QSO to server:', error);
-  }
 }
 
 // Centralized save function using file storage
 async function saveQsos(): Promise<void> {
   try {
     await fileStorage.saveQsoData(qsos.value);
-    console.log(`💾 Saved ${qsos.value.length} QSOs to file storage`);
   } catch (error) {
     console.error('❌ Failed to save QSOs to file storage:', error);
   }
@@ -390,7 +350,6 @@ async function saveQsos(): Promise<void> {
 
 // Add these fully implemented functions
 export function deleteQso(id: number) {
-  console.log('Deleting QSO with ID:', id);
   
   // Find the QSO being deleted for network broadcast
   const deletedQso = qsos.value.find(qso => qso.id === id);
@@ -404,18 +363,11 @@ export function deleteQso(id: number) {
   // Update file storage
   saveQsos(); // Use file storage
   
-  // Broadcast deletion to network if connected and QSO was found
-  if (deletedQso) {
-    networkService.broadcastQsoUpdate(deletedQso, 'delete').catch(error => {
-      console.error('Failed to broadcast QSO deletion:', error);
-    });
-  }
+  // Backend service handles network synchronization automatically
   
-  console.log('QSO deleted, new count:', qsos.value.length);
 }
 
 export function updateQso(id: number, updatedQso: QSO) {
-  console.log('Updating QSO with ID:', id, updatedQso);
   
   // Find the index of the QSO to update
   const index = qsos.value.findIndex(qso => qso.id === id);
@@ -437,14 +389,9 @@ export function updateQso(id: number, updatedQso: QSO) {
     // Save to file storage
     saveQsos(); // Use file storage
     
-    // Broadcast update to network if connected
-    networkService.broadcastQsoUpdate(updated, 'update').catch(error => {
-      console.error('Failed to broadcast QSO update:', error);
-    });
+    // Backend service handles network synchronization automatically
     
-    console.log('QSO updated:', updated);
   } else {
-    console.log('QSO not found for update:', id);
   }
 }
 
@@ -489,82 +436,41 @@ watch(band, () => saveSettings());
 watch(operator, () => saveSettings());
 watch(mode, () => saveSettings());
 
-// Function to refresh QSOs from server
+// Function to refresh QSOs from backend service only
 export async function refreshQsosFromServer(): Promise<void> {
-  try {
-    // Skip server refresh in Electron environment - we use local file storage
-    if (typeof window !== 'undefined' && (window as any).Electron) {
-      console.log('🔄 Skipping QSO refresh from server in Electron mode (using local file storage)');
-      return;
-    }
-    
-    console.log('🔄 Refreshing QSOs from server...');
-    const response = await fetch('/api/qsos');
-    
-    if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
-    }
-    
-    const data = await response.json();
-    if (data.qsos && Array.isArray(data.qsos)) {
-      console.log(`📥 Received ${data.qsos.length} QSOs from server`);
-      
-      // Merge server QSOs with local QSOs, avoiding duplicates
-      const currentQsos = [...qsos.value];
-      const serverQsos = data.qsos;
-      
-      console.log(`🔍 Current local QSOs: ${currentQsos.length}, Server QSOs: ${serverQsos.length}`);
-      
-      // Create a map of existing QSOs by ID for quick lookup
-      const existingQsoMap = new Map();
-      currentQsos.forEach(qso => {
-        if (qso.id) {
-          existingQsoMap.set(qso.id, qso);
-        }
-      });
-      
-      // Add server QSOs that don't exist locally
-      let newQsosAdded = 0;
-      serverQsos.forEach((serverQso: QSO) => {
-        if (serverQso.id && !existingQsoMap.has(serverQso.id)) {
-          currentQsos.push(serverQso);
-          newQsosAdded++;
-          console.log(`➕ Added new QSO from server: ${serverQso.call} (ID: ${serverQso.id})`);
-        }
-      });
-      
-      if (newQsosAdded > 0) {
-        console.log(`✅ Added ${newQsosAdded} new QSOs from server`);
-        qsos.value = currentQsos;
-        await saveQsos(); // Save updated QSOs to file storage
-      } else {
-        console.log('📋 No new QSOs from server');
-      }
-    }
-  } catch (error) {
-    console.error('❌ Failed to refresh QSOs from server:', error);
+  if (!backendApi.connected.value) {
+    console.warn('⚠️ Backend service not available - cannot refresh QSOs');
+    return;
   }
+  
+  // Use the backend-specific refresh function
+  await refreshQsosFromBackend();
 }
 
 export function startPeriodicQsoRefresh(): void {
+  // Stop any existing interval to prevent duplicates
   if (refreshInterval) {
     clearInterval(refreshInterval);
+    refreshInterval = null;
   }
   
-  console.log('🔄 Starting periodic QSO refresh every 10 seconds...');
-  refreshInterval = setInterval(() => {
-    console.log('⏰ Periodic QSO refresh triggered');
-    refreshQsosFromServer();
-  }, 10000); // Refresh every 10 seconds
+  // Don't start if already refreshing or backend is not connected
+  if (isRefreshing || !backendApi.connected.value) {
+    return;
+  }
   
-  // Do an initial refresh
-  console.log('🚀 Doing initial QSO refresh...');
-  refreshQsosFromServer();
+  // Use longer interval and let backend handle heavy sync operations
+  refreshInterval = setInterval(() => {
+    // Backend service handles QSO synchronization automatically
+    // Just refresh our local data occasionally
+    if (backendApi.connected.value && !isRefreshing) {
+      refreshQsosFromBackend();
+    }
+  }, 120000); // Every 2 minutes - much less aggressive
 }
 
 export function stopPeriodicQsoRefresh(): void {
   if (refreshInterval) {
-    console.log('⏹️ Stopping periodic QSO refresh');
     clearInterval(refreshInterval);
     refreshInterval = null;
   }

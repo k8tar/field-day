@@ -103,7 +103,6 @@ class MeshNetworkService {
     try {
       this.nodeId = await fileStorage.getNetworkId();
       this.status.nodeId = this.nodeId;
-      console.log(`🆔 Mesh network using persistent network ID: ${this.nodeId}`);
     } catch (error) {
       console.error('❌ Failed to get persistent network ID, using fallback:', error);
       // Fallback to old method
@@ -140,29 +139,23 @@ class MeshNetworkService {
   // Start mesh network
   async startMesh(): Promise<boolean> {
     try {
-      console.log('🕸️ Starting mesh network...');
       
       // Initialize local node
-      console.log('1️⃣ Initializing local node...');
       await this.initializeLocalNode();
       
       // Start discovery process
-      console.log('2️⃣ Starting peer discovery...');
       this.startPeerDiscovery();
       
       // Start heartbeat system
-      console.log('3️⃣ Starting heartbeat system...');
       this.startHeartbeat();
       
       // Start synchronization
-      console.log('4️⃣ Starting periodic sync...');
       this.startPeriodicSync();
       
       this.meshActive = true;
       this.status.isActive = true;
       this.updateMeshHealth();
       
-      console.log(`✅ Mesh network started successfully - Node ID: ${this.nodeId}`);
       this.emit('mesh:started', { nodeId: this.nodeId });
       
       return true;
@@ -177,7 +170,6 @@ class MeshNetworkService {
 
   // Stop mesh network
   async stopMesh(): Promise<void> {
-    console.log('🛑 Stopping mesh network...');
     
     this.meshActive = false;
     this.status.isActive = false;
@@ -210,53 +202,49 @@ class MeshNetworkService {
     this.updateMeshHealth();
     this.emit('mesh:stopped');
     
-    console.log('✅ Mesh network stopped');
   }
 
   // Initialize local node information
   private async initializeLocalNode(): Promise<void> {
     try {
-      console.log('🔧 Initializing local mesh node...');
       
-      // Get station config with fallback values
-      let stationConfig;
+      // Get station info using centralized service
+      let stationInfo;
       try {
-        stationConfig = await fileStorage.getStationConfig();
-        console.log('📋 Station config loaded:', stationConfig);
+        const { StationInfoService } = await import('@/services/stationInfoService');
+        stationInfo = await StationInfoService.getStationInfo(false); // Don't include port here
       } catch (error) {
-        console.warn('⚠️ Failed to load station config, using defaults:', error);
-        stationConfig = { callsign: 'UNKNOWN', designator: '1A' };
-      }
-      
-      // Get QSO data with fallback
-      let qsos;
-      try {
-        qsos = await fileStorage.getQsoData();
-        console.log(`📊 QSO data loaded: ${qsos.length} QSOs`);
-      } catch (error) {
-        console.warn('⚠️ Failed to load QSO data, using empty array:', error);
-        qsos = [];
+        console.warn('⚠️ Failed to load station info, using fallback:', error);
+        stationInfo = {
+          callsign: 'UNKNOWN',
+          designator: '1A',
+          networkId: this.nodeId,
+          qsoCount: 0,
+          score: 0,
+          software: 'K8TAR Field Day Logger',
+          version: '2.0.0',
+          timestamp: Date.now(),
+          online: true
+        };
       }
       
       // Get local IP
       const localIP = await this.getLocalIP();
-      console.log(`🌐 Local IP: ${localIP}`);
       
       this.localNode = {
-        id: this.nodeId,
-        callsign: stationConfig.callsign?.toUpperCase() || 'UNKNOWN',
-        designator: stationConfig.designator || '1A',
+        id: stationInfo.networkId,
+        callsign: stationInfo.callsign.toUpperCase(),
+        designator: stationInfo.designator,
         ip: localIP,
         port: this.DISCOVERY_PORT,
-        qsoCount: qsos.length,
-        score: this.calculateScore(qsos),
-        online: true,
+        qsoCount: stationInfo.qsoCount,
+        score: stationInfo.score,
+        online: stationInfo.online,
         lastSeen: Date.now(),
-        version: '2.0.0', // From package.json
+        version: stationInfo.version,
         capabilities: ['qso-sync', 'heartbeat', 'conflict-resolution']
       };
       
-      console.log('✅ Local mesh node initialized:', this.localNode);
     } catch (error) {
       console.error('❌ Failed to initialize local node:', error);
       throw new Error(`Mesh node initialization failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -274,13 +262,11 @@ class MeshNetworkService {
   // Get local IP address
   private async getLocalIP(): Promise<string> {
     try {
-      console.log('🔍 Detecting local IP address...');
       
       // First, try to get IP from browser's current URL if available
       if (typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
         const browserIP = window.location.hostname;
         if (this.isValidPrivateIP(browserIP)) {
-          console.log(`✅ Using browser IP: ${browserIP}`);
           return browserIP;
         }
       }
@@ -298,7 +284,6 @@ class MeshNetworkService {
             .catch(() => {
               // If WebRTC fails, use fallback immediately
               pc.close();
-              console.log('⚠️ WebRTC IP detection failed, using fallback');
               resolve('192.168.1.100');
             });
           
@@ -309,12 +294,10 @@ class MeshNetworkService {
               const match = ice.candidate.candidate.match(/candidate:\d+ \d+ udp \d+ ([\d.]+)/);
               if (match && match[1] && this.isValidPrivateIP(match[1]) && !this.isLocalhost(match[1])) {
                 foundIPs.add(match[1]);
-                console.log(`🔍 Found candidate IP: ${match[1]}`);
                 
                 // If we find a preferred physical network IP (192.168.1.x or 192.168.0.x), use it immediately
                 if (match[1].startsWith('192.168.1.') || match[1].startsWith('192.168.0.')) {
                   pc.close();
-                  console.log(`✅ Found preferred physical network IP: ${match[1]}`);
                   resolve(match[1]);
                   return;
                 }
@@ -346,21 +329,17 @@ class MeshNetworkService {
                 
                 return 0;
               });
-              console.log(`✅ Selected best physical IP from candidates: ${sortedIPs[0]} (from ${Array.from(foundIPs).join(', ')})`);
               resolve(sortedIPs[0]);
             } else {
-              console.log('⏱️ No valid IPs found, using fallback');
               resolve('192.168.1.100');
             }
           }, 3000); // Increased timeout
           
         } catch (error) {
-          console.log('❌ WebRTC not available, using fallback IP');
           resolve('192.168.1.100');
         }
       });
     } catch (error) {
-      console.log('❌ IP detection failed, using fallback:', error instanceof Error ? error.message : 'Unknown error');
       return '192.168.1.100'; // Fallback
     }
   }
@@ -401,7 +380,6 @@ class MeshNetworkService {
     // Check if IP matches any virtual pattern
     for (const pattern of virtualPatterns) {
       if (pattern.test(ip)) {
-        console.log(`⚠️ IP ${ip} appears to be virtual interface - excluding`);
         return false;
       }
     }
@@ -417,13 +395,11 @@ class MeshNetworkService {
 
     for (const pattern of physicalPreferred) {
       if (pattern.test(ip)) {
-        console.log(`✅ IP ${ip} appears to be preferred physical interface`);
         return true;
       }
     }
 
     // For other private IPs, be conservative
-    console.log(`⚠️ IP ${ip} is private but not in preferred ranges - treating as secondary`);
     return true;
   }
 
@@ -499,7 +475,6 @@ class MeshNetworkService {
 
   // Start peer discovery process
   private startPeerDiscovery(): void {
-    console.log('🔍 Starting peer discovery...');
     
     // Initial discovery
     this.discoverPeers();
@@ -514,13 +489,11 @@ class MeshNetworkService {
   private async discoverPeers(): Promise<void> {
     if (!this.localNode) return;
     
-    console.log('🔎 Discovering mesh peers...');
     
     try {
       // Get valid network IPs to scan (exclude localhost)
       const networkIPs = await this.getValidNetworkIPs();
       
-      console.log(`🌐 Scanning ${networkIPs.length} network IPs:`, networkIPs);
       
       const scanPromises: Promise<MeshNode | null>[] = [];
       const localIP = this.localNode.ip;
@@ -547,7 +520,6 @@ class MeshNetworkService {
           
           // Filter out our own node (don't discover ourselves)
           if (node.id === this.nodeId) {
-            console.log(`🔍 Filtered out self-discovery: ${node.id} (this is our own node)`);
             return;
           }
           
@@ -562,7 +534,6 @@ class MeshNetworkService {
       });
       
       if (newNodes > 0) {
-        console.log(`✅ Discovered ${newNodes} new mesh nodes`);
       }
     } catch (error) {
       console.error('❌ Error during peer discovery:', error);
@@ -581,7 +552,6 @@ class MeshNetworkService {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 3000);
         
-        console.log(`🔍 Trying ${protocol.toUpperCase()} for mesh discovery: ${ip}`);
         
         // Try to connect to potential mesh node via the main app's API
         const response = await fetch(`${protocol}://${ip}:${this.DISCOVERY_PORT}/api/mesh/discovery`, {
@@ -606,7 +576,6 @@ class MeshNetworkService {
               nodeInfo.software && 
               nodeInfo.software.includes('Field Day')) {
             
-            console.log(`✅ Found Field Day mesh node via ${protocol.toUpperCase()} at ${ip}:${this.DISCOVERY_PORT}:`, nodeInfo);
             
             return {
               id: nodeInfo.nodeId,
@@ -623,21 +592,16 @@ class MeshNetworkService {
               protocol: protocol as 'http' | 'https' // Remember which protocol worked
             };
           } else {
-            console.log(`❌ Response from ${ip}:${this.DISCOVERY_PORT} via ${protocol.toUpperCase()} is not a Field Day mesh node:`, nodeInfo);
           }
         } else {
-          console.log(`⚠️ ${protocol.toUpperCase()} ${ip}: HTTP ${response.status}`);
         }
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
         const errorName = error instanceof Error ? error.name : 'UnknownError';
         
         if (errorName === 'AbortError') {
-          console.log(`⏱️ ${protocol.toUpperCase()} ${ip}: Timeout`);
         } else if (errorMessage.includes('certificate') || errorMessage.includes('SSL') || errorMessage.includes('TLS')) {
-          console.log(`🔒 ${protocol.toUpperCase()} ${ip}: SSL certificate error - ${errorMessage}`);
         } else {
-          console.log(`📭 ${protocol.toUpperCase()} ${ip}: ${errorMessage}`);
         }
         
         // Continue to next protocol
@@ -657,7 +621,6 @@ class MeshNetworkService {
     this.connectToNode(node);
     
     this.emit('mesh:node-discovered', node);
-    console.log(`📡 Added mesh node: ${node.callsign} (${node.designator}) at ${node.ip}`);
   }
 
   // Update an existing discovered node
@@ -681,7 +644,6 @@ class MeshNetworkService {
     }
     
     try {
-      console.log(`🤝 Connecting to mesh node: ${node.callsign} at ${node.ip}:${node.port}`);
       
       // Test connection to the node's API endpoint using the protocol that worked for discovery
       const protocol = node.protocol || 'http'; // Default to HTTP if protocol not specified
@@ -696,7 +658,6 @@ class MeshNetworkService {
         this.status.connectedNodes = this.connections.size;
         
         this.emit('mesh:node-connected', node);
-        console.log(`✅ Connected to mesh node: ${node.callsign} via HTTP API`);
         
         // Start initial sync with this node
         this.syncWithNode(node);
@@ -715,7 +676,6 @@ class MeshNetworkService {
 
   // Start heartbeat system
   private startHeartbeat(): void {
-    console.log('💓 Starting heartbeat system...');
     
     this.heartbeatInterval = setInterval(() => {
       this.sendHeartbeat();
@@ -759,7 +719,6 @@ class MeshNetworkService {
     timeoutNodes.forEach(nodeId => {
       const node = this.discoveredNodes.get(nodeId);
       if (node) {
-        console.log(`⏰ Node timeout: ${node.callsign} (${node.designator})`);
         this.removeNode(nodeId);
       }
     });
@@ -780,13 +739,11 @@ class MeshNetworkService {
       this.status.connectedNodes = this.connections.size;
       
       this.emit('mesh:node-removed', node);
-      console.log(`🗑️ Removed mesh node: ${node.callsign} (${node.designator})`);
     }
   }
 
   // Start periodic synchronization
   private startPeriodicSync(): void {
-    console.log('🔄 Starting periodic synchronization...');
     
     this.syncInterval = setInterval(() => {
       this.performMeshSync();
@@ -797,7 +754,6 @@ class MeshNetworkService {
   private async performMeshSync(): Promise<void> {
     if (!this.meshActive || this.discoveredNodes.size === 0) return;
     
-    console.log('🔄 Performing mesh synchronization...');
     
     const syncPromises: Promise<void>[] = [];
     this.discoveredNodes.forEach((node) => {
@@ -816,11 +772,9 @@ class MeshNetworkService {
   // Synchronize with a specific node
   private async syncWithNode(node: MeshNode): Promise<void> {
     try {
-      console.log(`🔄 Starting QSO sync with ${node.callsign} at ${node.ip}:${node.port}`);
       
       // Get local QSO data
       const localQsos = await fileStorage.getQsoData();
-      console.log(`📊 Local QSOs: ${localQsos.length}`);
       
       // Request QSO data from the remote node using the protocol that worked for discovery
       const protocol = node.protocol || 'http'; // Default to HTTP if protocol not specified
@@ -835,7 +789,6 @@ class MeshNetworkService {
       if (response.ok) {
         const remoteData = await response.json();
         const remoteQsos = remoteData.qsos || [];
-        console.log(`📡 Remote QSOs from ${node.callsign}: ${remoteQsos.length}`);
         
         // Find QSOs that exist on remote but not locally
         const newQsos = remoteQsos.filter((remoteQso: any) => 
@@ -847,7 +800,6 @@ class MeshNetworkService {
         );
         
         if (newQsos.length > 0) {
-          console.log(`📥 Found ${newQsos.length} new QSOs from ${node.callsign}`);
           
           // Add new QSOs to local storage using the QSO store
           const { logQso } = await import('@/store/qso');
@@ -859,7 +811,6 @@ class MeshNetworkService {
           }
           
           this.status.syncedQsos += newQsos.length;
-          console.log(`✅ Synced ${newQsos.length} new QSOs from ${node.callsign}`);
           
           // Emit sync completion event
           this.emit('mesh:sync-completed', {
@@ -868,7 +819,6 @@ class MeshNetworkService {
             totalLocal: localQsos.length + newQsos.length
           });
         } else {
-          console.log(`✅ No new QSOs from ${node.callsign} - already in sync`);
         }
         
       } else {
@@ -887,7 +837,6 @@ class MeshNetworkService {
       // For simulation, we'll just update our sync statistics
       this.status.syncedQsos += localQsos.length;
       
-      console.log(`✅ Synced with ${node.callsign}: ${localQsos.length} QSOs`);
     } catch (error) {
       console.error(`❌ Failed to handle sync response from ${node.callsign}:`, error);
     }
@@ -908,13 +857,11 @@ class MeshNetworkService {
 
   // Broadcast message to all connected nodes
   private broadcastMessage(message: MeshMessage): void {
-    console.log(`📡 Broadcasting message: ${message.type}`);
     
     this.connections.forEach((connection, nodeId) => {
       if (connection && nodeId !== this.nodeId) {
         // In a real implementation, send via WebSocket
         // For simulation, just log
-        console.log(`  → Sent to ${nodeId}`);
       }
     });
   }

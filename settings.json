@@ -1,0 +1,15 @@
+{
+  "band": "40m",
+  "operator": "",
+  "mode": "PH",
+  "lastUpdated": 1752292056621,
+  "networkSettings": {
+    "autoReconnect": true,
+    "lastNetworkMode": "mesh",
+    "isHost": false,
+    "hostPort": 8080,
+    "lastHostAddress": "",
+    "lastConnectedStations": [],
+    "networkInstanceId": "FD-K8TAR-PHONE 1"
+  }
+}

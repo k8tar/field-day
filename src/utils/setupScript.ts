@@ -6,23 +6,18 @@
 
 // Setup commands for Port 8080 (PHONE 1)
 const setupPort8080 = `
-console.log('🔧 Setting up Port 8080 as PHONE 1 station...');
 await networkService.setupTestStation('K8TAR', 'PHONE 1', 305);
 await networkService.checkFileStorage();
-console.log('✅ Port 8080 setup complete!');
 `;
 
 // Setup commands for Port 8081 (PHONE 2)  
 const setupPort8081 = `
-console.log('🔧 Setting up Port 8081 as PHONE 2 station...');
 await networkService.setupTestStation('K8TAR', 'PHONE 2', 0);
 await networkService.checkFileStorage();
-console.log('✅ Port 8081 setup complete!');
 `;
 
 // Test network discovery
 const testDiscovery = `
-console.log('🧪 Testing network discovery...');
 await networkService.testNetworkDiscovery();
 `;
 
@@ -30,16 +25,12 @@ await networkService.testNetworkDiscovery();
 const testConnectivity = `
 const currentPort = parseInt(window.location.port || '8080');
 const otherPort = currentPort === 8080 ? 8081 : 8080;
-console.log(\`🔍 Looking for station on port \${otherPort}...\`);
 const station = await networkService.checkStationAt('localhost', otherPort);
 if (station) {
-  console.log(\`✅ Found: \${station.callsign}-\${station.designator} (\${station.qsoCount} QSOs)\`);
 } else {
-  console.log(\`❌ No station found at port \${otherPort}\`);
 }
 `;
 
-console.log(`
 🎯 Field Day Network Setup Commands
 ====================================
 

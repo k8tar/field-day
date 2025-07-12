@@ -457,7 +457,6 @@ function closeEditModal() {
 
 function saveQsoEdit() {
   if (editingQso.value && editingQso.value.id !== undefined) {
-    console.log('Saving edited QSO:', editingQso.value);
     
     // Validate section if provided
     if (editingQso.value.section && !validateArrlSection(editingQso.value.section)) {
@@ -508,7 +507,6 @@ function closeDeleteModal() {
 
 function deleteSelectedQso() {
   if (deletingQso.value && deletingQso.value.id !== undefined) {
-    console.log('Deleting QSO:', deletingQso.value);
     // Use type assertion to tell TypeScript that id is definitely a number
     deleteQso(deletingQso.value.id as number);
     closeDeleteModal();

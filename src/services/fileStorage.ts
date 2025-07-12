@@ -58,7 +58,6 @@ class FileStorageService {
   private ensureDataDirectory(): void {
     // Server-side directory creation is handled by the API endpoints
     if (!this.isElectron()) {
-      console.log(`📁 Using server-side file storage for port ${this.port}`);
     }
   }
 
@@ -68,19 +67,10 @@ class FileStorageService {
     const electronFS = windowExists && !!(window as any).electronFS;
     const electronTest = windowExists && !!(window as any).ElectronTest;
     
-    console.log('🔍 Electron detection debug:', {
-      windowExists,
-      electronFlag,
-      electronFS,
-      electronTest,
-      userAgent: windowExists ? navigator.userAgent : 'N/A'
-    });
-    
     // Test the ElectronTest function if available
     if (electronTest) {
       try {
         const result = (window as any).ElectronTest();
-        console.log('✅ ElectronTest executed successfully:', result);
       } catch (error) {
         console.error('❌ ElectronTest failed:', error);
       }
@@ -116,7 +106,6 @@ class FileStorageService {
       await this.writeFileServer('station-config.json', JSON.stringify(updatedConfig, null, 2));
     }
 
-    console.log(`💾 Saved station config for port ${this.port}:`, updatedConfig);
   }
 
   async getStationConfig(): Promise<StationConfig> {
@@ -140,14 +129,12 @@ class FileStorageService {
 
       if (configData) {
         const config = JSON.parse(configData);
-        console.log(`📋 Loaded station config for port ${this.port}:`, config);
         return { ...defaultConfig, ...config };
       }
     } catch (error) {
       console.warn(`⚠️ Failed to load station config for port ${this.port}:`, error);
     }
 
-    console.log(`📝 Using default station config for port ${this.port}:`, defaultConfig);
     return defaultConfig;
   }
 
@@ -164,7 +151,6 @@ class FileStorageService {
       await this.writeFileServer('qso-data.json', JSON.stringify(qsoData, null, 2));
     }
 
-    console.log(`💾 Saved ${qsos.length} QSOs for port ${this.port}`);
   }
 
   async getQsoData(): Promise<any[]> {
@@ -179,14 +165,12 @@ class FileStorageService {
 
       if (qsoDataStr) {
         const qsoData: QsoData = JSON.parse(qsoDataStr);
-        console.log(`📚 Loaded ${qsoData.qsos.length} QSOs for port ${this.port}`);
         return qsoData.qsos;
       }
     } catch (error) {
       console.warn(`⚠️ Failed to load QSOs for port ${this.port}:`, error);
     }
 
-    console.log(`📝 No QSO data found for port ${this.port}, returning empty array`);
     return [];
   }
 
@@ -210,7 +194,6 @@ class FileStorageService {
       await this.writeFileServer('operators.json', JSON.stringify(operatorData, null, 2));
     }
 
-    console.log(`💾 Saved ${operators.length} operators for port ${this.port}`);
   }
 
   async getOperators(): Promise<string[]> {
@@ -225,14 +208,12 @@ class FileStorageService {
 
       if (operatorDataStr) {
         const operatorData: OperatorData = JSON.parse(operatorDataStr);
-        console.log(`📚 Loaded ${operatorData.operators.length} operators for port ${this.port}`);
         return operatorData.operators;
       }
     } catch (error) {
       console.warn(`⚠️ Failed to load operators for port ${this.port}:`, error);
     }
 
-    console.log(`📝 No operator data found for port ${this.port}, returning empty array`);
     return [];
   }
 
@@ -249,7 +230,6 @@ class FileStorageService {
       await this.writeFileServer('bonuses.json', JSON.stringify(bonusData, null, 2));
     }
 
-    console.log(`💾 Saved ${bonuses.length} bonuses for port ${this.port}`);
   }
 
   async getBonuses(): Promise<any[]> {
@@ -264,14 +244,12 @@ class FileStorageService {
 
       if (bonusDataStr) {
         const bonusData: BonusData = JSON.parse(bonusDataStr);
-        console.log(`📚 Loaded ${bonusData.bonuses.length} bonuses for port ${this.port}`);
         return bonusData.bonuses;
       }
     } catch (error) {
       console.warn(`⚠️ Failed to load bonuses for port ${this.port}:`, error);
     }
 
-    console.log(`📝 No bonus data found for port ${this.port}, returning empty array`);
     return [];
   }
 
@@ -290,7 +268,6 @@ class FileStorageService {
       await this.writeFileServer('settings.json', JSON.stringify(updatedSettings, null, 2));
     }
 
-    console.log(`💾 Saved settings for port ${this.port}:`, updatedSettings);
   }
 
   async getSettings(): Promise<SettingsData> {
@@ -312,14 +289,12 @@ class FileStorageService {
 
       if (settingsDataStr) {
         const settingsData: SettingsData = JSON.parse(settingsDataStr);
-        console.log(`📚 Loaded settings for port ${this.port}:`, settingsData);
         return { ...defaultSettings, ...settingsData };
       }
     } catch (error) {
       console.warn(`⚠️ Failed to load settings for port ${this.port}:`, error);
     }
 
-    console.log(`📝 Using default settings for port ${this.port}:`, defaultSettings);
     return defaultSettings;
   }
 
@@ -330,7 +305,6 @@ class FileStorageService {
       
       // If we already have a network ID, return it
       if (config.networkId) {
-        console.log(`📡 Using existing network ID: ${config.networkId}`);
         return config.networkId;
       }
       
@@ -342,7 +316,6 @@ class FileStorageService {
       // Save it to the station config
       await this.saveStationConfig({ networkId });
       
-      console.log(`🆔 Generated new network ID: ${networkId}`);
       return networkId;
     } catch (error) {
       console.error('❌ Failed to get/generate network ID:', error);
@@ -395,7 +368,6 @@ class FileStorageService {
         throw new Error(`HTTP ${response.status}: ${errorText}`);
       }
 
-      console.log(`📁 Wrote file to server: ${filename}`);
     } catch (error) {
       console.error(`❌ Failed to write file to server: ${filename}`, error);
       throw error;
@@ -416,10 +388,8 @@ class FileStorageService {
 
       const result = await response.json();
       if (result.content !== undefined) {
-        console.log(`📂 Read file from server: ${filename}`);
         return result.content;
       } else {
-        console.log(`📂 File not found on server: ${filename}`);
         return null;
       }
     } catch (error) {
@@ -442,7 +412,6 @@ class FileStorageService {
 
   // Migration method to move from localStorage to file storage
   async migrateFromLocalStorage(): Promise<void> {
-    console.log(`🔄 Migrating data from localStorage to file storage for port ${this.port}...`);
     
     // Migrate station config
     const oldCallsign = localStorage.getItem('stationCallsign');
@@ -457,7 +426,6 @@ class FileStorageService {
         stationClass: oldClass || '',
         stationSection: oldSection || ''
       });
-      console.log(`✅ Migrated station config: ${oldCallsign}-${oldDesignator} (${oldClass}/${oldSection})`);
     }
 
     // Migrate QSO data
@@ -467,7 +435,6 @@ class FileStorageService {
         const qsos = JSON.parse(oldQsos);
         if (Array.isArray(qsos) && qsos.length > 0) {
           await this.saveQsoData(qsos);
-          console.log(`✅ Migrated ${qsos.length} QSOs`);
         }
       } catch (error) {
         console.warn('⚠️ Failed to migrate QSO data:', error);
@@ -481,7 +448,6 @@ class FileStorageService {
         const operators = JSON.parse(oldOperators);
         if (Array.isArray(operators) && operators.length > 0) {
           await this.saveOperators(operators);
-          console.log(`✅ Migrated ${operators.length} operators`);
         }
       } catch (error) {
         console.warn('⚠️ Failed to migrate operator data:', error);
@@ -495,7 +461,6 @@ class FileStorageService {
         const bonuses = JSON.parse(oldBonuses);
         if (Array.isArray(bonuses) && bonuses.length > 0) {
           await this.saveBonuses(bonuses);
-          console.log(`✅ Migrated ${bonuses.length} bonuses`);
         }
       } catch (error) {
         console.warn('⚠️ Failed to migrate bonus data:', error);
@@ -517,18 +482,15 @@ class FileStorageService {
         if (oldNetworkSettings) settings.networkSettings = JSON.parse(oldNetworkSettings);
         
         await this.saveSettings(settings);
-        console.log(`✅ Migrated settings data`);
       } catch (error) {
         console.warn('⚠️ Failed to migrate settings data:', error);
       }
     }
 
-    console.log('✅ Migration complete');
   }
 
   // Set up specific configurations for testing
   async setupTestConfiguration(callsign: string, designator: string, qsoCount = 0): Promise<void> {
-    console.log(`🧪 Setting up test configuration for port ${this.port}: ${callsign}-${designator}`);
     
     // Save station config
     await this.saveStationConfig({ callsign, designator });
@@ -552,7 +514,6 @@ class FileStorageService {
       }
       
       await this.saveQsoData(testQsos);
-      console.log(`✅ Created ${qsoCount} test QSOs`);
     }
   }
 }

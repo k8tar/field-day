@@ -396,7 +396,6 @@ async function saveConfig() {
     // Save operators to file storage
     await fileStorage.saveOperators(operators.value);
 
-    console.log('✅ Station configuration saved to file storage');
   } catch (error) {
     console.error('Failed to save configuration to file storage:', error);
     throw error; // Re-throw to handle in UI
@@ -437,7 +436,6 @@ async function confirmResetLog() {
     });
     await fileStorage.saveOperators([]);
     
-    console.log('✅ All data cleared from file storage');
   } catch (error) {
     console.error('Failed to clear file storage:', error);
     throw error; // Re-throw to handle in UI
@@ -446,7 +444,6 @@ async function confirmResetLog() {
   // Hide the modal
   hideResetConfirmModal();
   
-  console.log('All data has been wiped successfully');
 }
 
 // Wipe QSOs modal functions
@@ -465,7 +462,6 @@ async function confirmWipeQsos() {
   try {
     // Clear QSOs in file storage
     await fileStorage.saveQsoData([]);
-    console.log('✅ QSOs cleared from file storage');
   } catch (error) {
     console.error('Failed to clear QSOs in file storage:', error);
     throw error; // Re-throw to handle in UI
@@ -474,7 +470,6 @@ async function confirmWipeQsos() {
   // Hide the modal
   hideWipeQsosModal();
   
-  console.log('QSOs have been wiped successfully');
 }
 
 function close() {
@@ -801,7 +796,6 @@ async function confirmJsonImport() {
     await fileStorage.saveOperators(operators.value);
     await fileStorage.saveQsoData(qsos.value);
 
-    console.log('✅ Imported data saved to file storage');
   } catch (error) {
     console.error('Failed to save imported data to file storage:', error);
     throw error; // Re-throw to handle in UI

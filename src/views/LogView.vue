@@ -31,7 +31,6 @@ export default defineComponent({
   methods: {
     handleLogQso(qso: Qso) {
       // Add logic to save QSO to your log
-      console.log('Logged QSO:', qso);
     }
   }
 });

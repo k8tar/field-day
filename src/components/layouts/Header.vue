@@ -152,7 +152,6 @@ async function loadOperators() {
 async function loadStationInfo() {
   try {
     const config = await fileStorage.getStationConfig();
-    console.log('Header: Loaded station config:', config); // Debug log
     stationDesignator.value = config.designator || '';
   } catch (error) {
     console.error('Error loading station info:', error);
@@ -161,7 +160,6 @@ async function loadStationInfo() {
 
 // Theme toggle handler
 function handleThemeToggle() {
-  console.log('handleThemeToggle called');
   toggleTheme();
 }
 

@@ -98,7 +98,7 @@
 <script setup lang="ts">
 import { computed, ref, watch, onMounted, onUnmounted } from 'vue';
 import { useStore } from 'vuex';
-import { networkService } from '@/services/networkService';
+import { backendApi } from '@/services/backendApiService';
 import { fileStorage } from '@/services/fileStorage';
 import { achievementService } from '@/services/achievementService';
 
@@ -211,7 +211,6 @@ function addMessage(type: Message['type'], text: string, from?: string, target?:
   // Check if message already exists to prevent duplicates
   const existingMessage = messages.value.find(m => m.id === id);
   if (existingMessage) {
-    console.log(`⚠️ Duplicate message prevented: ${id}`);
     return;
   }
   
@@ -225,7 +224,6 @@ function addMessage(type: Message['type'], text: string, from?: string, target?:
   };
   
   messages.value.push(message);
-  console.log(`📨 Added message: ${id} - ${text.substring(0, 50)}${text.length > 50 ? '...' : ''}`);
   
   // Keep only the last 20 messages to prevent memory buildup
   if (messages.value.length > 20) {
@@ -249,44 +247,19 @@ async function sendMessage() {
     // Add message locally first with sender information and generated ID
     addMessage('chat', messageText, stationId, target, messageId);
     
-    // Send to network if connected
-    if (networkService.status.isConnected) {
+    // Send to network via backend if connected
+    if (backendApi.connected.value) {
       try {
-        await networkService.sendMessage(messageText, target, messageId);
-        console.log(`✅ Message sent from ${stationId} to ${target}: ${messageText} (ID: ${messageId})`);
+        console.log('📨 Sending message via backend:', messageText, 'to', target);
+        // TODO: Implement backend messaging API when available
+        // await backendApi.sendMessage(messageText, target, messageId);
       } catch (error) {
-        console.error('Failed to send message to network:', error);
+        console.error('Failed to send message via backend:', error);
         addMessage('info', 'Failed to send message to network');
       }
     } else {
-      // Store locally via API for standalone operation (skip in Electron mode)
-      if (typeof window !== 'undefined' && (window as any).Electron) {
-        console.log('📱 Skipping local message storage via API in Electron mode (using in-memory storage)');
-      } else {
-        try {
-          const response = await fetch('/api/messages', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-              id: messageId,
-              type: 'chat',
-              text: messageText,
-              from: stationId,
-              target,
-              timestamp: Date.now(),
-              stationId
-            })
-          });
-          
-          if (response.ok) {
-            console.log(`✅ Message stored locally (ID: ${messageId})`);
-          }
-        } catch (error) {
-          console.error('Failed to store message locally:', error);
-        }
-      }
+      console.warn('⚠️ Backend service not available - message sent locally only');
+      addMessage('info', 'Backend service not available - message not sent to network');
     }
     
     // Clear input
@@ -313,44 +286,19 @@ async function sendModalMessage() {
     // Add message locally first with sender information and generated ID
     addMessage('chat', messageText, stationId, target, messageId);
     
-    // Send to network if connected
-    if (networkService.status.isConnected) {
+    // Send to network via backend if connected
+    if (backendApi.connected.value) {
       try {
-        await networkService.sendMessage(messageText, target, messageId);
-        console.log(`✅ Message sent from ${stationId} to ${target}: ${messageText} (ID: ${messageId})`);
+        console.log('📨 Sending modal message via backend:', messageText, 'to', target);
+        // TODO: Implement backend messaging API when available
+        // await backendApi.sendMessage(messageText, target, messageId);
       } catch (error) {
-        console.error('Failed to send message to network:', error);
+        console.error('Failed to send message via backend:', error);
         addMessage('info', 'Failed to send message to network');
       }
     } else {
-      // Store locally via API for standalone operation (skip in Electron mode)
-      if (typeof window !== 'undefined' && (window as any).Electron) {
-        console.log('📱 Skipping modal message storage via API in Electron mode (using in-memory storage)');
-      } else {
-        try {
-          const response = await fetch('/api/messages', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-              id: messageId,
-              type: 'chat',
-              text: messageText,
-              from: stationId,
-              target,
-              timestamp: Date.now(),
-              stationId
-            })
-          });
-          
-          if (response.ok) {
-            console.log(`✅ Message stored locally (ID: ${messageId})`);
-          }
-        } catch (error) {
-          console.error('Failed to store message locally:', error);
-        }
-      }
+      console.warn('⚠️ Backend service not available - message sent locally only');
+      addMessage('info', 'Backend service not available - message not sent to network');
     }
     
     // Clear modal input
@@ -361,9 +309,25 @@ async function sendModalMessage() {
   }
 }
 
+// Get connected stations from backend
+function getConnectedStations() {
+  if (backendApi.connected.value) {
+    // TODO: Return connected stations from backend
+    return [];
+  }
+  return [];
+}
 
-networkService.getConnectedStations()
-// Network event handlers
+// Backend event handlers
+function handleBackendConnected() {
+  addMessage('network', 'Backend service connected - networking enabled');
+}
+
+function handleBackendDisconnected() {
+  addMessage('network', 'Backend service disconnected - networking disabled');
+}
+
+// Legacy network event handlers (kept for compatibility)
 function handleNetworkConnected(event: any) {
   if (event.type === 'host') {
     addMessage('network', `Started hosting network on port ${event.port}`);
@@ -412,7 +376,6 @@ function handleQsoSynced(event: any) {
 // Handle incoming network messages
 function handleNetworkMessage(event: any) {
   const message = event;
-  console.log('📨 Received network message:', message);
   
   // Add the message using the ID from the network to prevent duplicates
   addMessage(message.type, message.text, message.from, message.target, message.id);
@@ -423,7 +386,6 @@ async function syncMessages() {
   try {
     // Skip message sync from server in Electron environment
     if (typeof window !== 'undefined' && (window as any).Electron) {
-      console.log('📱 Skipping message sync from server in Electron mode (using local messaging)');
       return;
     }
     
@@ -454,38 +416,26 @@ async function syncMessages() {
 let messageSyncInterval: number | null = null;
 
 onMounted(() => {
-  networkService.on('network:connected', handleNetworkConnected);
-  networkService.on('network:disconnected', handleNetworkDisconnected);
-  networkService.on('network:auto-reconnected', handleNetworkAutoReconnected);
-  networkService.on('network:connection-lost', handleNetworkConnectionLost);
-  networkService.on('network:reconnect-failed', handleNetworkReconnectFailed);
-  networkService.on('network:reconnect-exhausted', handleNetworkReconnectExhausted);
-  networkService.on('network:initial-sync-complete', handleInitialSyncComplete);
-  networkService.on('qso:synced', handleQsoSynced);
-  networkService.on('message:received', handleNetworkMessage);
+  // Listen for backend connection events
+  window.addEventListener('backendConnected', handleBackendConnected);
+  window.addEventListener('backendDisconnected', handleBackendDisconnected);
   
   // Set up achievement service to send notifications through this component
   achievementService.setMessageCallback((type: string, message: string) => {
     addMessage(type as any, message);
   });
   
-  // Start periodic message sync (every 10 seconds)
-  messageSyncInterval = window.setInterval(syncMessages, 10000);
+  // Start periodic message sync (every 30 seconds - less aggressive)
+  messageSyncInterval = window.setInterval(syncMessages, 30000);
   
   // Initial message sync
   syncMessages();
 });
 
 onUnmounted(() => {
-  networkService.off('network:connected', handleNetworkConnected);
-  networkService.off('network:disconnected', handleNetworkDisconnected);
-  networkService.off('network:auto-reconnected', handleNetworkAutoReconnected);
-  networkService.off('network:connection-lost', handleNetworkConnectionLost);
-  networkService.off('network:reconnect-failed', handleNetworkReconnectFailed);
-  networkService.off('network:reconnect-exhausted', handleNetworkReconnectExhausted);
-  networkService.off('network:initial-sync-complete', handleInitialSyncComplete);
-  networkService.off('qso:synced', handleQsoSynced);
-  networkService.off('message:received', handleNetworkMessage);
+  // Remove backend event listeners
+  window.removeEventListener('backendConnected', handleBackendConnected);
+  window.removeEventListener('backendDisconnected', handleBackendDisconnected);
   
   // Clean up achievement service
   achievementService.setMessageCallback(null);
