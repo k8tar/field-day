@@ -805,7 +805,7 @@ th:nth-child(10), td:nth-child(10) { width: 80px; } /* Actions */
   display: flex;
   justify-content: center;
   align-items: center;
-  z-index: 1000;
+  z-index: 1100;
   backdrop-filter: blur(3px);
 }
 

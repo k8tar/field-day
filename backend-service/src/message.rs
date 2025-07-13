@@ -88,6 +88,35 @@ impl MessageManager {
         self.messages.len()
     }
     
+    pub async fn update_message(&mut self, message_id: String, mut message: MessageEntry) -> Result<()> {
+        if !self.messages.contains_key(&message_id) {
+            return Err(anyhow::anyhow!("Message not found: {}", message_id));
+        }
+        
+        // Ensure the message ID matches
+        message.id = message_id.clone();
+        
+        // Update timestamp to reflect modification
+        message.timestamp = Utc::now();
+        
+        self.messages.insert(message_id.clone(), message);
+        self.save_messages().await?;
+        
+        info!("Message updated: {}", message_id);
+        Ok(())
+    }
+    
+    pub async fn delete_message(&mut self, message_id: String) -> Result<()> {
+        if self.messages.remove(&message_id).is_none() {
+            return Err(anyhow::anyhow!("Message not found: {}", message_id));
+        }
+        
+        self.save_messages().await?;
+        
+        info!("Message deleted: {}", message_id);
+        Ok(())
+    }
+    
     pub async fn sync_with_peers(&mut self, mesh_manager: &Arc<RwLock<MeshManager>>) -> Result<()> {
         let stations = mesh_manager.read().await.get_discovered_stations();
         

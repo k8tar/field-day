@@ -5,6 +5,7 @@
       <h3>Recent Messages</h3>
       <button class="view-all-button" @click="showAllMessages = true" title="View All Messages">
         <span class="material-icons">chat</span>
+        <span v-if="messageCount > 0" class="message-badge">{{ messageCount }}</span>
       </button>
     </div>
     
@@ -64,12 +65,49 @@
                  class="message" :class="`message-${message.type}`">
               <div class="message-icon">{{ getIconForType(message.type) }}</div>
               <div class="message-content">
-                <div class="message-text">{{ message.text }}</div>
-                <div class="message-meta">
-                  <span class="message-time">{{ formatFullTime(message.timestamp) }}</span>
-                  <span v-if="message.from" class="message-from">from {{ getStationDesignator(message.from) }}</span>
-                  <span v-if="message.target && message.target !== 'all'" class="message-target">to {{ message.target }}</span>
+                <div v-if="editingMessageId === message.id" class="message-edit">
+                  <input 
+                    v-model="editingMessageText" 
+                    @keyup.enter="saveEdit"
+                    @keyup.escape="cancelEdit"
+                    class="edit-input"
+                    maxlength="200"
+                  />
+                  <div class="edit-actions">
+                    <button @click="saveEdit" class="save-button">
+                      <span class="material-icons">save</span>
+                    </button>
+                    <button @click="cancelEdit" class="cancel-button">
+                      <span class="material-icons">close</span>
+                    </button>
+                  </div>
                 </div>
+                <div v-else class="message-display">
+                  <div class="message-text">{{ message.text }}</div>
+                  <div class="message-meta">
+                    <span class="message-time">{{ formatFullTime(message.timestamp) }}</span>
+                    <span v-if="message.from" class="message-from">from {{ getStationDesignator(message.from) }}</span>
+                    <span v-if="message.target && message.target !== 'all'" class="message-target">to {{ message.target }}</span>
+                  </div>
+                </div>
+              </div>
+              <div v-if="message.type === 'chat' && message.from" class="message-actions">
+                <button 
+                  v-if="canEditMessage(message)" 
+                  @click="startEdit(message.id, message.text)" 
+                  class="action-button edit-button"
+                  title="Edit message"
+                >
+                  <span class="material-icons">edit</span>
+                </button>
+                <button 
+                  v-if="canEditMessage(message)" 
+                  @click="startDelete(message.id)" 
+                  class="action-button delete-button"
+                  title="Delete message"
+                >
+                  <span class="material-icons">delete</span>
+                </button>
               </div>
             </div>
           </div>
@@ -92,6 +130,29 @@
         </div>
       </div>
     </div>
+    
+    <!-- Delete Confirmation Modal -->
+    <div v-if="showDeleteConfirm" class="delete-modal-overlay" @click.self="cancelDelete">
+      <div class="delete-modal-content">
+        <div class="delete-modal-header">
+          <h3>Delete Message</h3>
+          <button class="close-button" @click="cancelDelete">
+            <span class="material-icons">close</span>
+          </button>
+        </div>
+        <div class="delete-modal-body">
+          <p>Are you sure you want to delete this message?</p>
+          <p class="delete-warning">This action cannot be undone and will remove the message from all stations.</p>
+        </div>
+        <div class="delete-modal-footer">
+          <button @click="confirmDelete" class="confirm-delete-button">
+            <span class="material-icons">delete</span>
+            Delete
+          </button>
+          <button @click="cancelDelete" class="cancel-delete-button">Cancel</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -102,8 +163,12 @@ import {
   recentMessages as storeRecentMessages,
   allMessages as storeAllMessages,
   sendMessage as sendMessageStore,
-  addMessage as addMessageStore
+  addMessage as addMessageStore,
+  messageCount as storeMessageCount,
+  editMessage,
+  deleteMessage
 } from '@/store/message';
+import { fileStorage } from '@/services/fileStorage';
 
 interface Message {
   id: string;
@@ -118,11 +183,16 @@ interface Message {
 const showAllMessages = ref(false);
 const newMessage = ref('');
 const modalNewMessage = ref('');
+const editingMessageId = ref<string | null>(null);
+const editingMessageText = ref('');
+const showDeleteConfirm = ref(false);
+const deletingMessageId = ref<string | null>(null);
 
 // Use store messages
 const messages = computed(() => storeMessages.value);
 const recentMessages = computed(() => storeRecentMessages.value);
 const allMessagesReversed = computed(() => storeAllMessages.value);
+const messageCount = computed(() => storeMessageCount.value);
 
 // Get the latest message
 const latestMessage = computed(() => {
@@ -214,6 +284,65 @@ async function sendModalMessage() {
   }
 }
 
+// Start editing a message
+function startEdit(messageId: string, currentText: string) {
+  editingMessageId.value = messageId;
+  editingMessageText.value = currentText;
+}
+
+// Cancel editing
+function cancelEdit() {
+  editingMessageId.value = null;
+  editingMessageText.value = '';
+}
+
+// Save edited message
+async function saveEdit() {
+  if (!editingMessageId.value || !editingMessageText.value.trim()) return;
+  
+  try {
+    await editMessage(editingMessageId.value, editingMessageText.value.trim());
+    cancelEdit();
+  } catch (error) {
+    console.error('Failed to edit message:', error);
+    addMessageStore('info', 'Failed to edit message');
+  }
+}
+
+// Start delete confirmation
+function startDelete(messageId: string) {
+  deletingMessageId.value = messageId;
+  showDeleteConfirm.value = true;
+}
+
+// Cancel delete
+function cancelDelete() {
+  deletingMessageId.value = null;
+  showDeleteConfirm.value = false;
+}
+
+// Confirm delete
+async function confirmDelete() {
+  if (!deletingMessageId.value) return;
+  
+  try {
+    await deleteMessage(deletingMessageId.value);
+    cancelDelete();
+  } catch (error) {
+    console.error('Failed to delete message:', error);
+    addMessageStore('info', 'Failed to delete message');
+  }
+}
+
+// Current station info for checking edit permissions
+const currentStationId = ref('');
+
+// Check if a message can be edited/deleted (only chat messages from current station)
+function canEditMessage(message: Message): boolean {
+  if (message.type !== 'chat' || !message.from || !currentStationId.value) return false;
+  return message.from === currentStationId.value;
+}
+
 // Handle network events
 function handleStationJoin(stationInfo: any) {
   addMessageStore('network', `Station ${getStationDesignator(stationInfo.call_sign)} joined the network`);
@@ -246,7 +375,15 @@ function handleAchievementMessage(type: string, message: string) {
   addMessageStore(messageType, message);
 }
 
-onMounted(() => {
+onMounted(async () => {
+  // Load current station ID for edit permissions
+  try {
+    const stationConfig = await fileStorage.getStationConfig();
+    currentStationId.value = `${stationConfig.callsign}-${stationConfig.designator}`;
+  } catch (error) {
+    console.error('Failed to load station config:', error);
+  }
+  
   // Listen for network events
   window.addEventListener('stationJoin', handleStationJoin);
   window.addEventListener('stationLeave', handleStationLeave);
@@ -325,6 +462,7 @@ h3 {
   justify-content: center;
   cursor: pointer;
   transition: background-color 0.2s;
+  position: relative;
 
   &:hover {
     background: var(--accent-color);
@@ -333,6 +471,21 @@ h3 {
   .material-icons {
     font-size: 18px;
   }
+}
+
+.message-badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  background: var(--accent-color);
+  color: white;
+  border-radius: 10px;
+  padding: 1px 6px;
+  font-size: 10px;
+  font-weight: bold;
+  min-width: 16px;
+  text-align: center;
+  border: 1px solid var(--form-bg);
 }
 
 .messages-content {
@@ -580,7 +733,7 @@ h3 {
   display: flex;
   justify-content: center;
   align-items: center;
-  z-index: 1000;
+  z-index: 1500;
   padding: 0;
   box-sizing: border-box;
 }
@@ -647,6 +800,240 @@ h3 {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
+}
+
+.message {
+  display: flex;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  border-radius: 8px;
+  background-color: var(--input-bg);
+  border: 1px solid var(--border-color);
+  position: relative;
+}
+
+.message-icon {
+  font-size: 1.25rem;
+  flex-shrink: 0;
+}
+
+.message-content {
+  flex: 1;
+}
+
+.message-display {
+  width: 100%;
+}
+
+.message-text {
+  color: var(--text-color);
+  margin-bottom: 0.25rem;
+  word-wrap: break-word;
+}
+
+.message-meta {
+  font-size: 0.8rem;
+  color: var(--text-color-secondary);
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.message-from,
+.message-target {
+  font-weight: 500;
+}
+
+.message-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.message:hover .message-actions {
+  opacity: 1;
+}
+
+.action-button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0.25rem;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.2s ease;
+}
+
+.action-button .material-icons {
+  font-size: 16px;
+}
+
+.edit-button {
+  color: var(--primary-color);
+}
+
+.edit-button:hover {
+  background-color: var(--primary-color);
+  color: white;
+}
+
+.delete-button {
+  color: var(--error-color);
+}
+
+.delete-button:hover {
+  background-color: var(--error-color);
+  color: white;
+}
+
+.message-edit {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  width: 100%;
+}
+
+.edit-input {
+  flex: 1;
+  padding: 0.5rem;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background-color: var(--input-bg);
+  color: var(--text-color);
+  font-size: 0.9rem;
+}
+
+.edit-input:focus {
+  outline: none;
+  border-color: var(--primary-color);
+}
+
+.edit-actions {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.save-button {
+  background: var(--primary-color);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 0.25rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.save-button .material-icons {
+  font-size: 16px;
+}
+
+.cancel-button {
+  background: var(--error-color);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 0.25rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cancel-button .material-icons {
+  font-size: 16px;
+}
+
+/* Delete Confirmation Modal */
+.delete-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1600;
+}
+
+.delete-modal-content {
+  background: var(--modal-content);
+  border-radius: 8px;
+  width: 400px;
+  max-width: 90%;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
+
+.delete-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem;
+  border-bottom: 1px solid var(--border-color);
+  background-color: var(--error-color);
+  color: white;
+  border-radius: 8px 8px 0 0;
+}
+
+.delete-modal-header h3 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.delete-modal-body {
+  padding: 1.5rem;
+  color: var(--text-color);
+}
+
+.delete-warning {
+  color: var(--error-color);
+  font-weight: 500;
+  margin-top: 0.5rem;
+}
+
+.delete-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  padding: 1rem;
+  border-top: 1px solid var(--border-color);
+}
+
+.confirm-delete-button {
+  background: var(--error-color);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 500;
+}
+
+.confirm-delete-button:hover {
+  background: var(--error-dark, #d32f2f);
+}
+
+.cancel-delete-button {
+  background: transparent;
+  color: var(--text-color);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+}
+
+.cancel-delete-button:hover {
+  background: var(--border-color);
 }
 
 .modal-footer {

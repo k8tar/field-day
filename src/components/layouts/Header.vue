@@ -45,9 +45,6 @@
         <button class="docs-button" @click="openDocsModal" title="Documentation">
           <span class="material-icons">help</span>
         </button>
-        <button class="messages-button" @click="openMessagesModal" title="Messages">
-          <span class="material-icons">message</span>
-        </button>
         <button class="network-button" @click="openNetworkModal" :class="networkStatus" :title="getNetworkStatusTitle()">
           <span class="material-icons">{{ getNetworkIcon() }}</span>
           <span v-if="isMeshConnected && totalDiscoveredCount > 0" class="station-count">{{ connectedStationCount }}/{{ totalDiscoveredCount }}</span>
@@ -78,9 +75,6 @@
     
     <!-- Documentation Modal -->
     <DocsModal :is-open="docsModalOpen" @close="handleDocsClose" />
-    
-    <!-- Messages Modal -->
-    <MessagesModal :is-open="messagesModalOpen" @close="handleMessagesClose" />
   </div>
 </template>
 
@@ -91,7 +85,6 @@ import { isDark, toggleTheme } from '@/store/theme';
 import ConfigModal from '@/components/ConfigModal.vue';
 import NetworkModal from '@/components/NetworkModal.vue';
 import DocsModal from '@/components/DocsModal.vue';
-import MessagesModal from '@/components/MessagesModal.vue';
 import { fileStorage } from '@/services/fileStorage';
 import { backendApi, type BackendStation } from '@/services/backendApiService';
 import { stationStatusService } from '@/services/stationStatusService';
@@ -322,17 +315,6 @@ function handleDocsClose() {
   docsModalOpen.value = false;
 }
 
-// Messages modal
-const messagesModalOpen = ref(false);
-
-function openMessagesModal() {
-  messagesModalOpen.value = true;
-}
-
-function handleMessagesClose() {
-  messagesModalOpen.value = false;
-}
-
 // Check for first-time setup using file storage
 async function checkFirstTimeSetup() {
   try {
@@ -533,8 +515,7 @@ watch(isMeshConnected, async (connected) => {
 
 .network-button,
 .config-button,
-.docs-button,
-.messages-button {
+.docs-button {
   // Uses global btn-icon styles
   @extend .btn-icon;
   position: relative;
@@ -584,15 +565,6 @@ watch(isMeshConnected, async (connected) => {
 }
 
 .docs-button {
-  color: var(--primary-color);
-  
-  &:hover {
-    color: var(--primary-dark);
-    background-color: rgba(var(--primary-color-rgb), 0.1);
-  }
-}
-
-.messages-button {
   color: var(--primary-color);
   
   &:hover {

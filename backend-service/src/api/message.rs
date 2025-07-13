@@ -25,6 +25,23 @@ pub fn routes(
         .and(with_app_state(app_state.clone()))
         .and_then(list_messages_handler);
     
+    let update_message = message_base
+        .and(warp::path("update"))
+        .and(warp::path::param::<String>())
+        .and(warp::path::end())
+        .and(warp::put())
+        .and(warp::body::json())
+        .and(with_app_state(app_state.clone()))
+        .and_then(update_message_handler);
+    
+    let delete_message = message_base
+        .and(warp::path("delete"))
+        .and(warp::path::param::<String>())
+        .and(warp::path::end())
+        .and(warp::delete())
+        .and(with_app_state(app_state.clone()))
+        .and_then(delete_message_handler);
+    
     let sync_messages = message_base
         .and(warp::path("sync"))
         .and(warp::path::end())
@@ -35,6 +52,8 @@ pub fn routes(
     
     add_message
         .or(list_messages)
+        .or(update_message)
+        .or(delete_message)
         .or(sync_messages)
 }
 
@@ -107,6 +126,67 @@ async fn sync_messages_handler(
         }
         Err(e) => {
             let response = ApiResponse::<MessageSyncResponse> {
+                success: false,
+                data: None,
+                error: Some(e.to_string()),
+            };
+            Ok(warp::reply::with_status(
+                warp::reply::json(&response),
+                warp::http::StatusCode::INTERNAL_SERVER_ERROR,
+            ))
+        }
+    }
+}
+
+async fn update_message_handler(
+    message_id: String,
+    message: MessageEntry,
+    app_state: AppState,
+) -> Result<impl Reply, Infallible> {
+    match app_state.message_manager.write().await.update_message(message_id, message).await {
+        Ok(_) => {
+            let response = ApiResponse {
+                success: true,
+                data: Some("Message updated successfully".to_string()),
+                error: None,
+            };
+            Ok(warp::reply::with_status(
+                warp::reply::json(&response),
+                warp::http::StatusCode::OK,
+            ))
+        }
+        Err(e) => {
+            let response = ApiResponse::<String> {
+                success: false,
+                data: None,
+                error: Some(e.to_string()),
+            };
+            Ok(warp::reply::with_status(
+                warp::reply::json(&response),
+                warp::http::StatusCode::INTERNAL_SERVER_ERROR,
+            ))
+        }
+    }
+}
+
+async fn delete_message_handler(
+    message_id: String,
+    app_state: AppState,
+) -> Result<impl Reply, Infallible> {
+    match app_state.message_manager.write().await.delete_message(message_id).await {
+        Ok(_) => {
+            let response = ApiResponse {
+                success: true,
+                data: Some("Message deleted successfully".to_string()),
+                error: None,
+            };
+            Ok(warp::reply::with_status(
+                warp::reply::json(&response),
+                warp::http::StatusCode::OK,
+            ))
+        }
+        Err(e) => {
+            let response = ApiResponse::<String> {
                 success: false,
                 data: None,
                 error: Some(e.to_string()),

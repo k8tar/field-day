@@ -36,11 +36,10 @@ export interface BackendQso {
 export interface BackendMessage {
   id: string;
   message_type: string;
-  content: string;
+  text: string;
   from_station_id: string;
-  to_station_id?: string;
+  target_station_id?: string;
   timestamp: string;
-  priority: number;
 }
 
 export interface ApiResponse<T> {
@@ -343,15 +342,29 @@ class BackendApiService {
     return response.success ? response.data || [] : [];
   }
 
+  async updateMessage(message: BackendMessage): Promise<boolean> {
+    const response = await this.makeRequest<string>(`/message/update/${message.id}`, {
+      method: 'PUT',
+      body: JSON.stringify(message),
+    });
+    return response.success;
+  }
+
+  async deleteMessage(messageId: string): Promise<boolean> {
+    const response = await this.makeRequest<string>(`/message/delete/${messageId}`, {
+      method: 'DELETE',
+    });
+    return response.success;
+  }
+
   async sendMessage(content: string, target: string = 'all', messageId?: string): Promise<boolean> {
     const messageData: BackendMessage = {
       id: messageId || `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       message_type: 'chat',
-      content,
+      text: content,
       from_station_id: '', // Will be set by backend based on station config
-      to_station_id: target !== 'all' ? target : undefined,
+      target_station_id: target !== 'all' ? target : undefined,
       timestamp: new Date().toISOString(),
-      priority: 1,
     };
     
     return this.addMessage(messageData);
