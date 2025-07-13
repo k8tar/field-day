@@ -146,14 +146,26 @@
         </div>
         
         <div class="footer-right">
+          <!-- Connect button - show when backend is connected but mesh is not active -->
           <button 
-            v-if="canConnect && !isConnected" 
+            v-if="isConnected && !isMeshActive" 
             class="connect-button primary" 
-            @click="startConnection"
+            @click="connectToMesh"
             :disabled="isConnecting"
           >
-            <span class="material-icons" :class="getNetworkModeIcon()">{{ getNetworkModeIcon() }}</span>
-            {{ isConnecting ? 'Starting...' : getNetworkModeButtonText() }}
+            <span class="material-icons">wifi</span>
+            {{ isConnecting ? 'Connecting...' : 'Connect to Mesh' }}
+          </button>
+          
+          <!-- Disconnect button - show when mesh is active -->
+          <button 
+            v-if="isConnected && isMeshActive" 
+            class="disconnect-button" 
+            @click="disconnect"
+            :disabled="isDisconnecting"
+          >
+            <span class="material-icons">wifi_off</span>
+            {{ isDisconnecting ? 'Disconnecting...' : 'Disconnect' }}
           </button>
           
           <div v-if="connectionStatus" class="connection-status" :class="{ 
@@ -164,14 +176,6 @@
             {{ connectionStatus }}
           </div>
           
-          <button 
-            v-if="isConnected" 
-            class="disconnect-button" 
-            @click="disconnect"
-          >
-            <span class="material-icons">wifi_off</span>
-            Disconnect
-          </button>
           <button class="cancel-button" @click="close">
             Close
           </button>
@@ -186,6 +190,8 @@ import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import { backendApi, type BackendStation } from '@/services/backendApiService';
 import { fileStorage } from '@/services/fileStorage';
 import { stationStatusService as stationService, type StationStatus } from '@/services/stationStatusService';
+import { backgroundNetworkService } from '@/services/backgroundNetworkService';
+import { meshNetworkService } from '@/services/meshNetworkService';
 
 const props = defineProps<{
   isOpen: boolean;
@@ -198,6 +204,11 @@ const emit = defineEmits<{
 // Backend connection state
 const isConnected = computed(() => backendApi.connected.value);
 const backendError = computed(() => backendApi.error.value);
+
+// Mesh network state
+const isMeshActive = ref(false);
+const isConnecting = ref(false);
+const isDisconnecting = ref(false);
 
 // Station information
 const localStationInfo = ref({
@@ -264,7 +275,6 @@ const stationsWithStatus = computed(() => {
 const isRefreshing = ref(false);
 const isSyncing = ref(false);
 const connectionStatus = ref<string>('');
-const isConnecting = ref(false);
 const isRestarting = ref(false);
 const isRetrying = ref(false);
 
@@ -566,12 +576,76 @@ async function startConnection() {
   }
 }
 
-function disconnect() {
-  discoveredStations.value = [];
-  connectionStatus.value = 'Disconnected';
-  setTimeout(() => {
-    connectionStatus.value = '';
-  }, 3000);
+async function disconnect() {
+  isDisconnecting.value = true;
+  
+  try {
+    // Stop background networking operations
+    backgroundNetworkService.stopBackgroundOperations();
+    
+    // Stop mesh network service
+    await meshNetworkService.stopMesh();
+    
+    // Clear discovered stations
+    discoveredStations.value = [];
+    
+    // Update mesh state
+    isMeshActive.value = false;
+    
+    console.log('🔌 Mesh network disconnected');
+    
+    // Show disconnected status briefly
+    connectionStatus.value = 'Disconnected';
+    setTimeout(() => {
+      connectionStatus.value = '';
+    }, 3000);
+    
+  } catch (error) {
+    console.error('❌ Error disconnecting from mesh network:', error);
+  } finally {
+    isDisconnecting.value = false;
+  }
+}
+
+async function connectToMesh() {
+  isConnecting.value = true;
+  
+  try {
+    // Start mesh network service
+    const meshStarted = await meshNetworkService.startMesh();
+    
+    if (meshStarted) {
+      // Start background networking operations
+      await backgroundNetworkService.startBackgroundOperations();
+      
+      // Update mesh state
+      isMeshActive.value = true;
+      
+      console.log('🌐 Mesh network connected');
+      
+      // Show connected status briefly
+      connectionStatus.value = 'Connected to mesh network';
+      setTimeout(() => {
+        connectionStatus.value = '';
+      }, 3000);
+      
+      // Start discovering stations
+      setTimeout(() => {
+        refreshMeshDiscovery();
+      }, 1000);
+    } else {
+      throw new Error('Failed to start mesh network');
+    }
+    
+  } catch (error) {
+    console.error('❌ Error connecting to mesh network:', error);
+    connectionStatus.value = 'Failed to connect to mesh network';
+    setTimeout(() => {
+      connectionStatus.value = '';
+    }, 5000);
+  } finally {
+    isConnecting.value = false;
+  }
 }
 
 async function refreshMeshDiscovery() {
@@ -618,6 +692,10 @@ function getNetworkModeButtonText(): string {
 // Load initial data on mount
 onMounted(async () => {
   await refreshStationInfo();
+  
+  // Initialize mesh state based on current background service status
+  const networkStatus = backgroundNetworkService.getNetworkStatus();
+  isMeshActive.value = networkStatus.isRunning;
   
   // Load station statuses from localStorage
   stationStatuses.value = stationService.getStationStatuses();

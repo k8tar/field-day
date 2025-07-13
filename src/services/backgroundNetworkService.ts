@@ -103,8 +103,9 @@ class BackgroundNetworkService {
    */
   private async performQsoSync(): Promise<void> {
     try {
-      // Trigger backend QSO sync
-      await fetch('http://localhost:3030/api/qso/sync', { method: 'POST' });
+      // For now, just poll the backend mesh stations to keep frontend updated
+      // The backend should handle station-to-station QSO sync automatically
+      await fetch('http://localhost:3030/api/mesh/stations');
     } catch (error) {
       // Silently handle errors to avoid UI blocking
     }
