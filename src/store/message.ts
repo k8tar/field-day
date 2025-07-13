@@ -424,4 +424,5 @@ export const allMessages = computed(() => {
   return [...messages.value].reverse(); // All messages in reverse chronological order
 });
 
-export const messageCount = computed(() => messages.value.length);
+// Export initializeMessages for component use
+export { initializeMessages };
