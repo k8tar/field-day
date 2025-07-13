@@ -101,12 +101,13 @@
                   <span class="material-icons">edit</span>
                 </button>
                 <button 
-                  v-if="canEditMessage(message)" 
-                  @click="startDelete(message.id)" 
-                  class="action-button delete-button"
-                  title="Delete message"
+                  v-if="canDismissMessage(message)" 
+                  @click="startDismiss(message.id)" 
+                  class="action-button dismiss-button"
+                  title="Dismiss message - hide for this station only"
                 >
-                  <span class="material-icons">delete</span>
+                  <span class="material-icons">visibility_off</span>
+                  <span class="dismiss-text">Dismiss</span>
                 </button>
               </div>
             </div>
@@ -131,25 +132,25 @@
       </div>
     </div>
     
-    <!-- Delete Confirmation Modal -->
-    <div v-if="showDeleteConfirm" class="delete-modal-overlay" @click.self="cancelDelete">
+    <!-- Dismiss Confirmation Modal -->
+    <div v-if="showDeleteConfirm" class="delete-modal-overlay" @click.self="cancelDismiss">
       <div class="delete-modal-content">
         <div class="delete-modal-header">
-          <h3>Delete Message</h3>
-          <button class="close-button" @click="cancelDelete">
+          <h3>Dismiss Message</h3>
+          <button class="close-button" @click="cancelDismiss">
             <span class="material-icons">close</span>
           </button>
         </div>
         <div class="delete-modal-body">
-          <p>Are you sure you want to delete this message?</p>
-          <p class="delete-warning">This action cannot be undone and will remove the message from all stations.</p>
+          <p>Are you sure you want to dismiss this message?</p>
+          <p class="delete-warning">This will hide the message for this station only. Other stations will still see it.</p>
         </div>
         <div class="delete-modal-footer">
-          <button @click="confirmDelete" class="confirm-delete-button">
-            <span class="material-icons">delete</span>
-            Delete
+          <button @click="confirmDismiss" class="confirm-dismiss-button">
+            <span class="material-icons">visibility_off</span>
+            Dismiss Message
           </button>
-          <button @click="cancelDelete" class="cancel-delete-button">Cancel</button>
+          <button @click="cancelDismiss" class="cancel-delete-button">Cancel</button>
         </div>
       </div>
     </div>
@@ -159,14 +160,14 @@
 <script setup lang="ts">
 import { computed, ref, onMounted, onUnmounted } from 'vue';
 import { 
-  messages as storeMessages,
+  visibleMessages as storeMessages,
   recentMessages as storeRecentMessages,
   allMessages as storeAllMessages,
   sendMessage as sendMessageStore,
   addMessage as addMessageStore,
   messageCount as storeMessageCount,
   editMessage,
-  deleteMessage
+  dismissMessage
 } from '@/store/message';
 import { fileStorage } from '@/services/fileStorage';
 
@@ -309,35 +310,41 @@ async function saveEdit() {
   }
 }
 
-// Start delete confirmation
-function startDelete(messageId: string) {
+// Start dismiss confirmation
+function startDismiss(messageId: string) {
   deletingMessageId.value = messageId;
   showDeleteConfirm.value = true;
 }
 
-// Cancel delete
-function cancelDelete() {
+// Cancel dismiss
+function cancelDismiss() {
   deletingMessageId.value = null;
   showDeleteConfirm.value = false;
 }
 
-// Confirm delete
-async function confirmDelete() {
+// Confirm dismiss
+async function confirmDismiss() {
   if (!deletingMessageId.value) return;
   
   try {
-    await deleteMessage(deletingMessageId.value);
-    cancelDelete();
+    await dismissMessage(deletingMessageId.value);
+    cancelDismiss();
   } catch (error) {
-    console.error('Failed to delete message:', error);
-    addMessageStore('info', 'Failed to delete message');
+    console.error('Failed to dismiss message:', error);
+    addMessageStore('info', 'Failed to dismiss message');
   }
 }
 
 // Current station info for checking edit permissions
 const currentStationId = ref('');
 
-// Check if a message can be edited/deleted (only chat messages from current station)
+// Check if a message can be edited/dismissed (only from current station or any for dismiss)
+function canDismissMessage(message: any): boolean {
+  // Any message can be dismissed locally
+  return true;
+}
+
+// Check if a message can be edited (only chat messages from current station)
 function canEditMessage(message: Message): boolean {
   if (message.type !== 'chat' || !message.from || !currentStationId.value) return false;
   return message.from === currentStationId.value;
@@ -890,6 +897,51 @@ h3 {
   color: white;
 }
 
+.dismiss-button {
+  color: #666;
+  background-color: var(--bg-color);
+  border: 2px solid var(--border-color);
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  font-size: 1rem;
+  gap: 0.6rem;
+  min-width: 110px;
+  transition: all 0.2s ease;
+  font-weight: 600;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.dismiss-button:hover {
+  background-color: #f0f0f0;
+  border-color: #999;
+  color: #333;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+.dismiss-button .material-icons {
+  font-size: 20px;
+}
+
+.dismiss-text {
+  font-weight: 600;
+  font-size: 1rem;
+}
+
+[data-theme="dark"] .dismiss-button {
+  background-color: var(--input-bg);
+  border-color: var(--border-color);
+  color: var(--text-color);
+}
+
+[data-theme="dark"] .dismiss-button:hover {
+  background-color: #444;
+  border-color: #666;
+  color: #fff;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.25);
+}
+
 .message-edit {
   display: flex;
   gap: 0.5rem;
@@ -1095,5 +1147,33 @@ h3 {
   .material-icons {
     font-size: 16px;
   }
+}
+
+.confirm-dismiss-button {
+  background: #666;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 1rem 2rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-weight: 600;
+  font-size: 1.1rem;
+  transition: all 0.2s ease;
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.2);
+  min-width: 160px;
+  justify-content: center;
+}
+
+.confirm-dismiss-button:hover {
+  background: #555;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.3);
+}
+
+.confirm-dismiss-button .material-icons {
+  font-size: 20px;
 }
 </style>

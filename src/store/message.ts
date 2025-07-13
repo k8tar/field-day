@@ -65,6 +65,9 @@ function generateGUID(): string {
 
 // Load messages from backend first, fallback to file storage
 async function initializeMessages() {
+  // Load dismissed messages first
+  await loadDismissedMessages();
+  
   // Try to load from backend first if connected
   if (backendApi.connected.value) {
     try {
@@ -417,12 +420,38 @@ if (backendApi.connected.value) {
 
 // Computed properties
 export const recentMessages = computed(() => {
-  return messages.value.slice(-5).reverse(); // Latest 5 messages in reverse order
+  return visibleMessages.value.slice(-5).reverse(); // Latest 5 visible messages in reverse order
 });
 
 export const allMessages = computed(() => {
-  return [...messages.value].reverse(); // All messages in reverse chronological order
+  return [...visibleMessages.value].reverse(); // All visible messages in reverse chronological order
 });
 
 // Export initializeMessages for component use
 export { initializeMessages };
+
+// Dismiss a message (local to this station only)
+export async function dismissMessage(messageId: string) {
+  dismissedMessageIds.value.add(messageId);
+  await saveDismissedMessages();
+  console.log(`📨 Dismissed message: ${messageId}`);
+}
+
+// Un-dismiss a message (show it again)
+export async function undismissMessage(messageId: string) {
+  dismissedMessageIds.value.delete(messageId);
+  await saveDismissedMessages();
+  console.log(`📨 Un-dismissed message: ${messageId}`);
+}
+
+// Check if a message is dismissed
+export function isMessageDismissed(messageId: string): boolean {
+  return dismissedMessageIds.value.has(messageId);
+}
+
+// Clear all dismissed messages (useful for debugging)
+export async function clearAllDismissed() {
+  dismissedMessageIds.value.clear();
+  await saveDismissedMessages();
+  console.log('📨 Cleared all dismissed messages');
+}
