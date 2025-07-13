@@ -486,8 +486,8 @@ async function saveQsoEdit() {
       section: normalizedSection || ''
     };
     
-    // Call the update function with proper parameters - ensure id is a number
-    await updateQso(updatedQso.id as number, updatedQso);
+    // Call the update function with proper parameters - ensure id is a string
+    await updateQso(updatedQso.id as string, updatedQso);
     closeEditModal();
   } else {
     console.error('Cannot save QSO: Missing ID or QSO data', editingQso.value);
@@ -507,8 +507,8 @@ function closeDeleteModal() {
 
 function deleteSelectedQso() {
   if (deletingQso.value && deletingQso.value.id !== undefined) {
-    // Use type assertion to tell TypeScript that id is definitely a number
-    deleteQso(deletingQso.value.id as number);
+    // Use the string ID for deletion
+    deleteQso(deletingQso.value.id as string);
     closeDeleteModal();
   } else {
     console.error('Cannot delete QSO: Missing ID or QSO data', deletingQso.value);

@@ -3,7 +3,7 @@ import { backendApi, type BackendQso } from '@/services/backendApiService';
 import { fileStorage } from '@/services/fileStorage';
 
 export interface QSO {
-  id?: number;      // Auto-assigned unique ID
+  id?: string;      // Unique UUID string identifier
   call: string;
   class: string;
   section: string;
@@ -22,8 +22,38 @@ const SETTINGS_KEY = 'qso_settings';
 let refreshInterval: NodeJS.Timeout | null = null;
 let isRefreshing = false; // Prevent concurrent refreshes
 
-// Initialize QSOs from file storage
+// Initialize QSOs from file storage on initialization
 export const qsos = ref<QSO[]>([]);
+
+// Migration function to convert old numeric IDs to UUIDs
+async function migrateQsoIds() {
+  let migrationNeeded = false;
+  const stationConfig = await fileStorage.getStationConfig().catch(() => ({ designator: 'MIGR' }));
+  
+  qsos.value.forEach(qso => {
+    // Check if QSO has old numeric ID or no ID
+    if (!qso.id || typeof qso.id === 'number') {
+      migrationNeeded = true;
+      const timestamp = qso.timestamp || new Date(qso.datetime).getTime();
+      const oldId = qso.id || 0;
+      
+      // Generate a migration UUID that's deterministic based on existing data
+      const timestampPart = timestamp.toString(36);
+      const callPart = qso.call.substr(0, 3).toLowerCase();
+      const stationPart = (qso.stationDesignator || stationConfig.designator || 'unkn').substr(0, 3).toLowerCase();
+      const oldIdPart = oldId.toString(36).padStart(2, '0');
+      
+      qso.id = `mig-${timestampPart}-${callPart}-${stationPart}-${oldIdPart}`;
+      
+      console.log(`🔄 Migrated QSO ${qso.call} from ID ${oldId} to UUID ${qso.id}`);
+    }
+  });
+  
+  if (migrationNeeded) {
+    await saveQsos();
+    console.log('✅ QSO ID migration completed');
+  }
+}
 
 // Load QSOs from file storage on initialization
 async function initializeQsos() {
@@ -45,7 +75,10 @@ async function initializeQsos() {
 }
 
 // Initialize immediately
-initializeQsos();
+initializeQsos().then(() => {
+  // Run migration for existing QSOs with old IDs
+  migrateQsoIds();
+});
 
 export const band = ref('40m');
 export const operator = ref('');
@@ -96,7 +129,7 @@ export async function forceUploadAllQsos(): Promise<boolean> {
       if (qso.id) {
         const stationConfig = await fileStorage.getStationConfig();
         const backendQso: BackendQso = {
-          id: qso.id.toString(),
+          id: qso.id,
           timestamp: new Date(qso.datetime).toISOString(),
           frequency: qso.band,
           mode: qso.mode,
@@ -194,7 +227,7 @@ async function refreshQsosFromBackend(): Promise<void> {
       }
       
       const localQso: QSO = {
-        id: parseInt(backendQso.id),
+        id: backendQso.id,
         call: backendQso.call_sign,
         class: backendQso.class,
         section: backendQso.section,
@@ -218,7 +251,7 @@ async function refreshQsosFromBackend(): Promise<void> {
     let newQsosAdded = 0;
     let qsosUpdated = 0;
     convertedQsos.forEach(backendQso => {
-      const existingQso = currentQsos.find(qso => qso.id?.toString() === backendQso.id?.toString());
+      const existingQso = currentQsos.find(qso => qso.id === backendQso.id);
       if (!existingQso) {
         currentQsos.push(backendQso);
         newQsosAdded++;
@@ -230,7 +263,7 @@ async function refreshQsosFromBackend(): Promise<void> {
         
         if (backendTimestamp > localTimestamp) {
           // Backend QSO is newer, update the local version
-          const index = currentQsos.findIndex(qso => qso.id?.toString() === backendQso.id?.toString());
+          const index = currentQsos.findIndex(qso => qso.id === backendQso.id);
           if (index >= 0) {
             currentQsos[index] = { ...backendQso };
             qsosUpdated++;
@@ -243,7 +276,7 @@ async function refreshQsosFromBackend(): Promise<void> {
     // Check for deleted QSOs (QSOs that exist locally but not in backend)
     let qsosDeleted = 0;
     const filteredQsos = currentQsos.filter(localQso => {
-      if (localQso.id && !backendQsoMap.has(localQso.id.toString())) {
+      if (localQso.id && !backendQsoMap.has(localQso.id)) {
         qsosDeleted++;
         changesDetected = true;
         return false; // Remove this QSO
@@ -354,7 +387,7 @@ function updateNetworkQso(networkQso: any) {
   }
 }
 
-function deleteNetworkQso(qsoId: number) {
+function deleteNetworkQso(qsoId: string) {
   const index = qsos.value.findIndex(qso => qso.id === qsoId);
   if (index >= 0) {
     qsos.value.splice(index, 1);
@@ -384,13 +417,17 @@ export async function logQso(qso: any) {
     console.error('Failed to get station designator from file storage:', error);
   }
   
-  // Generate a unique ID for the QSO
-  const lastId = qsos.value.length > 0 ? 
-    Math.max(...qsos.value.map(q => q.id || 0)) : 0;
+  // Generate a unique UUID for the QSO to prevent collisions across stations
+  const generateUUID = () => {
+    const timestamp = Date.now().toString(36);
+    const randomPart = Math.random().toString(36).substr(2, 9);
+    const stationPart = stationDesignator.substr(0, 3).toLowerCase();
+    return `${timestamp}-${randomPart}-${stationPart}`;
+  };
   
   const newQso = { 
     ...qso, 
-    id: lastId + 1,
+    id: generateUUID(),
     band: band.value, 
     mode: mode.value,
     operator: operator.value,
@@ -405,7 +442,7 @@ export async function logQso(qso: any) {
   if (backendApi.connected.value) {
     const stationConfig = await fileStorage.getStationConfig();
     const backendQso: BackendQso = {
-      id: newQso.id!.toString(),
+      id: newQso.id!,
       timestamp: new Date(newQso.datetime).toISOString(),
       frequency: newQso.band,
       mode: newQso.mode,
@@ -446,7 +483,7 @@ async function saveQsos(): Promise<void> {
 }
 
 // Add these fully implemented functions
-export async function deleteQso(id: number) {
+export async function deleteQso(id: string) {
   
   // Find the QSO being deleted for network broadcast
   const deletedQso = qsos.value.find(qso => qso.id === id);
@@ -462,7 +499,7 @@ export async function deleteQso(id: number) {
   
   // Notify backend service for network synchronization
   if (backendApi.connected.value && deletedQso) {
-    backendApi.deleteQso(deletedQso.id!.toString()).catch(error => {
+    backendApi.deleteQso(deletedQso.id!).catch(error => {
       console.error('Failed to delete QSO from backend:', error);
     });
   } else {
@@ -481,7 +518,7 @@ export async function deleteQso(id: number) {
   
 }
 
-export async function updateQso(id: number, updatedQso: QSO) {
+export async function updateQso(id: string, updatedQso: QSO) {
   
   // Find the index of the QSO to update
   const index = qsos.value.findIndex(qso => qso.id === id);
