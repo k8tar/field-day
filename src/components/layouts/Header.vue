@@ -50,7 +50,7 @@
         </button>
         <button class="network-button" @click="openNetworkModal" :class="networkStatus" :title="getNetworkStatusTitle()">
           <span class="material-icons">{{ getNetworkIcon() }}</span>
-          <span v-if="totalDiscoveredCount > 0" class="station-count">{{ connectedStationCount }}/{{ totalDiscoveredCount }}</span>
+          <span v-if="isMeshConnected && totalDiscoveredCount > 0" class="station-count">{{ connectedStationCount }}/{{ totalDiscoveredCount }}</span>
         </button>
         <button class="config-button" @click="openConfigModal">
           <span class="material-icons">settings</span>
@@ -95,6 +95,7 @@ import MessagesModal from '@/components/MessagesModal.vue';
 import { fileStorage } from '@/services/fileStorage';
 import { backendApi, type BackendStation } from '@/services/backendApiService';
 import { stationStatusService } from '@/services/stationStatusService';
+import { backgroundNetworkService, meshConnectionState } from '@/services/backgroundNetworkService';
 
 // Station designator
 const stationDesignator = ref('');
@@ -190,6 +191,19 @@ function handleConfigClose() {
 // Network modal and status
 const networkModalOpen = ref(false);
 const networkConnected = computed(() => backendApi.connected.value);
+
+// Mesh connection state with forced reactivity
+const meshConnectionStateReactive = ref(meshConnectionState.isConnected);
+const isMeshConnected = computed(() => meshConnectionStateReactive.value);
+
+// Watch for changes to the singleton state and update our reactive ref
+const updateMeshState = () => {
+  meshConnectionStateReactive.value = meshConnectionState.isConnected;
+};
+
+// Set up listener for mesh state changes
+meshConnectionState.onConnectionChange(updateMeshState);
+
 const discoveredStations = ref<BackendStation[]>([]);
 
 // Enhanced station status using the station status service
@@ -201,8 +215,13 @@ const totalDiscoveredCount = computed(() => {
   return stationStatusService.getTotalDiscoveredCount();
 });
 
-// Network status for icon coloring: green if connected to stations, red if no stations, yellow if backend disconnected
+// Network status for icon coloring: gray if mesh disabled, green if connected to stations, red if no stations, yellow if backend disconnected
 const networkStatus = computed(() => {
+  // If mesh is disabled, show disabled state regardless of backend status
+  if (!isMeshConnected.value) {
+    return 'disabled';
+  }
+  
   if (!backendApi.connected.value) {
     return 'disconnected'; // Backend not available
   }
@@ -215,12 +234,18 @@ const networkStatus = computed(() => {
   } else if (totalDiscovered > 0) {
     return 'warning'; // Yellow - discovered stations but none currently connected
   } else {
-    return 'no-stations'; // Red - no stations discovered at all
+    return 'searching'; // Blue/Cyan - mesh active but no stations found yet
   }
 });
 
 // Load discovered stations
 async function loadDiscoveredStations() {
+  // Don't load stations if mesh is disabled
+  if (!isMeshConnected.value) {
+    discoveredStations.value = [];
+    return;
+  }
+  
   if (backendApi.connected.value) {
     try {
       const stations = await backendApi.getDiscoveredStations();
@@ -259,8 +284,9 @@ function getNetworkIcon(): string {
   switch (networkStatus.value) {
     case 'connected': return 'wifi';
     case 'warning': return 'wifi_tethering';
-    case 'no-stations': return 'wifi_off';
+    case 'searching': return 'wifi_find';
     case 'disconnected': return 'signal_wifi_off';
+    case 'disabled': return 'portable_wifi_off';
     default: return 'wifi_off';
   }
 }
@@ -270,12 +296,14 @@ function getNetworkStatusTitle(): string {
   const total = totalDiscoveredCount.value;
   
   switch (networkStatus.value) {
+    case 'disabled':
+      return 'Network Health: Disabled';
     case 'connected': 
       return `Network Status: Connected to ${connected} of ${total} stations`;
     case 'warning': 
       return `Network Status: ${total} stations discovered, ${connected} currently connected`;
-    case 'no-stations': 
-      return 'Network Status: No stations discovered';
+    case 'searching': 
+      return 'Network Status: Mesh active, searching for stations';
     case 'disconnected': 
       return 'Network Status: Backend service disconnected';
     default: 
@@ -361,7 +389,7 @@ onMounted(async () => {
   
   // Set up periodic refresh of discovered stations to keep counts updated
   const stationRefreshInterval = setInterval(async () => {
-    if (backendApi.connected.value) {
+    if (backendApi.connected.value && isMeshConnected.value) {
       await loadDiscoveredStations();
     }
   }, 5000); // Refresh every 5 seconds for real-time status updates
@@ -374,15 +402,28 @@ onMounted(async () => {
     clearInterval(stationRefreshInterval);
     document.removeEventListener('keydown', handleKeydown);
     window.removeEventListener('stationInfoUpdate', loadStationInfo);
+    // Clean up mesh state listener
+    meshConnectionState.removeConnectionListener(updateMeshState);
   });
 });
 
 // Watch for backend connection changes
 watch(() => backendApi.connected.value, async (connected) => {
-  if (connected) {
+  if (connected && isMeshConnected.value) {
     await loadDiscoveredStations();
   } else {
     discoveredStations.value = [];
+  }
+});
+
+// Watch for mesh connection state changes
+watch(isMeshConnected, async (connected) => {
+  if (connected && backendApi.connected.value) {
+    await loadDiscoveredStations();
+  } else {
+    discoveredStations.value = [];
+    // Clear station status when mesh is disabled
+    stationStatusService.clearDiscoveredCount();
   }
 });
 </script>
@@ -525,12 +566,16 @@ watch(() => backendApi.connected.value, async (connected) => {
   color: #f59e0b; /* Yellow/Orange - stations discovered but not connected */
 }
 
-.network-button.no-stations {
-  color: #ef4444; /* Red - no stations discovered */
+.network-button.searching {
+  color: #06b6d4; /* Cyan - mesh active, searching for stations */
 }
 
 .network-button.disconnected {
   color: #9ca3af; /* Gray - backend disconnected */
+}
+
+.network-button.disabled {
+  color: #9ca3af; /* Gray - mesh disabled */
 }
 
 .config-button {

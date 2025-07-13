@@ -49,17 +49,14 @@
 
 <script setup lang="ts">
 import { computed, ref, watch, onMounted, onUnmounted } from 'vue';
-import { backendApi } from '@/services/backendApiService';
+import { 
+  messages as storeMessages,
+  allMessages as storeAllMessages,
+  sendMessage as sendMessageStore,
+  addMessage as addMessageStore,
+  refreshMessagesFromBackend
+} from '@/store/message';
 import { fileStorage } from '@/services/fileStorage';
-
-// Generate a GUID for message IDs
-function generateGUID(): string {
-  return 'msg-' + 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-    const r = Math.random() * 16 | 0;
-    const v = c === 'x' ? r : (r & 0x3 | 0x8);
-    return v.toString(16);
-  });
-}
 
 interface Message {
   id: string;
@@ -78,13 +75,12 @@ defineEmits<{
   close: [];
 }>();
 
-const messages = ref<Message[]>([]);
+// Use global message store instead of local state
+const messages = computed(() => storeMessages.value);
 const newMessage = ref('');
 
 // Get all messages in reverse chronological order (newest first)
-const allMessagesReversed = computed(() => {
-  return [...messages.value].reverse();
-});
+const allMessagesReversed = computed(() => storeAllMessages.value);
 
 // Get icon for a specific message type
 function getIconForType(type: Message['type']): string {
@@ -126,107 +122,32 @@ function formatFullTime(timestamp: number): string {
   });
 }
 
-// Send a message
+// Send a message using the global store
 async function sendMessage() {
   if (!newMessage.value.trim()) return;
 
-  const message: Message = {
-    id: generateGUID(),
-    type: 'chat',
-    text: newMessage.value.trim(),
-    timestamp: Date.now(),
-    from: await getCurrentStationDesignator(), // Use current station
-    target: 'all'
-  };
-
-  messages.value.push(message);
-  newMessage.value = '';
-
-  // Save to storage
-  await saveMessages();
-  
-  // Broadcast to network if connected
-  if (backendApi.connected.value) {
-    try {
-      // TODO: Add backend API for message broadcasting
-      console.log('Broadcasting message to network:', message);
-    } catch (error) {
-      console.error('Failed to broadcast message:', error);
-    }
-  }
-}
-
-// Get current station designator
-async function getCurrentStationDesignator(): Promise<string> {
   try {
-    const config = await fileStorage.getStationConfig();
-    return config.designator || 'Unknown';
+    await sendMessageStore(newMessage.value.trim());
+    newMessage.value = '';
   } catch (error) {
-    return 'Unknown';
+    console.error('Failed to send message:', error);
   }
 }
-
-// Load messages from storage
-async function loadMessages() {
-  try {
-    // For now, just use localStorage until file storage is updated
-    const saved = localStorage.getItem('fieldday-messages');
-    if (saved) {
-      const savedMessages = JSON.parse(saved);
-      if (savedMessages && Array.isArray(savedMessages)) {
-        messages.value = savedMessages;
-      }
-    }
-  } catch (error) {
-    console.error('Failed to load messages:', error);
-  }
-}
-
-// Save messages to storage
-async function saveMessages() {
-  try {
-    // For now, just use localStorage until file storage is updated
-    localStorage.setItem('fieldday-messages', JSON.stringify(messages.value));
-  } catch (error) {
-    console.error('Failed to save messages:', error);
-  }
-}
-
-// Add system message
-function addSystemMessage(type: Message['type'], text: string) {
-  const message: Message = {
-    id: generateGUID(),
-    type,
-    text,
-    timestamp: Date.now()
-  };
-  
-  messages.value.push(message);
-  saveMessages();
-}
-
-// Auto-refresh interval
-let refreshInterval: NodeJS.Timeout | null = null;
 
 onMounted(async () => {
-  await loadMessages();
-  
-  // Set up periodic refresh
-  refreshInterval = setInterval(async () => {
-    await loadMessages();
-  }, 30000); // Refresh every 30 seconds
+  // The global message store handles loading and refreshing automatically
+  // No need for local message management
 });
 
 onUnmounted(() => {
-  if (refreshInterval) {
-    clearInterval(refreshInterval);
-  }
+  // Global store handles cleanup
 });
 
-// Watch for modal open/close to refresh data
+// Refresh messages when modal opens
 watch(() => props.isOpen, async (isOpen) => {
   if (isOpen) {
-    await loadMessages();
+    // Trigger refresh from backend
+    await refreshMessagesFromBackend();
   }
 });
 </script>

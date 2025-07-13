@@ -22,9 +22,7 @@
           </div>
           
           <div class="connection-info" v-if="isConnected">
-            <p><strong>Backend Service:</strong> http://localhost:3030</p>
             <p><strong>Your Station:</strong> {{ localStationInfo.callsign }} ({{ localStationInfo.designator }})</p>
-            <p><strong>Discovered Stations:</strong> {{ discoveredStations.length }}</p>
           </div>
           
           <div v-if="!isConnected" class="connection-error">
@@ -65,21 +63,25 @@
         <div v-if="isConnected" class="mesh-nodes">
           <h3>
             <span class="material-icons">device_hub</span>
-            Mesh Network Stations ({{ discoveredStations.length }})
+            {{ isMeshActive ? `Mesh Network Stations (${discoveredStations.length})` : 'Mesh Network (Disabled)' }}
           </h3>
           
           <div class="mesh-status-summary">
             <div class="mesh-health" :class="meshStatus.meshHealth">
               <span class="health-indicator"></span>
-              Network Health: {{ meshStatus.meshHealth.toUpperCase() }}
+              Network Health: {{ meshStatus.meshHealth === 'disabled' ? 'DISABLED' : meshStatus.meshHealth.toUpperCase() }}
             </div>
-            <div class="mesh-stats">
+            <div v-if="isMeshActive" class="mesh-stats">
               <span>Discovered: {{ meshStatus.discoveredNodes }}</span>
               <span>Connected: {{ meshStatus.connectedNodes }}</span>
             </div>
+            <div v-else class="mesh-stats">
+              <span>Mesh networking disabled - running in standalone mode</span>
+            </div>
           </div>
           
-          <div v-if="stationsWithStatus.length > 0" class="stations-list">
+          <!-- Only show stations and controls when mesh is active -->
+          <div v-if="isMeshActive && stationsWithStatus.length > 0" class="stations-list">
             <div 
               v-for="station in stationsWithStatus" 
               :key="station.id" 
@@ -113,13 +115,19 @@
             </div>
           </div>
           
-          <div v-else class="no-nodes">
+          <div v-else-if="isMeshActive" class="no-nodes">
             <div class="material-icons" style="font-size: 3rem; opacity: 0.3;">device_hub</div>
             <p><strong>No Field Day stations discovered</strong></p>
             <p>Make sure other stations are running Field Day Logger with the backend service.</p>
           </div>
+          
+          <div v-else class="mesh-disabled">
+            <div class="material-icons" style="font-size: 3rem; opacity: 0.3;">wifi_off</div>
+            <p><strong>Mesh networking is disabled</strong></p>
+            <p>This station is running in standalone mode. Enable mesh networking to discover and synchronize with other Field Day stations.</p>
+          </div>
 
-          <div class="mesh-actions">
+          <div v-if="isMeshActive" class="mesh-actions">
             <button 
               class="refresh-button" 
               @click="refreshMeshDiscovery"
@@ -186,11 +194,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
+import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import { backendApi, type BackendStation } from '@/services/backendApiService';
 import { fileStorage } from '@/services/fileStorage';
 import { stationStatusService as stationService, type StationStatus } from '@/services/stationStatusService';
-import { backgroundNetworkService } from '@/services/backgroundNetworkService';
+import { backgroundNetworkService, meshConnectionState } from '@/services/backgroundNetworkService';
 import { meshNetworkService } from '@/services/meshNetworkService';
 
 const props = defineProps<{
@@ -205,8 +213,17 @@ const emit = defineEmits<{
 const isConnected = computed(() => backendApi.connected.value);
 const backendError = computed(() => backendApi.error.value);
 
-// Mesh network state
-const isMeshActive = ref(false);
+// Mesh network state - use shared state from background service with forced reactivity
+const meshConnectionStateReactive = ref(meshConnectionState.isConnected);
+const isMeshActive = computed(() => meshConnectionStateReactive.value);
+
+// Watch for changes to the singleton state and update our reactive ref
+const updateMeshState = () => {
+  meshConnectionStateReactive.value = meshConnectionState.isConnected;
+};
+
+// Set up listener for mesh state changes
+meshConnectionState.onConnectionChange(updateMeshState);
 const isConnecting = ref(false);
 const isDisconnecting = ref(false);
 
@@ -285,11 +302,20 @@ const isElectron = computed(() => {
 
 // Mesh status
 const meshStatus = computed(() => {
+  // If mesh is not connected, show disabled state
+  if (!meshConnectionState.isConnected) {
+    return {
+      meshHealth: 'disabled',
+      discoveredNodes: 0,
+      connectedNodes: 0,
+    };
+  }
+  
   const totalDiscovered = stationService.getTotalDiscoveredCount();
   const connectedCount = stationService.getConnectedCount();
   
   return {
-    meshHealth: connectedCount > 0 ? 'good' : totalDiscovered > 0 ? 'warning' : 'warning',
+    meshHealth: connectedCount > 0 ? 'good' : totalDiscovered > 0 ? 'warning' : 'searching',
     discoveredNodes: totalDiscovered,
     connectedNodes: connectedCount,
   };
@@ -577,20 +603,49 @@ async function startConnection() {
 }
 
 async function disconnect() {
+  console.log('🔍 [NetworkModal] Disconnect clicked');
   isDisconnecting.value = true;
   
   try {
-    // Stop background networking operations
-    backgroundNetworkService.stopBackgroundOperations();
+    console.log('🔍 [NetworkModal] Setting mesh connection state to false...');
+    // Update shared mesh state first - this will automatically stop background operations
+    meshConnectionState.setConnected(false);
+    meshConnectionStateReactive.value = false; // Force reactive update
+    console.log('🔍 [NetworkModal] Mesh connection state set to:', meshConnectionState.isConnected);
+    
+    // Force Vue to detect the change
+    await nextTick();
+    console.log('🔍 [NetworkModal] After nextTick - isMeshActive:', isMeshActive.value);
     
     // Stop mesh network service
     await meshNetworkService.stopMesh();
     
+    // Disable mesh networking in backend configuration
+    try {
+      const response = await fetch('http://localhost:3030/api/config/mesh', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          enabled: false,
+          discovery_interval_secs: 60,
+          max_discovery_attempts: 3,
+          timeout_secs: 10
+        })
+      });
+      if (response.ok) {
+        console.log('🛑 Backend mesh configuration disabled');
+      } else {
+        console.error('❌ Backend mesh config disable failed:', response.status, response.statusText);
+      }
+    } catch (error) {
+      console.error('❌ Backend mesh config error:', error);
+    }
+    
     // Clear discovered stations
     discoveredStations.value = [];
     
-    // Update mesh state
-    isMeshActive.value = false;
+    // Clear station status when mesh is disabled
+    stationStatusService.clearDiscoveredCount();
     
     console.log('🔌 Mesh network disconnected');
     
@@ -603,53 +658,77 @@ async function disconnect() {
   } catch (error) {
     console.error('❌ Error disconnecting from mesh network:', error);
   } finally {
+    console.log('🔍 [NetworkModal] Setting isDisconnecting to false');
     isDisconnecting.value = false;
   }
 }
 
 async function connectToMesh() {
+  console.log('🔍 [NetworkModal] Connect to Mesh clicked');
   isConnecting.value = true;
   
   try {
-    // Start mesh network service
-    const meshStarted = await meshNetworkService.startMesh();
-    
-    if (meshStarted) {
-      // Start background networking operations
-      await backgroundNetworkService.startBackgroundOperations();
-      
-      // Update mesh state
-      isMeshActive.value = true;
-      
-      console.log('🌐 Mesh network connected');
-      
-      // Show connected status briefly
-      connectionStatus.value = 'Connected to mesh network';
-      setTimeout(() => {
-        connectionStatus.value = '';
-      }, 3000);
-      
-      // Start discovering stations
-      setTimeout(() => {
-        refreshMeshDiscovery();
-      }, 1000);
-    } else {
-      throw new Error('Failed to start mesh network');
+    console.log('🔍 [NetworkModal] Enabling backend mesh configuration...');
+    // Enable mesh networking in backend configuration
+    try {
+      const response = await fetch('http://localhost:3030/api/config/mesh', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          enabled: true,
+          discovery_interval_secs: 60,
+          max_discovery_attempts: 3,
+          timeout_secs: 10
+        })
+      });
+      if (response.ok) {
+        console.log('🚀 Backend mesh configuration enabled');
+      } else {
+        console.error('❌ Backend mesh config failed:', response.status, response.statusText);
+        throw new Error('Failed to enable backend mesh configuration');
+      }
+    } catch (error) {
+      console.error('❌ Backend mesh config error:', error);
+      throw error;
     }
+    
+    console.log('🔍 [NetworkModal] Backend mesh enabled, setting frontend connection state...');
+    
+    // Update shared mesh state - this will automatically start background operations
+    meshConnectionState.setConnected(true);
+    meshConnectionStateReactive.value = true; // Force reactive update
+    console.log('🔍 [NetworkModal] Mesh connection state set to:', meshConnectionState.isConnected);
+    
+    // Force Vue to detect the change
+    await nextTick();
+    console.log('🔍 [NetworkModal] After nextTick - isMeshActive:', isMeshActive.value);
+    
+    console.log('🌐 Mesh network connected');
+    
+    // Show connected status briefly
+    connectionStatus.value = 'Connected to mesh network';
+    setTimeout(() => {
+      connectionStatus.value = '';
+    }, 3000);
+    
+    // Start discovering stations immediately
+    console.log('🔍 [NetworkModal] Starting mesh discovery...');
+    await refreshMeshDiscovery();
     
   } catch (error) {
     console.error('❌ Error connecting to mesh network:', error);
-    connectionStatus.value = 'Failed to connect to mesh network';
+    connectionStatus.value = `Failed to connect: ${error instanceof Error ? error.message : 'Unknown error'}`;
     setTimeout(() => {
       connectionStatus.value = '';
     }, 5000);
   } finally {
+    console.log('🔍 [NetworkModal] Setting isConnecting to false');
     isConnecting.value = false;
   }
 }
 
 async function refreshMeshDiscovery() {
-  if (!isConnected.value) return;
+  if (!isConnected.value || !meshConnectionState.isConnected) return;
   
   isRefreshing.value = true;
   try {
@@ -665,7 +744,7 @@ async function refreshMeshDiscovery() {
 }
 
 async function forceMeshSync() {
-  if (!isConnected.value) return;
+  if (!isConnected.value || !meshConnectionState.isConnected) return;
   
   isSyncing.value = true;
   try {
@@ -689,13 +768,52 @@ function getNetworkModeButtonText(): string {
   return 'Start Mesh Network';
 }
 
+// Check and sync mesh connection state with backend
+async function checkMeshConnectionState() {
+  if (!isConnected.value) return;
+  
+  try {
+    // Check if there are discovered stations (indicates active mesh)
+    const stations = await backendApi.getDiscoveredStations();
+    const hasActiveStations = stations && stations.length > 0;
+    
+    // Check backend mesh status if available
+    let meshEnabled = false;
+    try {
+      const statusResponse = await fetch('http://localhost:3030/api/mesh/status');
+      if (statusResponse.ok) {
+        const statusResult = await statusResponse.json();
+        meshEnabled = statusResult.success && statusResult.data?.enabled;
+      }
+    } catch (error) {
+      // Status check failed, fall back to station check
+    }
+    
+    console.log(`🔍 [checkMeshConnectionState] Backend mesh enabled: ${meshEnabled}, Frontend mesh connected: ${meshConnectionState.isConnected}`);
+    
+    // Only sync state if frontend mesh is connected and backend is disabled
+    // DO NOT automatically enable mesh just because backend is enabled
+    if (meshConnectionState.isConnected && !meshEnabled) {
+      console.log('🔄 Frontend shows connected but backend disabled - disabling frontend');
+      meshConnectionState.setConnected(false);
+    }
+    
+    // Update discovered stations in UI if mesh is connected
+    if (meshConnectionState.isConnected && hasActiveStations) {
+      discoveredStations.value = stations;
+      updateStationStatuses(stations);
+    }
+  } catch (error) {
+    console.warn('Failed to check mesh connection state:', error);
+  }
+}
+
 // Load initial data on mount
 onMounted(async () => {
   await refreshStationInfo();
   
-  // Initialize mesh state based on current background service status
-  const networkStatus = backgroundNetworkService.getNetworkStatus();
-  isMeshActive.value = networkStatus.isRunning;
+  // Check and sync mesh connection state with backend
+  await checkMeshConnectionState();
   
   // Load station statuses from localStorage
   stationStatuses.value = stationService.getStationStatuses();
@@ -727,7 +845,7 @@ onMounted(async () => {
   
   // Set up real-time refresh for station status updates when modal is open
   const modalRefreshInterval = setInterval(async () => {
-    if (props.isOpen && isConnected.value && !isRefreshing.value) {
+    if (props.isOpen && isConnected.value && meshConnectionState.isConnected && !isRefreshing.value) {
       try {
         const stations = await backendApi.getDiscoveredStations();
         discoveredStations.value = stations;
@@ -736,16 +854,22 @@ onMounted(async () => {
         // Silently handle errors to avoid console spam
       }
     }
-  }, 3000); // Refresh every 3 seconds when modal is open
+  }, 3000); // Refresh every 3 seconds when modal is open and mesh is connected
   
   // Store interval for cleanup
   (window as any).networkModalRefreshInterval = modalRefreshInterval;
+  
+  // Check mesh connection state on mount
+  await checkMeshConnectionState();
 });
 
 // Clean up event listeners on unmount
 onUnmounted(() => {
   window.removeEventListener('stationInfoUpdate', refreshStationInfo);
   window.removeEventListener('stationStatusUpdate', handleStationStatusUpdate);
+  
+  // Clean up mesh state listener
+  meshConnectionState.removeConnectionListener(updateMeshState);
   
   // Clean up the refresh interval
   const modalRefreshInterval = (window as any).networkModalRefreshInterval;
@@ -757,16 +881,22 @@ onUnmounted(() => {
 // Watch for backend connection changes
 watch(isConnected, async (connected) => {
   if (connected) {
+    // Check mesh connection state when backend comes online
+    await checkMeshConnectionState();
     await refreshMeshDiscovery();
   } else {
-    // Clear discovered stations when disconnected
+    // Clear discovered stations and set mesh as disconnected when backend goes offline
     discoveredStations.value = [];
+    meshConnectionState.setConnected(false);
   }
 });
 
 // Watch for modal opening/closing
 watch(() => props.isOpen, async (isOpen) => {
   if (isOpen && isConnected.value) {
+    // Check and sync mesh connection state first
+    await checkMeshConnectionState();
+    
     // Refresh discovered stations when modal opens, regardless of mode
     try {
       console.log('📱 Network modal opened - fetching discovered stations...');
@@ -1096,6 +1226,18 @@ function handleStationStatusUpdate(event: Event) {
 
   &.warning .health-indicator {
     background-color: #FF9800;
+  }
+  
+  &.searching .health-indicator {
+    background-color: #06b6d4;
+  }
+  
+  &.isolated .health-indicator {
+    background-color: #ef4444;
+  }
+  
+  &.disabled .health-indicator {
+    background-color: #6b7280;
   }
 }
 

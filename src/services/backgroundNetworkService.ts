@@ -18,6 +18,45 @@ interface NetworkStation {
   protocol: 'HTTP' | 'HTTPS';
 }
 
+// Shared mesh connection state
+class MeshConnectionState {
+  private static instance: MeshConnectionState;
+  private _isConnected = false;
+  private listeners: Array<(connected: boolean) => void> = [];
+
+  static getInstance(): MeshConnectionState {
+    if (!MeshConnectionState.instance) {
+      MeshConnectionState.instance = new MeshConnectionState();
+    }
+    return MeshConnectionState.instance;
+  }
+
+  get isConnected(): boolean {
+    return this._isConnected;
+  }
+
+  setConnected(connected: boolean): void {
+    if (this._isConnected !== connected) {
+      console.log(`🔄 [MeshConnectionState] State changing from ${this._isConnected} to ${connected}`);
+      this._isConnected = connected;
+      this.listeners.forEach(listener => listener(connected));
+    }
+  }
+
+  onConnectionChange(listener: (connected: boolean) => void): void {
+    this.listeners.push(listener);
+  }
+
+  removeConnectionListener(listener: (connected: boolean) => void): void {
+    const index = this.listeners.indexOf(listener);
+    if (index >= 0) {
+      this.listeners.splice(index, 1);
+    }
+  }
+}
+
+export const meshConnectionState = MeshConnectionState.getInstance();
+
 class BackgroundNetworkService {
   private isRunning = false;
   private discoveryInterval: NodeJS.Timeout | null = null;
