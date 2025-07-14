@@ -71,8 +71,35 @@ class BackgroundNetworkService {
   private async initializeNetworkId(): Promise<void> {
     try {
       this.localNetworkId = await fileStorage.getNetworkId();
+      // Sync mesh state with backend on startup
+      await this.syncMeshStateWithBackend();
     } catch (error) {
       console.error('Failed to get network ID:', error);
+    }
+  }
+
+  /**
+   * Synchronize frontend mesh state with backend mesh configuration
+   */
+  private async syncMeshStateWithBackend(): Promise<void> {
+    try {
+      console.log('🔄 [BackgroundNetworkService] Syncing mesh state with backend...');
+      
+      const response = await fetch('http://localhost:3030/api/config');
+      if (response.ok) {
+        const result = await response.json();
+        if (result.success && result.data?.mesh) {
+          const backendMeshEnabled = result.data.mesh.enabled;
+          console.log(`🔍 [BackgroundNetworkService] Backend mesh enabled: ${backendMeshEnabled}`);
+          
+          // Update frontend mesh state to match backend
+          meshConnectionState.setConnected(backendMeshEnabled);
+          console.log(`✅ [BackgroundNetworkService] Frontend mesh state synced with backend: ${backendMeshEnabled}`);
+        }
+      }
+    } catch (error) {
+      console.warn('Failed to sync mesh state with backend:', error);
+      // If backend is not available, keep frontend state as-is
     }
   }
 
