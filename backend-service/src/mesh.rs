@@ -10,6 +10,7 @@ use tokio::time::timeout;
 use tracing::{info, warn, debug};
 
 use crate::station::StationManager;
+use crate::config_manager::ConfigManager;
 use crate::types::{Station, MeshDiscoveryRequest, MeshDiscoveryResponse};
 use crate::api::admin::ResetLogCommand;
 
@@ -17,16 +18,18 @@ pub struct MeshManager {
     discovery_port: u16,
     api_port: u16,
     station_manager: Arc<RwLock<StationManager>>,
+    config_manager: Arc<RwLock<ConfigManager>>,
     discovered_stations: Arc<RwLock<HashMap<String, Station>>>,
     last_reset_command: Arc<RwLock<Option<ResetLogCommand>>>,
 }
 
 impl MeshManager {
-    pub async fn new(discovery_port: u16, api_port: u16, station_manager: Arc<RwLock<StationManager>>) -> Result<Self> {
+    pub async fn new(discovery_port: u16, api_port: u16, station_manager: Arc<RwLock<StationManager>>, config_manager: Arc<RwLock<ConfigManager>>) -> Result<Self> {
         Ok(Self {
             discovery_port,
             api_port,
             station_manager,
+            config_manager,
             discovered_stations: Arc::new(RwLock::new(HashMap::new())),
             last_reset_command: Arc::new(RwLock::new(None)),
         })
@@ -42,6 +45,7 @@ impl MeshManager {
         // Start discovery listener
         let socket_clone = Arc::clone(&socket);
         let station_manager = self.station_manager.clone();
+        let config_manager = self.config_manager.clone();
         let discovered_stations = self.discovered_stations.clone();
         
         tokio::spawn(async move {
@@ -50,6 +54,16 @@ impl MeshManager {
             loop {
                 match socket_clone.recv_from(&mut buf).await {
                     Ok((len, addr)) => {
+                        // Check if mesh networking is enabled before processing discovery requests
+                        let mesh_enabled = {
+                            let config = config_manager.read().await;
+                            config.get().mesh.enabled
+                        };
+                        
+                        if !mesh_enabled {
+                            continue; // Skip processing if mesh is disabled
+                        }
+                        
                         let data = &buf[..len];
                         if let Ok(request) = serde_json::from_slice::<MeshDiscoveryRequest>(data) {
                             debug!("Received discovery request from {}: {:?}", addr, request);
@@ -95,17 +109,33 @@ impl MeshManager {
         // Start periodic discovery broadcast
         let socket_clone2 = Arc::clone(&socket);
         let station_manager2 = self.station_manager.clone();
+        let config_manager2 = self.config_manager.clone();
         let discovery_port = self.discovery_port;
         let api_port = self.api_port;
         
         tokio::spawn(async move {
+            let mut last_log = std::time::Instant::now();
             loop {
                 tokio::time::sleep(Duration::from_secs(30)).await;
                 
-                let station_info = station_manager2.read().await.get_station_info().cloned();
-                if let Some(station) = station_info {
-                    if station_manager2.read().await.is_configured() {
-                        Self::broadcast_discovery(&socket_clone2, &station, discovery_port, api_port).await;
+                // Check if mesh networking is enabled before broadcasting
+                let mesh_enabled = {
+                    let config = config_manager2.read().await;
+                    config.get().mesh.enabled
+                };
+                
+                if mesh_enabled {
+                    let station_info = station_manager2.read().await.get_station_info().cloned();
+                    if let Some(station) = station_info {
+                        if station_manager2.read().await.is_configured() {
+                            Self::broadcast_discovery(&socket_clone2, &station, discovery_port, api_port).await;
+                        }
+                    }
+                } else {
+                    // Only log once per minute to avoid spam
+                    if last_log.elapsed().as_secs() >= 60 {
+                        info!("Mesh discovery broadcast skipped - mesh networking disabled");
+                        last_log = std::time::Instant::now();
                     }
                 }
             }
