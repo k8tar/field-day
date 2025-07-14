@@ -18,6 +18,7 @@ export interface QSO {
 
 const QSO_STORAGE_KEY = 'qsos';
 const SETTINGS_KEY = 'qso_settings';
+const PENDING_DELETIONS_KEY = 'qso_pending_deletions';
 
 // Periodic QSO refresh interval
 let refreshInterval: NodeJS.Timeout | null = null;
@@ -25,6 +26,9 @@ let isRefreshing = false; // Prevent concurrent refreshes
 
 // Initialize QSOs from file storage on initialization
 export const qsos = ref<QSO[]>([]);
+
+// Track QSOs that were deleted while backend was offline
+const pendingDeletions = ref<Set<string>>(new Set());
 
 // Migration function to convert old numeric IDs to UUIDs
 async function migrateQsoIds() {
@@ -83,6 +87,8 @@ async function initializeQsos() {
 initializeQsos().then(() => {
   // Run migration for existing QSOs with old IDs
   migrateQsoIds();
+  // Load pending deletions
+  loadPendingDeletions();
 });
 
 export const band = ref('40m');
@@ -257,6 +263,12 @@ async function refreshQsosFromBackend(): Promise<void> {
     let newQsosAdded = 0;
     let qsosUpdated = 0;
     convertedQsos.forEach(backendQso => {
+      // Skip QSOs that are pending deletion
+      if (backendQso.id && pendingDeletions.value.has(backendQso.id)) {
+        console.log(`🗑️ Skipping backend QSO ${backendQso.id} - pending deletion`);
+        return;
+      }
+      
       const existingQso = currentQsos.find(qso => qso.id === backendQso.id);
       if (!existingQso) {
         currentQsos.push(backendQso);
@@ -280,15 +292,21 @@ async function refreshQsosFromBackend(): Promise<void> {
     });
     
     // Check for deleted QSOs (QSOs that exist locally but not in backend)
+    // Only delete local QSOs if we have backend QSOs (to avoid deleting everything when backend is empty)
     let qsosDeleted = 0;
-    const filteredQsos = currentQsos.filter(localQso => {
-      if (localQso.id && !backendQsoMap.has(localQso.id)) {
-        qsosDeleted++;
-        changesDetected = true;
-        return false; // Remove this QSO
-      }
-      return true; // Keep this QSO
-    });
+    let filteredQsos = currentQsos;
+    
+    // Only process deletions if backend has QSOs or if we're sure backend is fully initialized
+    if (convertedQsos.length > 0) {
+      filteredQsos = currentQsos.filter(localQso => {
+        if (localQso.id && !backendQsoMap.has(localQso.id)) {
+          qsosDeleted++;
+          changesDetected = true;
+          return false; // Remove this QSO
+        }
+        return true; // Keep this QSO
+      });
+    }
     
     if (changesDetected) {
       qsos.value = filteredQsos;
@@ -510,13 +528,21 @@ export async function deleteQso(id: string) {
   
   // Notify backend service for network synchronization
   if (backendApi.connected.value && deletedQso) {
-    backendApi.deleteQso(deletedQso.id!).catch(error => {
+    try {
+      await backendApi.deleteQso(deletedQso.id!);
+      console.log(`✅ QSO ${deletedQso.id} deleted from backend`);
+    } catch (error) {
       console.error('Failed to delete QSO from backend:', error);
+      // Add to pending deletions if backend delete fails
+      await addPendingDeletion(deletedQso.id!);
       // Force a connection check when QSO deletion fails
       backendApi.refreshConnectionStatus();
-    });
+    }
   } else {
-    console.warn('⚠️ Backend service not available - QSO deletion will not be synced to network');
+    console.warn('⚠️ Backend service not available - adding QSO deletion to pending list');
+    if (deletedQso?.id) {
+      await addPendingDeletion(deletedQso.id);
+    }
     // Force a connection check when backend is not available
     backendApi.refreshConnectionStatus();
   }
@@ -779,8 +805,18 @@ export function stopPeriodicQsoRefresh(): void {
 }
 
 // Set up backend connection event listeners
-window.addEventListener('backendConnected', () => {
-  console.log('📡 Backend connected - starting QSO refresh');
+window.addEventListener('backendConnected', async () => {
+  console.log('📡 Backend connected - uploading local QSOs and applying pending deletions');
+  
+  // Apply pending deletions first
+  await applyPendingDeletions();
+  
+  // Upload any local QSOs that might not be in the backend
+  if (qsos.value.length > 0) {
+    console.log(`📤 Uploading ${qsos.value.length} local QSOs to backend...`);
+    await forceUploadAllQsos();
+  }
+  
   startPeriodicQsoRefresh();
 });
 
@@ -793,3 +829,71 @@ window.addEventListener('backendDisconnected', () => {
 if (backendApi.connected.value) {
   startPeriodicQsoRefresh();
 }
+
+// Load pending deletions from localStorage
+async function loadPendingDeletions() {
+  try {
+    const pending = localStorage.getItem(PENDING_DELETIONS_KEY);
+    if (pending) {
+      const deletionIds = JSON.parse(pending);
+      pendingDeletions.value = new Set(deletionIds);
+      console.log(`📋 Loaded ${deletionIds.length} pending deletions from storage`);
+    }
+  } catch (error) {
+    console.error('Failed to load pending deletions:', error);
+    pendingDeletions.value = new Set();
+  }
+}
+
+// Save pending deletions to localStorage
+async function savePendingDeletions() {
+  try {
+    const deletionIds = Array.from(pendingDeletions.value);
+    localStorage.setItem(PENDING_DELETIONS_KEY, JSON.stringify(deletionIds));
+  } catch (error) {
+    console.error('Failed to save pending deletions:', error);
+  }
+}
+
+// Add a QSO deletion to pending list
+async function addPendingDeletion(qsoId: string) {
+  pendingDeletions.value.add(qsoId);
+  await savePendingDeletions();
+  console.log(`📝 Added QSO ${qsoId} to pending deletions`);
+}
+
+// Remove a QSO deletion from pending list (when successfully synced)
+async function removePendingDeletion(qsoId: string) {
+  pendingDeletions.value.delete(qsoId);
+  await savePendingDeletions();
+  console.log(`✅ Removed QSO ${qsoId} from pending deletions`);
+}
+
+// Apply pending deletions to backend
+async function applyPendingDeletions() {
+  if (pendingDeletions.value.size === 0) {
+    return;
+  }
+  
+  console.log(`🗑️ Applying ${pendingDeletions.value.size} pending deletions to backend...`);
+  
+  const deletionsToProcess = Array.from(pendingDeletions.value);
+  for (const qsoId of deletionsToProcess) {
+    try {
+      await backendApi.deleteQso(qsoId);
+      await removePendingDeletion(qsoId);
+      console.log(`✅ Applied pending deletion for QSO ${qsoId}`);
+    } catch (error) {
+      console.error(`❌ Failed to apply pending deletion for QSO ${qsoId}:`, error);
+      // Keep the deletion in pending list to retry later
+    }
+  }
+}
+
+// Periodic check for pending deletions
+setInterval(() => {
+  if (backendApi.connected.value) {
+    // Apply any pending deletions to the backend
+    applyPendingDeletions();
+  }
+}, 5000); // Check every 5 seconds
