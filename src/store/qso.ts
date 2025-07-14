@@ -806,9 +806,17 @@ export function stopPeriodicQsoRefresh(): void {
 
 // Set up backend connection event listeners
 window.addEventListener('backendConnected', async () => {
-  console.log('📡 Backend connected - uploading local QSOs and applying pending deletions');
+  console.log('📡 Backend connected - syncing mesh state and uploading local QSOs');
   
-  // Apply pending deletions first
+  // Sync mesh state first (in case it changed while backend was offline)
+  try {
+    const { backgroundNetworkService } = await import('@/services/backgroundNetworkService');
+    await backgroundNetworkService.reSyncMeshState();
+  } catch (error) {
+    console.error('Failed to sync mesh state on backend reconnection:', error);
+  }
+  
+  // Apply pending deletions
   await applyPendingDeletions();
   
   // Upload any local QSOs that might not be in the backend

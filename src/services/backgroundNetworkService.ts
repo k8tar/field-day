@@ -82,25 +82,49 @@ class BackgroundNetworkService {
    * Synchronize frontend mesh state with backend mesh configuration
    */
   private async syncMeshStateWithBackend(): Promise<void> {
-    try {
-      console.log('🔄 [BackgroundNetworkService] Syncing mesh state with backend...');
-      
-      const response = await fetch('http://localhost:3030/api/config');
-      if (response.ok) {
-        const result = await response.json();
-        if (result.success && result.data?.mesh) {
-          const backendMeshEnabled = result.data.mesh.enabled;
-          console.log(`🔍 [BackgroundNetworkService] Backend mesh enabled: ${backendMeshEnabled}`);
-          
-          // Update frontend mesh state to match backend
-          meshConnectionState.setConnected(backendMeshEnabled);
-          console.log(`✅ [BackgroundNetworkService] Frontend mesh state synced with backend: ${backendMeshEnabled}`);
+    const maxRetries = 5;
+    const retryDelay = 1000; // 1 second
+    
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        console.log(`🔄 [BackgroundNetworkService] Syncing mesh state with backend (attempt ${attempt}/${maxRetries})...`);
+        
+        const response = await fetch('http://localhost:3030/api/config');
+        if (response.ok) {
+          const result = await response.json();
+          if (result.success && result.data?.mesh) {
+            const backendMeshEnabled = result.data.mesh.enabled;
+            console.log(`🔍 [BackgroundNetworkService] Backend mesh enabled: ${backendMeshEnabled}`);
+            
+            // Update frontend mesh state to match backend
+            meshConnectionState.setConnected(backendMeshEnabled);
+            console.log(`✅ [BackgroundNetworkService] Frontend mesh state synced with backend: ${backendMeshEnabled}`);
+            return; // Success - exit retry loop
+          }
+        }
+        
+        // If we get here, the response wasn't ok or data was invalid
+        throw new Error(`Invalid response: ${response.status}`);
+        
+      } catch (error) {
+        console.warn(`🔄 [BackgroundNetworkService] Mesh sync attempt ${attempt} failed:`, error);
+        
+        if (attempt < maxRetries) {
+          console.log(`⏳ [BackgroundNetworkService] Retrying mesh sync in ${retryDelay}ms...`);
+          await new Promise(resolve => setTimeout(resolve, retryDelay));
+        } else {
+          console.warn('❌ [BackgroundNetworkService] Failed to sync mesh state after all retries - keeping current state');
         }
       }
-    } catch (error) {
-      console.warn('Failed to sync mesh state with backend:', error);
-      // If backend is not available, keep frontend state as-is
     }
+  }
+
+  /**
+   * Manually trigger mesh state sync (can be called when backend comes online)
+   */
+  async reSyncMeshState(): Promise<void> {
+    console.log('🔄 [BackgroundNetworkService] Manual mesh state re-sync triggered');
+    await this.syncMeshStateWithBackend();
   }
 
   /**
