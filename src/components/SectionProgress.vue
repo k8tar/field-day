@@ -15,16 +15,16 @@
 
     <div class="divisions-summary">
       <div 
-        v-for="(division, divisionName) in arrlDivisions" 
+        v-for="(division, divisionName) in ARRL_DIVISIONS" 
         :key="divisionName" 
         class="division-summary"
       >
         <div class="division-header">
           <span class="division-name">
             {{ divisionName }}
-            <span v-if="isDivisionComplete(division.sections)" class="trophy-icon" title="Division Complete!">🏆</span>
+            <span v-if="isDivisionComplete(divisionName, qsos.map(q => q.section))" class="trophy-icon" title="Division Complete!">🏆</span>
           </span>
-          <span class="division-progress">{{ getLoggedCount(division.sections) }}/{{ division.sections.length }}</span>
+          <span class="division-progress">{{ getLoggedCount(division.sections, qsos) }}/{{ division.sections.length }}</span>
         </div>
         <div class="division-progress-bar">
           <div 
@@ -37,7 +37,7 @@
             v-for="section in getSortedSections(division.sections)"
             :key="section"
             class="section-tag"
-            :class="{ 'completed': isLogged(section) }"
+            :class="{ 'completed': isLogged(section, qsos) }"
           >
             {{ section }}
           </span>
@@ -50,69 +50,22 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { qsos } from '@/store/qso';
+import { 
+  ARRL_DIVISIONS, 
+  getTotalSections, 
+  getLoggedSectionsCount,
+  isDivisionComplete,
+  getLoggedCount,
+  isLogged
+} from '@/constants/arrl-sections';
 
 // Define emits
 defineEmits(['open-section-map']);
 
-// ARRL Divisions and their sections (compact version) - ordered by division numbers
-const arrlDivisions = {
-  'Dakota': {
-    sections: ['CO', 'IA', 'KS', 'MN', 'MO', 'ND', 'NE', 'SD']
-  },
-  'New England': {
-    sections: ['CT', 'EMA', 'ME', 'NH', 'RI', 'VT', 'WMA']
-  },
-  'Hudson': {
-    sections: ['ENY', 'NLI', 'NNJ', 'NNY', 'SNJ', 'WNY']
-  },
-  'Atlantic': {
-    sections: ['DE', 'EPA', 'MDC', 'WPA']
-  },
-  'Southeastern': {
-    sections: ['AL', 'GA', 'KY', 'NC', 'NFL', 'PR', 'SC', 'SFL', 'TN', 'VA', 'VI', 'WCF']
-  },
-  'West Gulf': {
-    sections: ['AR', 'LA', 'MS', 'NM', 'NTX', 'OK', 'STX', 'WTX']
-  },
-  'Pacific': {
-    sections: ['EB', 'LAX', 'ORG', 'PAC', 'SB', 'SCV', 'SDG', 'SF', 'SJV', 'SV']
-  },
-  'Northwestern': {
-    sections: ['AK', 'AZ', 'EWA', 'ID', 'MT', 'NV', 'OR', 'UT', 'WWA', 'WY']
-  },
-  'Great Lakes': {
-    sections: ['MI', 'OH']
-  },
-  'Central': {
-    sections: ['IL', 'IN', 'WI']
-  },
-  'Canada': {
-    sections: ['AB', 'BC', 'GTA', 'MAR', 'MB', 'NL', 'NT', 'ONE', 'ONN', 'ONS', 'QC', 'SK']
-  },
-  'DX': {
-    sections: ['DX']
-  }
-};
-
-// Check if a section has been logged
-const isLogged = (section: string): boolean => {
-  return qsos.value.some(qso => qso.section === section);
-};
-
-// Get count of logged sections for a division
-const getLoggedCount = (sections: string[]): number => {
-  return sections.filter(section => isLogged(section)).length;
-};
-
 // Get progress percentage for a division
 const getDivisionProgress = (sections: string[]): number => {
-  const logged = getLoggedCount(sections);
+  const logged = getLoggedCount(sections, qsos.value);
   return sections.length > 0 ? Math.round((logged / sections.length) * 100) : 0;
-};
-
-// Check if a division is complete (all sections logged)
-const isDivisionComplete = (sections: string[]): boolean => {
-  return sections.length > 0 && sections.every(section => isLogged(section));
 };
 
 // Sort sections: numbers starting with 0 first, then alphabetically, DX last
@@ -136,12 +89,11 @@ const getSortedSections = (sections: string[]): string[] => {
 };
 
 // Computed properties
-const totalSections = computed(() => {
-  return Object.values(arrlDivisions).reduce((total, division) => total + division.sections.length, 0);
-});
+const totalSections = computed(() => getTotalSections());
 
 const totalLoggedSections = computed(() => {
-  return Object.values(arrlDivisions).reduce((total, division) => total + getLoggedCount(division.sections), 0);
+  const workedSections = qsos.value.map(qso => qso.section);
+  return getLoggedSectionsCount(workedSections);
 });
 
 const progressPercentage = computed(() => {

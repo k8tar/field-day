@@ -1,41 +1,111 @@
-// ARRL Sections for Field Day
-export const ARRL_SECTIONS = [
-  // Dakota
-  'CO', 'IA', 'KS', 'MN', 'MO', 'ND', 'NE', 'SD',
+// ARRL Divisions and their sections - the single source of truth
+export const ARRL_DIVISIONS = {
+  'Dakota': {
+    number: 0,
+    sections: ['CO', 'IA', 'KS', 'MN', 'MO', 'ND', 'NE', 'SD']
+  },
+  'New England': {
+    number: 1,
+    sections: ['CT', 'EMA', 'ME', 'NH', 'RI', 'VT', 'WMA']
+  },
+  'Hudson': {
+    number: 2,
+    sections: ['ENY', 'NLI', 'NNJ', 'NNY', 'SNJ', 'WNY']
+  },
+  'Atlantic': {
+    number: 3,
+    sections: ['DE', 'EPA', 'MDC', 'WPA']
+  },
+  'Southeastern': {
+    number: 4,
+    sections: ['AL', 'GA', 'KY', 'NC', 'NFL', 'PR', 'SC', 'SFL', 'TN', 'VA', 'VI', 'WCF']
+  },
+  'West Gulf': {
+    number: 5,
+    sections: ['AR', 'LA', 'MS', 'NM', 'NTX', 'OK', 'STX', 'WTX']
+  },
+  'Pacific': {
+    number: 6,
+    sections: ['EB', 'LAX', 'ORG', 'PAC', 'SB', 'SCV', 'SDG', 'SF', 'SJV', 'SV']
+  },
+  'Northwestern': {
+    number: 7,
+    sections: ['AK', 'AZ', 'EWA', 'ID', 'MT', 'NV', 'OR', 'UT', 'WWA', 'WY']
+  },
+  'Great Lakes': {
+    number: 8,
+    sections: ['MI', 'OH']
+  },
+  'Central': {
+    number: 9,
+    sections: ['IL', 'IN', 'WI']
+  },
+  'Canada': {
+    number: 10,
+    sections: ['AB', 'BC', 'GTA', 'MAR', 'MB', 'NL', 'NT', 'ONE', 'ONN', 'ONS', 'QC', 'SK']
+  },
+  'DX': {
+    number: 11,
+    sections: ['DX']
+  }
+};
+
+// ARRL Sections for Field Day - derived from divisions
+export const ARRL_SECTIONS: string[] = Object.values(ARRL_DIVISIONS).flatMap(division => division.sections);
+
+// Field Day bands and modes - the single source of truth
+export const FIELD_DAY_BANDS = ['160m', '80m', '40m', '20m', '15m', '10m', '6m', '2m'] as const;
+export const FIELD_DAY_MODES = ['PH', 'CW', 'DIG'] as const;
+
+// Division helper functions
+export function getDivisionBySection(section: string): string | null {
+  for (const [divisionName, divisionData] of Object.entries(ARRL_DIVISIONS)) {
+    if (divisionData.sections.includes(section)) {
+      return divisionName;
+    }
+  }
+  return null;
+}
+
+export function getDivisionProgress(workedSections: string[]) {
+  const progress: { [key: string]: { completed: boolean; worked: string[]; total: number } } = {};
+
+  Object.entries(ARRL_DIVISIONS).forEach(([name, divisionData]) => {
+    const workedInDivision = workedSections.filter(s => divisionData.sections.includes(s));
+    progress[name] = {
+      completed: workedInDivision.length === divisionData.sections.length,
+      worked: workedInDivision,
+      total: divisionData.sections.length
+    };
+  });
+
+  return progress;
+}
+
+export function getTotalSections(): number {
+  return ARRL_SECTIONS.length;
+}
+
+export function isDivisionComplete(divisionName: string, workedSections: string[]): boolean {
+  const division = ARRL_DIVISIONS[divisionName as keyof typeof ARRL_DIVISIONS];
+  if (!division) return false;
   
-  // New England
-  'CT', 'EMA', 'ME', 'NH', 'RI', 'VT', 'WMA',
-  
-  // Hudson
-  'ENY', 'NLI', 'NNJ', 'NNY', 'SNJ', 'WNY',
-  
-  // Atlantic
-  'DE', 'EPA', 'MDC', 'WPA',
-  
-  // Southeastern
-  'AL', 'GA', 'KY', 'NC', 'NFL', 'PR', 'SC', 'SFL', 'TN', 'VA', 'VI', 'WCF',
-  
-  // West Gulf
-  'AR', 'LA', 'MS', 'NM', 'NTX', 'OK', 'STX', 'WTX',
-  
-  // Pacific
-  'EB', 'LAX', 'ORG', 'PAC', 'SB', 'SCV', 'SDG', 'SF', 'SJV', 'SV',
-  
-  // Northwestern
-  'AK', 'AZ', 'EWA', 'ID', 'MT', 'NV', 'OR', 'UT', 'WWA', 'WY',
-  
-  // Great Lakes
-  'MI', 'OH',
-  
-  // Central
-  'IL', 'IN', 'WI',
-  
-  // Canada (RAC Sections)
-  'AB', 'BC', 'GTA', 'MAR', 'MB', 'NL', 'NT', 'ONE', 'ONN', 'ONS', 'QC', 'SK',
-  
-  // DX
-  'DX'
-];
+  return division.sections.every(section => workedSections.includes(section));
+}
+
+export function getLoggedSectionsCount(workedSections: string[]): number {
+  return workedSections.filter(section => ARRL_SECTIONS.includes(section)).length;
+}
+
+// Utility function for checking which sections are logged from a list
+export function getLoggedCount(sections: string[], qsos: any[]): number {
+  return sections.filter(section => qsos.some(qso => qso.section === section)).length;
+}
+
+// Utility function for checking if a section is logged
+export function isLogged(section: string, qsos: any[]): boolean {
+  return qsos.some(qso => qso.section === section);
+}
 
 /**
  * Validates if a section string matches a valid ARRL section

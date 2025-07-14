@@ -30,8 +30,15 @@
       <div class="table-body-container" ref="scrollContainer" @scroll="handleScroll">
         <div class="spacer-top" :style="{ height: `${offsetTop}px` }"></div>
         <table>
-          <tbody>
-            <tr v-for="(qso, idx) in visibleQsos" :key="qso.id || (startIndex + idx)" :style="{ height: `${rowHeight}px` }">
+          <transition-group name="qso-row" tag="tbody" appear>
+            <tr v-for="(qso, idx) in visibleQsos" :key="qso.id || (startIndex + idx)" 
+                :style="{ height: `${rowHeight}px` }" 
+                :class="{ 
+                  'qso-row': true,
+                  'qso-updated': updatedQsos.has(qso.id || ''),
+                  'qso-new': newQsoIds.has(qso.id || ''),
+                  'qso-deleted': deletedQsoIds.has(qso.id || '')
+                }">
               <td>{{ qsos.length - (startIndex + idx) }}</td>
               <td>{{ qso.call }}</td>
               <td>{{ qso.class }}</td>
@@ -52,7 +59,7 @@
                 </div>
               </td>
             </tr>
-          </tbody>
+          </transition-group>
         </table>
         <div class="spacer-bottom" :style="{ height: `${offsetBottom}px` }"></div>
       </div>
@@ -312,7 +319,7 @@
 <script setup lang="ts">
 import { computed, ref, onMounted, nextTick, watch } from 'vue';
 import { qsos, deleteQso, updateQso, QSO } from '@/store/qso';
-import { validateArrlSection, normalizeArrlSection, validateArrlClass, normalizeArrlClass } from '@/constants/arrl-sections';
+import { validateArrlSection, normalizeArrlSection, validateArrlClass, normalizeArrlClass, FIELD_DAY_BANDS } from '@/constants/arrl-sections';
 import { fileStorage } from '@/services/fileStorage';
 
 // ARRL sections validation
@@ -348,6 +355,89 @@ const sortedQsos = computed(() => {
 const scrollContainer = ref<HTMLElement | null>(null);
 const rowHeight = 40; // Height of each row in pixels
 const visibleCount = 15; // Number of visible rows
+
+// Animation tracking
+const updatedQsos = ref(new Set<string>());
+const newQsoIds = ref(new Set<string>());
+const deletedQsoIds = ref(new Set<string>());
+
+// Track existing QSO IDs to detect truly new vs updated QSOs
+const existingQsoIds = ref(new Set<string>());
+
+// Initialize existing QSO IDs
+existingQsoIds.value = new Set(qsos.value.map(qso => qso.id).filter(Boolean) as string[]);
+
+// Track QSO changes for animations
+watch(qsos, (newQsosList, oldQsosList) => {
+  const newIds = new Set(newQsosList.map(qso => qso.id).filter(Boolean) as string[]);
+  const oldIds = new Set(oldQsosList?.map(qso => qso.id).filter(Boolean) as string[] || []);
+  
+  // Find truly new QSOs (not previously in our existing set)
+  const actuallyNewIds = new Set<string>();
+  newIds.forEach(id => {
+    if (!existingQsoIds.value.has(id)) {
+      actuallyNewIds.add(id);
+    }
+  });
+  
+  // Find updated QSOs (exist in both old and new, but might have changed)
+  const potentiallyUpdatedIds = new Set<string>();
+  if (oldQsosList) {
+    newQsosList.forEach(newQso => {
+      if (newQso.id && oldIds.has(newQso.id)) {
+        const oldQso = oldQsosList.find(q => q.id === newQso.id);
+        if (oldQso && newQso.lastModified && oldQso.lastModified && 
+            newQso.lastModified > oldQso.lastModified) {
+          potentiallyUpdatedIds.add(newQso.id);
+        }
+      }
+    });
+  }
+  
+  // Find deleted QSOs
+  const deletedIds = new Set<string>();
+  oldIds.forEach(id => {
+    if (!newIds.has(id)) {
+      deletedIds.add(id);
+    }
+  });
+  
+  // Animate new QSOs (green fade-in)
+  if (actuallyNewIds.size > 0) {
+    actuallyNewIds.forEach(id => {
+      newQsoIds.value.add(id);
+      // Remove from animation set after animation completes
+      setTimeout(() => {
+        newQsoIds.value.delete(id);
+      }, 1200);
+    });
+  }
+  
+  // Animate updated QSOs (blue blink)
+  if (potentiallyUpdatedIds.size > 0) {
+    potentiallyUpdatedIds.forEach(id => {
+      updatedQsos.value.add(id);
+      // Remove from animation set after animation completes
+      setTimeout(() => {
+        updatedQsos.value.delete(id);
+      }, 1000);
+    });
+  }
+  
+  // Animate deleted QSOs (red blink - though these will disappear)
+  if (deletedIds.size > 0) {
+    deletedIds.forEach(id => {
+      deletedQsoIds.value.add(id);
+      // These will be removed quickly since the QSO is gone
+      setTimeout(() => {
+        deletedQsoIds.value.delete(id);
+      }, 400);
+    });
+  }
+  
+  // Update our tracking set
+  existingQsoIds.value = new Set(newIds);
+}, { deep: true });
 const bufferSize = 5; // Extra rows to render above and below visible area
 
 const scrollTop = ref(0);
@@ -413,7 +503,7 @@ const deleteModalOpen = ref(false);
 const deletingQso = ref<QSO | null>(null);
 
 // Band options and operators from file storage
-const bands = ['160m', '80m', '40m', '20m', '15m', '10m', '6m', '2m'];
+const bands = FIELD_DAY_BANDS;
 const operators = ref<string[]>(['K8TAR']); // Default fallback
 
 // Function to load operators from file storage
@@ -488,6 +578,16 @@ async function saveQsoEdit() {
     
     // Call the update function with proper parameters - ensure id is a string
     await updateQso(updatedQso.id as string, updatedQso);
+    
+    // Add animation for updated QSO
+    if (updatedQso.id) {
+      updatedQsos.value.add(updatedQso.id);
+      // Remove from updated set after animation
+      setTimeout(() => {
+        updatedQsos.value.delete(updatedQso.id!);
+      }, 1000);
+    }
+    
     closeEditModal();
   } else {
     console.error('Cannot save QSO: Missing ID or QSO data', editingQso.value);
@@ -1219,5 +1319,163 @@ button {
   color: var(--text-color-secondary);
   font-size: 0.9rem;
   flex: 1;
+}
+
+/* QSO Row Animations */
+.qso-row-enter-active {
+  transition: all 0.6s ease;
+}
+
+.qso-row-leave-active {
+  transition: all 0.4s ease;
+}
+
+.qso-row-enter-from {
+  opacity: 0;
+  transform: translateY(-20px) scale(0.95);
+  background-color: rgba(76, 175, 80, 0.2);
+}
+
+.qso-row-leave-to {
+  opacity: 0;
+  transform: translateY(20px) scale(0.95);
+}
+
+.qso-row-move {
+  transition: transform 0.5s ease;
+}
+
+/* Animation for updated QSO rows */
+@keyframes qso-update {
+  0% {
+    background-color: rgba(33, 150, 243, 0.4);
+    transform: scale(1.01);
+  }
+  30% {
+    background-color: rgba(33, 150, 243, 0.6);
+    transform: scale(1.01);
+  }
+  100% {
+    background-color: transparent;
+    transform: scale(1);
+  }
+}
+
+.qso-updated {
+  animation: qso-update 1s ease-out;
+}
+
+/* Animation for new QSO rows */
+@keyframes qso-new {
+  0% {
+    background-color: rgba(76, 175, 80, 0.5);
+    transform: scale(1.02);
+    opacity: 0;
+  }
+  30% {
+    background-color: rgba(76, 175, 80, 0.7);
+    transform: scale(1.02);
+    opacity: 1;
+  }
+  100% {
+    background-color: transparent;
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.qso-new {
+  animation: qso-new 1.2s ease-out;
+}
+
+/* Animation for deleted QSO rows */
+@keyframes qso-delete {
+  0% {
+    background-color: rgba(244, 67, 54, 0.5);
+    transform: scale(1.01);
+    opacity: 1;
+  }
+  50% {
+    background-color: rgba(244, 67, 54, 0.8);
+    transform: scale(1.01);
+    opacity: 0.8;
+  }
+  100% {
+    background-color: transparent;
+    transform: scale(1);
+    opacity: 0;
+  }
+}
+
+.qso-deleted {
+  animation: qso-delete 0.4s ease-out;
+}
+
+[data-theme="dark"] .qso-row-enter-from {
+  background-color: rgba(76, 175, 80, 0.3);
+}
+
+[data-theme="dark"] .qso-new {
+  animation: qso-new-dark 1.2s ease-out;
+}
+
+[data-theme="dark"] .qso-updated {
+  animation: qso-update-dark 1s ease-out;
+}
+
+[data-theme="dark"] .qso-deleted {
+  animation: qso-delete-dark 0.4s ease-out;
+}
+
+/* Dark theme animations */
+@keyframes qso-new-dark {
+  0% {
+    background-color: rgba(76, 175, 80, 0.4);
+    transform: scale(1.02);
+    opacity: 0;
+  }
+  30% {
+    background-color: rgba(76, 175, 80, 0.6);
+    transform: scale(1.02);
+    opacity: 1;
+  }
+  100% {
+    background-color: transparent;
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes qso-update-dark {
+  0% {
+    background-color: rgba(33, 150, 243, 0.3);
+    transform: scale(1.01);
+  }
+  30% {
+    background-color: rgba(33, 150, 243, 0.5);
+    transform: scale(1.01);
+  }
+  100% {
+    background-color: transparent;
+    transform: scale(1);
+  }
+}
+
+@keyframes qso-delete-dark {
+  0% {
+    background-color: rgba(244, 67, 54, 0.4);
+    transform: scale(1.01);
+    opacity: 1;
+  }
+  50% {
+    background-color: rgba(244, 67, 54, 0.7);
+    transform: scale(1.01);
+    opacity: 0.8;
+  }
+  100% {
+    background-color: transparent;
+    transform: scale(1);
+    opacity: 0;
+  }
 }
 </style>

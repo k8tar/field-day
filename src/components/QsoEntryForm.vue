@@ -8,6 +8,7 @@
             <input 
               v-model="call" 
               @input="emitUpdate" 
+              @blur="onCallBlur"
               required 
               class="call-input"
               :class="{'duplicate-warning': isExactDuplicate}"
@@ -87,12 +88,6 @@ const isClassValid = computed(() => {
   return validateArrlClass(qsoClass.value);
 });
 
-// Still calculate dateTime for the QSO data, even though we're not displaying it
-const dateTime = computed(() => {
-  const now = new Date();
-  return now.toISOString();
-});
-
 // Check if all required fields are filled and valid
 const isFormValid = computed(() => {
   return call.value.trim() !== '' && 
@@ -128,6 +123,26 @@ function emitUpdate() {
   emit('update:call', call.value);
 }
 
+// Auto-fill class and section if callsign exists in log
+function onCallBlur() {
+  if (!call.value.trim()) return;
+  
+  // Find existing QSO with the same callsign
+  const existingQso = qsos.value.find(qso => 
+    qso.call.toUpperCase() === call.value.toUpperCase()
+  );
+  
+  if (existingQso) {
+    // Only auto-fill if the fields are currently empty
+    if (!qsoClass.value.trim()) {
+      qsoClass.value = existingQso.class;
+    }
+    if (!section.value.trim()) {
+      section.value = existingQso.section;
+    }
+  }
+}
+
 function onLogQso() {
   // Don't submit if form is invalid or is exact duplicate
   if (!isFormValid.value || isExactDuplicate.value) return;
@@ -146,12 +161,12 @@ function onLogQso() {
     return;
   }
   
-  // Add the QSO
+  // Add the QSO with current timestamp
   logQso({
     call: call.value.toUpperCase(),
     class: normalizedClass,
     section: normalizedSection,
-    datetime: dateTime.value,
+    datetime: new Date().toISOString(), // Generate timestamp at moment of logging
     mode: props.mode
   });
   

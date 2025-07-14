@@ -61,8 +61,9 @@
             No messages yet
           </div>
           <div v-else class="messages-list">
-            <div v-for="message in allMessagesReversed" :key="message.id" 
-                 class="message" :class="`message-${message.type}`">
+            <transition-group name="message-fade" tag="div">
+              <div v-for="message in allMessagesReversed" :key="message.id" 
+                   class="message" :class="`message-${message.type}`">
               <div class="message-icon">{{ getIconForType(message.type) }}</div>
               <div class="message-content">
                 <div v-if="editingMessageId === message.id" class="message-edit">
@@ -99,6 +100,7 @@
                   title="Edit message"
                 >
                   <span class="material-icons">edit</span>
+                  <span class="edit-text">Edit</span>
                 </button>
                 <button 
                   v-if="canDismissMessage(message)" 
@@ -111,6 +113,7 @@
                 </button>
               </div>
             </div>
+          </transition-group>
           </div>
         </div>
         <div class="modal-footer">
@@ -656,15 +659,50 @@ h3 {
   padding: 1rem;
 }
 
-/* Fade transition for new messages */
-.fade-enter-active,
-.fade-leave-active {
-  transition: opacity 0.5s ease;
+/* Enhanced fade transition for new messages */
+.fade-enter-active {
+  transition: all 0.6s ease;
 }
 
-.fade-enter-from,
+.fade-leave-active {
+  transition: all 0.4s ease;
+}
+
+.fade-enter-from {
+  opacity: 0;
+  transform: translateY(-10px) scale(0.95);
+}
+
 .fade-leave-to {
   opacity: 0;
+  transform: translateY(10px) scale(0.95);
+}
+
+.fade-move {
+  transition: transform 0.3s ease;
+}
+
+/* Message fade transitions for modal */
+.message-fade-enter-active {
+  transition: all 0.5s ease;
+}
+
+.message-fade-leave-active {
+  transition: all 0.3s ease;
+}
+
+.message-fade-enter-from {
+  opacity: 0;
+  transform: translateX(-20px) scale(0.95);
+}
+
+.message-fade-leave-to {
+  opacity: 0;
+  transform: translateX(20px) scale(0.95);
+}
+
+.message-fade-move {
+  transition: transform 0.3s ease;
 }
 
 /* Send Message Form */
@@ -853,14 +891,11 @@ h3 {
 
 .message-actions {
   display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-  opacity: 0;
-  transition: opacity 0.2s ease;
-}
-
-.message:hover .message-actions {
+  flex-direction: row;
+  gap: 0.5rem;
   opacity: 1;
+  transition: opacity 0.2s ease;
+  align-items: center;
 }
 
 .action-button {
@@ -880,12 +915,48 @@ h3 {
 }
 
 .edit-button {
-  color: var(--primary-color);
+  color: #666;
+  background-color: var(--bg-color);
+  border: 2px solid var(--border-color);
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  font-size: 1rem;
+  gap: 0.6rem;
+  min-width: 110px;
+  transition: all 0.2s ease;
+  font-weight: 600;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 .edit-button:hover {
-  background-color: var(--primary-color);
-  color: white;
+  background-color: #e3f2fd;
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+.edit-button .material-icons {
+  font-size: 20px;
+}
+
+.edit-text {
+  font-weight: 600;
+  font-size: 1rem;
+}
+
+[data-theme="dark"] .edit-button {
+  background-color: var(--input-bg);
+  border-color: var(--border-color);
+  color: var(--text-color);
+}
+
+[data-theme="dark"] .edit-button:hover {
+  background-color: #1a365d;
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+  transform: translateY(-2px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.25);
 }
 
 .delete-button {

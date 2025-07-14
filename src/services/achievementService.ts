@@ -6,6 +6,7 @@
 import { getCompletedSections, qsos, getTotalQsoPoints } from '@/store/qso';
 import { bonuses } from '@/store/bonus';
 import { fileStorage } from './fileStorage';
+import { getDivisionProgress } from '@/constants/arrl-sections';
 
 export interface Achievement {
   id: string;
@@ -184,7 +185,7 @@ class AchievementService {
 
   private async checkDivisionCompletion() {
     const sections = getCompletedSections();
-    const divisions = this.getDivisionProgress(sections);
+    const divisions = getDivisionProgress(sections);
     
     // Check each division for completion
     Object.entries(divisions).forEach(([divisionName, divisionData]) => {
@@ -206,36 +207,6 @@ class AchievementService {
         });
       }
     });
-  }
-
-  private getDivisionProgress(sections: string[]) {
-    const divisions = {
-      'Dakota': ['CO', 'IA', 'KS', 'MN', 'MO', 'ND', 'NE', 'SD'],
-      'New England': ['CT', 'EMA', 'ME', 'NH', 'RI', 'VT', 'WMA'],
-      'Hudson': ['ENY', 'NLI', 'NNJ', 'NNY', 'SNJ', 'WNY'],
-      'Atlantic': ['DE', 'EPA', 'MDC', 'WPA'],
-      'Southeastern': ['AL', 'GA', 'KY', 'NC', 'NFL', 'PR', 'SC', 'SFL', 'TN', 'VA', 'VI', 'WCF'],
-      'West Gulf': ['AR', 'LA', 'MS', 'NM', 'NTX', 'OK', 'STX', 'WTX'],
-      'Pacific': ['EB', 'LAX', 'ORG', 'PAC', 'SB', 'SCV', 'SDG', 'SF', 'SJV', 'SV'],
-      'Northwestern': ['AK', 'AZ', 'EWA', 'ID', 'MT', 'NV', 'OR', 'UT', 'WWA', 'WY'],
-      'Great Lakes': ['MI', 'OH'],
-      'Central': ['IL', 'IN', 'WI'],
-      'Canada': ['AB', 'BC', 'GTA', 'MAR', 'MB', 'NL', 'NT', 'ONE', 'ONN', 'ONS', 'QC', 'SK'],
-      'DX': ['DX']
-    };
-
-    const progress: { [key: string]: { completed: boolean; worked: string[]; total: number } } = {};
-
-    Object.entries(divisions).forEach(([name, divisionSections]) => {
-      const workedSections = sections.filter(s => divisionSections.includes(s));
-      progress[name] = {
-        completed: workedSections.length === divisionSections.length,
-        worked: workedSections,
-        total: divisionSections.length
-      };
-    });
-
-    return progress;
   }
 
   private async getStationDesignator(): Promise<string> {

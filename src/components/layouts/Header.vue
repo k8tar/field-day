@@ -82,6 +82,7 @@
 import { ref, onMounted, onBeforeUnmount, watch, computed } from 'vue';
 import { band as storeBand, operator as storeOperator, mode as storeMode } from '@/store/qso';
 import { isDark, toggleTheme } from '@/store/theme';
+import { FIELD_DAY_BANDS, FIELD_DAY_MODES } from '@/constants/arrl-sections';
 import ConfigModal from '@/components/ConfigModal.vue';
 import NetworkModal from '@/components/NetworkModal.vue';
 import DocsModal from '@/components/DocsModal.vue';
@@ -108,7 +109,7 @@ watch(storeMode, (val) => {
 });
 
 // Band selection
-const bands = ['160m', '80m', '40m', '20m', '15m', '10m', '6m', '2m'];
+const bands = FIELD_DAY_BANDS;
 const selectedBand = ref(storeBand.value || '40m');
 
 function updateBand() {
