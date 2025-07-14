@@ -13,6 +13,7 @@ export interface QSO {
   operator: string;
   stationDesignator?: string;  // Added station designator field
   timestamp?: number; // Added timestamp for network sync
+  lastModified?: number; // Timestamp of last modification for conflict resolution
 }
 
 const QSO_STORAGE_KEY = 'qsos';
@@ -61,10 +62,14 @@ async function initializeQsos() {
     const savedQsos = await fileStorage.getQsoData();
     qsos.value = savedQsos;
     
-    // Ensure all QSOs have timestamps (migration for existing data)
+    // Ensure all QSOs have timestamps and lastModified (migration for existing data)
     qsos.value.forEach(qso => {
       if (!qso.timestamp) {
         qso.timestamp = new Date(qso.datetime).getTime();
+      }
+      if (!qso.lastModified) {
+        // For existing QSOs, use timestamp as initial lastModified
+        qso.lastModified = qso.timestamp || new Date(qso.datetime).getTime();
       }
     });
     
@@ -237,6 +242,7 @@ async function refreshQsosFromBackend(): Promise<void> {
         operator: backendQso.operator,
         stationDesignator: stationDesignator,
         timestamp: new Date(backendQso.timestamp).getTime(),
+        lastModified: new Date(backendQso.timestamp).getTime(), // Use backend timestamp as lastModified
       };
       
       backendQsoMap.set(backendQso.id, localQso);
@@ -257,11 +263,11 @@ async function refreshQsosFromBackend(): Promise<void> {
         newQsosAdded++;
         changesDetected = true;
       } else {
-        // Check if the QSO has been updated (compare timestamps)
-        const backendTimestamp = backendQso.timestamp || 0;
-        const localTimestamp = existingQso.timestamp || 0;
+        // Check if the QSO has been updated (compare lastModified timestamps)
+        const backendLastModified = backendQso.lastModified || 0;
+        const localLastModified = existingQso.lastModified || 0;
         
-        if (backendTimestamp > localTimestamp) {
+        if (backendLastModified > localLastModified) {
           // Backend QSO is newer, update the local version
           const index = currentQsos.findIndex(qso => qso.id === backendQso.id);
           if (index >= 0) {
@@ -343,20 +349,20 @@ function addNetworkQso(networkQso: any) {
   });
   
   if (existingQso) {
-    // For duplicates, keep the older one (drop the latest)
-    const existingTime = existingQso.timestamp || new Date(existingQso.datetime).getTime();
-    const networkTime = networkQso.timestamp || new Date(networkQso.datetime).getTime();
+    // For duplicates, keep the most recently modified one
+    const existingLastModified = existingQso.lastModified || new Date(existingQso.datetime).getTime();
+    const networkLastModified = networkQso.lastModified || new Date(networkQso.datetime).getTime();
     
-    if (networkTime > existingTime) {
-      // Network QSO is newer, drop it (keep existing)
-      return;
-    } else {
-      // Network QSO is older, replace existing
+    if (networkLastModified > existingLastModified) {
+      // Network QSO is newer, replace existing
       const index = qsos.value.findIndex(q => q.id === existingQso.id);
       if (index >= 0) {
         qsos.value[index] = { ...networkQso };
         saveQsos(); // Use file storage
       }
+      return;
+    } else {
+      // Existing QSO is newer or same, keep it (drop network QSO)
       return;
     }
   }
@@ -370,17 +376,17 @@ function addNetworkQso(networkQso: any) {
 function updateNetworkQso(networkQso: any) {
   const index = qsos.value.findIndex(qso => qso.id === networkQso.id);
   if (index >= 0) {
-    // Check timestamp for conflict resolution (latest wins)
+    // Check lastModified for conflict resolution (latest wins)
     const existingQso = qsos.value[index];
-    const networkTimestamp = networkQso.timestamp || 0;
-    const existingTimestamp = existingQso.timestamp || 0;
+    const networkLastModified = networkQso.lastModified || 0;
+    const existingLastModified = existingQso.lastModified || 0;
     
-    if (networkTimestamp >= existingTimestamp) {
+    if (networkLastModified >= existingLastModified) {
       console.log(`📝 Updating QSO from network: ${networkQso.call} (ID: ${networkQso.id})`);
       qsos.value[index] = { ...networkQso };
       saveQsos(); // Use file storage
     } else {
-      console.log(`⏭️ Skipping network QSO update (older): ${networkQso.call} (network: ${networkTimestamp}, local: ${existingTimestamp})`);
+      console.log(`⏭️ Skipping network QSO update (older): ${networkQso.call} (network: ${networkLastModified}, local: ${existingLastModified})`);
     }
   } else {
     console.warn(`⚠️ Cannot update QSO ${networkQso.id} - not found locally`);
@@ -432,7 +438,8 @@ export async function logQso(qso: any) {
     mode: mode.value,
     operator: operator.value,
     stationDesignator: stationDesignator,
-    timestamp: Date.now() // Add timestamp for conflict resolution
+    timestamp: Date.now(), // Add timestamp for conflict resolution
+    lastModified: Date.now() // Track when this QSO was last modified
   };
   
   qsos.value.push(newQso);
@@ -443,7 +450,7 @@ export async function logQso(qso: any) {
     const stationConfig = await fileStorage.getStationConfig();
     const backendQso: BackendQso = {
       id: newQso.id!,
-      timestamp: new Date(newQso.datetime).toISOString(),
+      timestamp: new Date(newQso.lastModified!).toISOString(), // Use lastModified for proper sync
       frequency: newQso.band,
       mode: newQso.mode,
       call_sign: newQso.call,
@@ -530,7 +537,8 @@ export async function updateQso(id: string, updatedQso: QSO) {
       ...newQsos[index],  // Keep existing properties
       ...updatedQso,      // Override with new values
       id: newQsos[index].id, // Ensure the ID remains the same
-      timestamp: Date.now() // Update timestamp for conflict resolution
+      timestamp: Date.now(), // Update timestamp for conflict resolution
+      lastModified: Date.now() // Track when this QSO was last modified
     };
     newQsos[index] = updated;
     
@@ -544,8 +552,8 @@ export async function updateQso(id: string, updatedQso: QSO) {
     if (backendApi.connected.value) {
       const stationConfig = await fileStorage.getStationConfig();
       const backendQso: BackendQso = {
-        id: updated.id!.toString(),
-        timestamp: new Date(updated.datetime).toISOString(),
+        id: updated.id!,
+        timestamp: new Date(updated.lastModified!).toISOString(), // Use lastModified for proper sync
         frequency: updated.band,
         mode: updated.mode,
         call_sign: updated.call,
