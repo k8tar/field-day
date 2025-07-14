@@ -79,6 +79,7 @@ pub enum QsoOperationType {
     Add,
     Update,
     Delete,
+    Clear,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

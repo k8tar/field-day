@@ -51,20 +51,34 @@ export interface ApiResponse<T> {
 class BackendApiService {
   private config: BackendConfig = {
     baseUrl: 'http://localhost:3030',
-    timeout: 10000,
-    retries: 3,
+    timeout: 5000, // Reduced timeout for faster detection
+    retries: 2, // Reduced retries to fail faster
   };
 
   private isConnected = ref(false);
   private lastError = ref<string | null>(null);
+  private connectionCheckInterval: NodeJS.Timeout | null = null;
 
   constructor() {
     this.checkConnection();
-    
-    // Check connection every 10 minutes to minimize connection refused spam
-    setInterval(() => {
-      this.checkConnection();
-    }, 600000); // 10 minutes
+    this.startConnectionChecking();
+  }
+
+  private startConnectionChecking(): void {
+    // Clear any existing interval
+    if (this.connectionCheckInterval) {
+      clearInterval(this.connectionCheckInterval);
+    }
+
+    // Use adaptive interval: check more frequently when disconnected
+    const checkInterval = () => {
+      const interval = this.isConnected.value ? 60000 : 10000; // 1 min when connected, 10 sec when disconnected
+      this.connectionCheckInterval = setTimeout(() => {
+        this.checkConnection().finally(() => checkInterval());
+      }, interval);
+    };
+
+    checkInterval();
   }
 
   public get connected() {
@@ -78,7 +92,7 @@ class BackendApiService {
   private async checkConnection(): Promise<void> {
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 3000); // Reduced timeout
+      const timeoutId = setTimeout(() => controller.abort(), 3000); // Quick timeout for responsiveness
       
       const response = await fetch(`${this.config.baseUrl}/api/station/status`, {
         method: 'GET',
@@ -91,7 +105,7 @@ class BackendApiService {
       this.isConnected.value = response.ok;
       this.lastError.value = null;
       
-      // Only log successful connections to reduce console noise
+      // Only log connection state changes to reduce noise
       if (!wasConnected && this.isConnected.value) {
         console.log('✅ Backend service connected');
         window.dispatchEvent(new CustomEvent('backendConnected'));
@@ -106,7 +120,7 @@ class BackendApiService {
       
       // Only log the first disconnection to avoid spam
       if (wasConnected) {
-        this.lastError.value = error instanceof Error ? error.message : 'Unknown error';
+        this.lastError.value = error instanceof Error ? error.message : 'Connection refused';
         console.log('❌ Backend service disconnected:', this.lastError.value);
         window.dispatchEvent(new CustomEvent('backendDisconnected'));
       }
@@ -148,15 +162,18 @@ class BackendApiService {
       } catch (error) {
         this.lastError.value = error instanceof Error ? error.message : 'Unknown error';
         
+        // Check connection immediately when request fails on final attempt
         if (attempt === this.config.retries - 1) {
+          // Don't log here to avoid spam - let checkConnection handle logging
+          this.checkConnection();
           return {
             success: false,
             error: this.lastError.value,
           };
         }
         
-        // Exponential backoff
-        await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
+        // Shorter backoff for faster failure detection
+        await new Promise(resolve => setTimeout(resolve, 500 * (attempt + 1)));
       }
     }
 
@@ -370,6 +387,47 @@ class BackendApiService {
     return this.addMessage(messageData);
   }
 
+  // Admin API
+  async triggerLogReset(): Promise<{
+    success: boolean;
+    reset_timestamp?: string;
+    error?: string;
+  }> {
+    const response = await this.makeRequest<{
+      reset_timestamp: string;
+    }>('/admin/reset-log', {
+      method: 'POST',
+    });
+    
+    if (response.success && response.data) {
+      return {
+        success: true,
+        reset_timestamp: response.data.reset_timestamp,
+      };
+    } else {
+      return {
+        success: false,
+        error: response.error || 'Failed to trigger log reset',
+      };
+    }
+  }
+
+  async getLastLogResetTime(): Promise<string | null> {
+    const response = await this.makeRequest<{
+      command_id?: string;
+      timestamp?: number;
+      issued_by?: string;
+      reason?: string;
+    }>('/admin/reset-status');
+    
+    if (response.success && response.data?.timestamp) {
+      // Convert timestamp (milliseconds since epoch) to ISO string
+      return new Date(response.data.timestamp).toISOString();
+    }
+    
+    return null;
+  }
+
   // Utility methods
   setBaseUrl(url: string): void {
     this.config.baseUrl = url;
@@ -382,6 +440,11 @@ class BackendApiService {
 
   setRetries(retries: number): void {
     this.config.retries = retries;
+  }
+
+  // Public method to force a connection check
+  async refreshConnectionStatus(): Promise<void> {
+    await this.checkConnection();
   }
 }
 

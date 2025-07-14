@@ -455,3 +455,16 @@ export async function clearAllDismissed() {
   await saveDismissedMessages();
   console.log('📨 Cleared all dismissed messages');
 }
+
+// Clear all messages (for log reset)
+export async function clearAllMessages() {
+  console.log('🗑️ Clearing all messages from local storage');
+  messages.value = [];
+  await saveMessages();
+  
+  // Also clear dismissed messages
+  dismissedMessageIds.value.clear();
+  await saveDismissedMessages();
+  
+  console.log('✅ Successfully cleared all messages');
+}

@@ -26,6 +26,11 @@
   --modal-bg: rgba(0, 0, 0, 0.5);
   --modal-content: #ffffff;
   --hover-color: #f0f0f0;
+  --error-bg: #fee2e2;
+  --error-border: #fecaca;
+  --error-color: #dc2626;
+  --error-text: #7f1d1d;
+  --code-bg: #f8f9fa;
 }
 
 // Dark theme
@@ -51,6 +56,11 @@
   --modal-bg: rgba(0, 0, 0, 0.7);
   --modal-content: #2c2c2c;
   --hover-color: #333;
+  --error-bg: #451a1a;
+  --error-border: #7f1d1d;
+  --error-color: #f87171;
+  --error-text: #fecaca;
+  --code-bg: #374151;
 }
 
 // ================================================

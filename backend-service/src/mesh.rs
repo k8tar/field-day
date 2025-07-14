@@ -11,12 +11,14 @@ use tracing::{info, warn, debug};
 
 use crate::station::StationManager;
 use crate::types::{Station, MeshDiscoveryRequest, MeshDiscoveryResponse};
+use crate::api::admin::ResetLogCommand;
 
 pub struct MeshManager {
     discovery_port: u16,
     api_port: u16,
     station_manager: Arc<RwLock<StationManager>>,
     discovered_stations: Arc<RwLock<HashMap<String, Station>>>,
+    last_reset_command: Arc<RwLock<Option<ResetLogCommand>>>,
 }
 
 impl MeshManager {
@@ -26,6 +28,7 @@ impl MeshManager {
             api_port,
             station_manager,
             discovered_stations: Arc::new(RwLock::new(HashMap::new())),
+            last_reset_command: Arc::new(RwLock::new(None)),
         })
     }
     
@@ -291,5 +294,67 @@ impl MeshManager {
         } else {
             0
         }
+    }
+    
+    /// Set the last reset command and store it for propagation to new stations
+    pub async fn set_log_reset_command(&mut self, command: ResetLogCommand) {
+        info!("Storing reset command with timestamp {}", command.timestamp);
+        *self.last_reset_command.write().await = Some(command);
+    }
+    
+    /// Get the last reset command (used when new stations join)
+    pub async fn get_last_reset_command(&self) -> Option<ResetLogCommand> {
+        self.last_reset_command.read().await.clone()
+    }
+    
+    /// Broadcast reset command to all discovered stations
+    pub async fn broadcast_reset_command(&self, command: &ResetLogCommand) -> Result<()> {
+        let stations = self.discovered_stations.read().await;
+        
+        for station in stations.values() {
+            if !station.is_self {
+                if let Err(e) = self.send_reset_command_to_station(station, command).await {
+                    warn!("Failed to send reset command to station {}: {}", station.call_sign, e);
+                }
+            }
+        }
+        
+        info!("Broadcast reset command to {} stations", stations.len());
+        Ok(())
+    }
+    
+    /// Send reset command to a specific station
+    async fn send_reset_command_to_station(&self, station: &Station, command: &ResetLogCommand) -> Result<()> {
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(10))
+            .danger_accept_invalid_certs(true)
+            .build()?;
+        
+        // Try HTTP first, then HTTPS
+        for protocol in &["http", "https"] {
+            let url = format!("{}://{}:{}/api/admin/reset-log", protocol, station.ip_address, station.port);
+            
+            match client.post(&url)
+                .json(command)
+                .send()
+                .await
+            {
+                Ok(response) if response.status().is_success() => {
+                    info!("Successfully sent reset command to station {} ({})", station.call_sign, station.ip_address);
+                    return Ok(());
+                }
+                Ok(response) => {
+                    warn!("Failed to send reset command to station {} ({}): HTTP {}", 
+                          station.call_sign, station.ip_address, response.status());
+                }
+                Err(e) => {
+                    debug!("Failed to connect to station {} ({}) via {}: {}", 
+                           station.call_sign, station.ip_address, protocol, e);
+                }
+            }
+        }
+        
+        Err(anyhow::anyhow!("Could not send reset command to station {} ({})", 
+                           station.call_sign, station.ip_address))
     }
 }

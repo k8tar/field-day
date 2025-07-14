@@ -130,6 +130,32 @@ impl QsoManager {
         self.qsos.len()
     }
     
+    /// Clear all QSOs (used for network-wide reset)
+    pub async fn clear_all_qsos(&mut self) -> Result<()> {
+        info!("Clearing all QSOs - {} QSOs will be removed", self.qsos.len());
+        
+        // Keep track of deleted QSO IDs for sync purposes
+        let qso_ids: Vec<String> = self.qsos.keys().cloned().collect();
+        self.deleted_qso_ids.extend(qso_ids);
+        
+        // Clear the QSOs
+        self.qsos.clear();
+        
+        // Add operation record
+        self.recent_operations.push(QsoOperation {
+            operation_type: QsoOperationType::Clear,
+            qso: None,
+            qso_id: Some("ALL".to_string()),
+            timestamp: Utc::now(),
+        });
+        
+        // Save to storage
+        self.save_qsos().await?;
+        
+        info!("Successfully cleared all QSOs");
+        Ok(())
+    }
+    
     pub async fn sync_with_peers(&mut self, mesh_manager: &Arc<RwLock<MeshManager>>) -> Result<()> {
         let stations = mesh_manager.read().await.get_discovered_stations();
         

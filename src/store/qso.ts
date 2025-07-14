@@ -463,9 +463,13 @@ export async function logQso(qso: any) {
     
     backendApi.addQso(backendQso).catch(error => {
       console.error('Failed to add QSO to backend:', error);
+      // Force a connection check when QSO sync fails
+      backendApi.refreshConnectionStatus();
     });
   } else {
     console.warn('⚠️ Backend service not available - QSO will not be synced to network');
+    // Force a connection check when backend is not available
+    backendApi.refreshConnectionStatus();
   }
   
   // Broadcast new QSO to network for immediate sync
@@ -508,9 +512,13 @@ export async function deleteQso(id: string) {
   if (backendApi.connected.value && deletedQso) {
     backendApi.deleteQso(deletedQso.id!).catch(error => {
       console.error('Failed to delete QSO from backend:', error);
+      // Force a connection check when QSO deletion fails
+      backendApi.refreshConnectionStatus();
     });
   } else {
     console.warn('⚠️ Backend service not available - QSO deletion will not be synced to network');
+    // Force a connection check when backend is not available
+    backendApi.refreshConnectionStatus();
   }
   
   // Broadcast deletion to network for immediate sync
@@ -522,7 +530,6 @@ export async function deleteQso(id: string) {
       console.error('Failed to broadcast QSO deletion to network:', error);
     }
   }
-  
 }
 
 export async function updateQso(id: string, updatedQso: QSO) {
@@ -635,6 +642,113 @@ export async function refreshQsosFromServer(): Promise<void> {
   await refreshQsosFromBackend();
 }
 
+// Log Reset Functions
+export async function clearAllQsos(): Promise<void> {
+  console.log('🗑️ Clearing all QSOs from local storage');
+  qsos.value = [];
+  await saveQsos();
+  triggerAchievementCheck(); // Update achievements after clearing
+}
+
+export async function clearQsosAfterTimestamp(resetTimestamp: string): Promise<void> {
+  const resetTime = new Date(resetTimestamp).getTime();
+  console.log(`🗑️ Clearing QSOs after reset timestamp: ${resetTimestamp}`);
+  
+  // Keep only QSOs that were created before the reset timestamp
+  const filteredQsos = qsos.value.filter(qso => {
+    const qsoTime = qso.lastModified || qso.timestamp || new Date(qso.datetime).getTime();
+    return qsoTime < resetTime;
+  });
+  
+  const removedCount = qsos.value.length - filteredQsos.length;
+  qsos.value = filteredQsos;
+  await saveQsos();
+  
+  console.log(`🗑️ Removed ${removedCount} QSOs after reset timestamp`);
+  triggerAchievementCheck(); // Update achievements after clearing
+}
+
+export async function processLogReset(resetTimestamp: string): Promise<void> {
+  console.log(`📋 Processing log reset command with timestamp: ${resetTimestamp}`);
+  
+  // Clear all QSOs locally
+  await clearAllQsos();
+  
+  // Clear all messages locally
+  try {
+    const { clearAllMessages } = await import('@/store/message');
+    await clearAllMessages();
+    console.log('✅ Successfully cleared all messages during log reset');
+  } catch (error) {
+    console.error('❌ Failed to clear messages during log reset:', error);
+  }
+  
+  // Store the reset timestamp for future reference
+  try {
+    await fileStorage.saveSettings({
+      band: band.value,
+      operator: operator.value,
+      mode: mode.value,
+      lastLogResetTimestamp: resetTimestamp
+    });
+    console.log('✅ Log reset timestamp saved to settings');
+  } catch (error) {
+    console.error('❌ Failed to save log reset timestamp:', error);
+  }
+  
+  // Refresh QSOs from backend, but only keep ones after reset timestamp
+  if (backendApi.connected.value) {
+    await refreshQsosFromBackend();
+    // Filter out any QSOs that were created before the reset
+    await clearQsosAfterTimestamp(resetTimestamp);
+  }
+}
+
+export async function checkForLogReset(): Promise<void> {
+  // Only check if we're connected to the backend
+  if (!backendApi.connected.value) {
+    console.log('📋 Skipping log reset check - backend not connected');
+    return;
+  }
+  
+  try {
+    console.log('📋 Checking for log reset commands...');
+    // Check if there's a recent log reset command
+    const lastResetTime = await backendApi.getLastLogResetTime();
+    if (!lastResetTime) {
+      console.log('📋 No log reset commands found');
+      return;
+    }
+    
+    console.log(`📋 Found log reset command with timestamp: ${lastResetTime}`);
+    
+    // Get our stored reset timestamp
+    const settings = await fileStorage.getSettings().catch(() => ({})) as any;
+    const localResetTime = settings.lastLogResetTimestamp;
+    
+    // If backend has a newer reset time, process it
+    if (!localResetTime || new Date(lastResetTime) > new Date(localResetTime)) {
+      console.log(`🔄 Processing newer log reset command: ${lastResetTime} (local: ${localResetTime})`);
+      await processLogReset(lastResetTime);
+    } else {
+      console.log(`📋 Local reset time is up to date: ${localResetTime}`);
+    }
+  } catch (error) {
+    console.error('❌ Failed to check for log reset:', error);
+    // Do not process reset on error - this prevents accidental QSO deletion
+  }
+}
+
+// Trigger achievement check (lazy import to avoid circular dependencies)
+function triggerAchievementCheck(): void {
+  // Use dynamic import to avoid circular dependencies
+  import('@/services/achievementService').then(({ achievementService }) => {
+    achievementService.checkNow().catch(error => {
+      console.error('Error checking achievements:', error);
+    });
+  });
+}
+
 export function startPeriodicQsoRefresh(): void {
   // Stop any existing interval to prevent duplicates
   if (refreshInterval) {
@@ -664,12 +778,18 @@ export function stopPeriodicQsoRefresh(): void {
   }
 }
 
-// Trigger achievement check (lazy import to avoid circular dependencies)
-function triggerAchievementCheck(): void {
-  // Use dynamic import to avoid circular dependencies
-  import('@/services/achievementService').then(({ achievementService }) => {
-    achievementService.checkNow().catch(error => {
-      console.error('Error checking achievements:', error);
-    });
-  });
+// Set up backend connection event listeners
+window.addEventListener('backendConnected', () => {
+  console.log('📡 Backend connected - starting QSO refresh');
+  startPeriodicQsoRefresh();
+});
+
+window.addEventListener('backendDisconnected', () => {
+  console.log('📡 Backend disconnected - stopping QSO refresh');
+  stopPeriodicQsoRefresh();
+});
+
+// Start refresh if backend is already connected
+if (backendApi.connected.value) {
+  startPeriodicQsoRefresh();
 }

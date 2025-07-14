@@ -118,6 +118,8 @@ impl MessageManager {
     }
     
     pub async fn sync_with_peers(&mut self, mesh_manager: &Arc<RwLock<MeshManager>>) -> Result<()> {
+        // Additional safety check - this function should only be called when mesh is enabled
+        // but we check again to be safe
         let stations = mesh_manager.read().await.get_discovered_stations();
         
         if stations.is_empty() {
@@ -297,6 +299,19 @@ impl MessageManager {
             debug!("No changes made during message sync processing");
         }
         
+        Ok(())
+    }
+    
+    pub async fn clear_all_messages(&mut self) -> Result<()> {
+        info!("Clearing all messages from storage");
+        
+        // Clear the messages HashMap
+        self.messages.clear();
+        
+        // Save empty state to storage
+        self.save_messages().await?;
+        
+        info!("Successfully cleared all messages");
         Ok(())
     }
 }

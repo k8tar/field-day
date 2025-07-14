@@ -2,7 +2,11 @@
   <div class="header">
     <div class="header-left">
       <div class="logo-section">
-        <img src="/logo-small.svg" alt="K8TAR Field Day Logger" class="app-logo" />
+        <img 
+          :src="logoSrc" 
+          alt="K8TAR Field Day Logger" 
+          class="app-logo" 
+        />
       </div>
       <div class="station-info">
         <span class="station-designator">{{ stationDesignator || 'K8TAR' }}</span>
@@ -93,6 +97,11 @@ import { backgroundNetworkService, meshConnectionState } from '@/services/backgr
 
 // Station designator
 const stationDesignator = ref('');
+
+// Logo source based on theme
+const logoSrc = computed(() => {
+  return isDark.value ? '/k8tar-header-logo-dark.svg' : '/k8tar-header-logo.svg';
+});
 
 // Mode selection
 const currentMode = ref(storeMode.value || 'PH');
@@ -209,15 +218,16 @@ const totalDiscoveredCount = computed(() => {
   return stationStatusService.getTotalDiscoveredCount();
 });
 
-// Network status for icon coloring: gray if mesh disabled, green if connected to stations, red if no stations, yellow if backend disconnected
+// Network status for icon coloring: red if backend disconnected, gray if mesh disabled, green if connected to stations
 const networkStatus = computed(() => {
-  // If mesh is disabled, show disabled state regardless of backend status
-  if (!isMeshConnected.value) {
-    return 'disabled';
+  // Backend connection is required for any network functionality
+  if (!backendApi.connected.value) {
+    return 'disconnected'; // Red - backend not available
   }
   
-  if (!backendApi.connected.value) {
-    return 'disconnected'; // Backend not available
+  // If mesh is disabled but backend is connected, show disabled state
+  if (!isMeshConnected.value) {
+    return 'disabled'; // Gray - mesh disabled but backend available
   }
   
   const connectedCount = stationStatusService.getConnectedCount();
@@ -279,8 +289,8 @@ function getNetworkIcon(): string {
     case 'connected': return 'wifi';
     case 'warning': return 'wifi_tethering';
     case 'searching': return 'wifi_find';
-    case 'disconnected': return 'signal_wifi_off';
-    case 'disabled': return 'portable_wifi_off';
+    case 'disconnected': return 'wifi_off';
+    case 'disabled': return 'wifi_off';
     default: return 'wifi_off';
   }
 }
@@ -438,10 +448,10 @@ watch(isMeshConnected, async (connected) => {
 }
 
 .app-logo {
-  height: 40px;
+  height: 60px; /* Increased from 40px */
   width: auto;
   transition: opacity 0.2s ease;
-  max-width: 180px; /* Prevent logo from getting too large on wide screens */
+  max-width: 280px; /* Increased from 180px */
   
   &:hover {
     opacity: 0.8;
@@ -451,8 +461,8 @@ watch(isMeshConnected, async (connected) => {
 /* Responsive logo - use compact version on smaller screens */
 @media (max-width: 768px) {
   .app-logo {
-    height: 32px;
-    max-width: 120px;
+    height: 45px; /* Increased from 32px */
+    max-width: 200px; /* Increased from 120px */
   }
 }
 
@@ -553,7 +563,7 @@ watch(isMeshConnected, async (connected) => {
 }
 
 .network-button.disconnected {
-  color: #9ca3af; /* Gray - backend disconnected */
+  color: #ef4444; /* Red - backend disconnected */
 }
 
 .network-button.disabled {

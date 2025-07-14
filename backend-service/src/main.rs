@@ -103,12 +103,28 @@ async fn main() -> anyhow::Result<()> {
     
     let qso_sync_manager = qso_manager.clone();
     let mesh_sync_manager = mesh_manager.clone();
+    let config_manager_qso = config_manager.clone();
     tokio::spawn(async move {
+        let mut last_log = std::time::Instant::now();
         loop {
             tokio::time::sleep(tokio::time::Duration::from_secs(30)).await;
             
-            if let Err(e) = qso_sync_manager.write().await.sync_with_peers(&mesh_sync_manager).await {
-                warn!("QSO sync failed: {}", e);
+            // Check if mesh networking is enabled before syncing
+            let mesh_enabled = {
+                let config = config_manager_qso.read().await;
+                config.get().mesh.enabled
+            };
+            
+            if mesh_enabled {
+                if let Err(e) = qso_sync_manager.write().await.sync_with_peers(&mesh_sync_manager).await {
+                    warn!("QSO sync failed: {}", e);
+                }
+            } else {
+                // Only log once per minute to avoid spam
+                if last_log.elapsed().as_secs() >= 60 {
+                    info!("QSO sync skipped - mesh networking disabled");
+                    last_log = std::time::Instant::now();
+                }
             }
         }
     });
@@ -116,12 +132,28 @@ async fn main() -> anyhow::Result<()> {
     // Message sync background task
     let message_sync_manager = message_manager.clone();
     let mesh_message_manager = mesh_manager.clone();
+    let config_manager_msg = config_manager.clone();
     tokio::spawn(async move {
+        let mut last_log = std::time::Instant::now();
         loop {
             tokio::time::sleep(tokio::time::Duration::from_secs(15)).await; // More frequent for messages
             
-            if let Err(e) = message_sync_manager.write().await.sync_with_peers(&mesh_message_manager).await {
-                warn!("Message sync failed: {}", e);
+            // Check if mesh networking is enabled before syncing
+            let mesh_enabled = {
+                let config = config_manager_msg.read().await;
+                config.get().mesh.enabled
+            };
+            
+            if mesh_enabled {
+                if let Err(e) = message_sync_manager.write().await.sync_with_peers(&mesh_message_manager).await {
+                    warn!("Message sync failed: {}", e);
+                }
+            } else {
+                // Only log once per minute to avoid spam
+                if last_log.elapsed().as_secs() >= 60 {
+                    info!("Message sync skipped - mesh networking disabled");
+                    last_log = std::time::Instant::now();
+                }
             }
         }
     });
@@ -131,8 +163,8 @@ async fn main() -> anyhow::Result<()> {
     
     let cors = warp::cors()
         .allow_any_origin()
-        .allow_headers(vec!["content-type"])
-        .allow_methods(vec!["GET", "POST", "PUT", "DELETE"]);
+        .allow_headers(vec!["content-type", "authorization", "accept"])
+        .allow_methods(vec!["GET", "POST", "PUT", "DELETE", "OPTIONS"]);
     
     let routes = api_routes
         .with(cors)

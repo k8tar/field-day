@@ -1,0 +1,86 @@
+<svg width="370" height="60" viewBox="0 0 370 60" xmlns="http://www.w3.org/2000/svg">
+  <!-- Dark mode optimized - much brighter colors -->
+  <defs>
+    <linearGradient id="darkHeaderTextGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#93c5fd;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#60a5fa;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  
+  <!-- Perfect triangular lattice tower with radio signals -->
+  <g stroke="#93c5fd" stroke-width="1.0" fill="none" opacity="0.9">
+    <!-- Tower base -->
+    <rect x="14" y="50" width="14" height="4" fill="#93c5fd" opacity="0.8"/>
+    
+    <!-- Main triangular tower structure -->
+    <!-- Left leg -->
+    <line x1="16" y1="50" x2="20" y2="12" stroke-width="1.5"/>
+    <!-- Right leg -->
+    <line x1="26" y1="50" x2="22" y2="12" stroke-width="1.5"/>
+    
+    <!-- Horizontal cross members (levels) -->
+    <line x1="16" y1="50" x2="26" y2="50" stroke-width="1.0"/>
+    <line x1="17" y1="44" x2="25" y2="44" stroke-width="0.9"/>
+    <line x1="18" y1="38" x2="24" y2="38" stroke-width="0.8"/>
+    <line x1="18.5" y1="32" x2="23.5" y2="32" stroke-width="0.8"/>
+    <line x1="19" y1="26" x2="23" y2="26" stroke-width="0.7"/>
+    <line x1="19.5" y1="20" x2="22.5" y2="20" stroke-width="0.7"/>
+    <line x1="20" y1="14" x2="22" y2="14" stroke-width="0.6"/>
+    
+    <!-- Diagonal cross bracing (X patterns between levels) -->
+    <!-- Bottom section -->
+    <line x1="16" y1="50" x2="25" y2="44" stroke-width="0.6"/>
+    <line x1="26" y1="50" x2="17" y2="44" stroke-width="0.6"/>
+    
+    <!-- Middle-bottom section -->
+    <line x1="17" y1="44" x2="24" y2="38" stroke-width="0.6"/>
+    <line x1="25" y1="44" x2="18" y2="38" stroke-width="0.6"/>
+    
+    <!-- Middle section -->
+    <line x1="18" y1="38" x2="23.5" y2="32" stroke-width="0.6"/>
+    <line x1="24" y1="38" x2="18.5" y2="32" stroke-width="0.6"/>
+    
+    <!-- Middle-top section -->
+    <line x1="18.5" y1="32" x2="23" y2="26" stroke-width="0.6"/>
+    <line x1="23.5" y1="32" x2="19" y2="26" stroke-width="0.6"/>
+    
+    <!-- Upper section -->
+    <line x1="19" y1="26" x2="22.5" y2="20" stroke-width="0.6"/>
+    <line x1="23" y1="26" x2="19.5" y2="20" stroke-width="0.6"/>
+    
+    <!-- Top section -->
+    <line x1="19.5" y1="20" x2="22" y2="14" stroke-width="0.6"/>
+    <line x1="22.5" y1="20" x2="20" y2="14" stroke-width="0.6"/>
+    
+    <!-- Antenna mast at top -->
+    <line x1="21" y1="12" x2="21" y2="6" stroke-width="1.0"/>
+    
+    <!-- 3-element Yagi antenna with tall elements -->
+    <!-- Horizontal boom extending both directions from mast -->
+    <line x1="15" y1="6" x2="32" y2="6" stroke-width="0.6"/>
+    
+    <!-- Tall vertical elements extending both sides of boom -->
+    <!-- Reflector (longest, behind/left of mast) -->
+    <line x1="16" y1="0.5" x2="16" y2="11.5" stroke-width="0.8"/>
+    <!-- Driven element (just right of mast, visible) -->
+    <line x1="24" y1="1" x2="24" y2="11" stroke-width="0.8"/>
+    <!-- Director (shorter, in front/right of mast) -->
+    <line x1="30" y1="2" x2="30" y2="10" stroke-width="0.7"/>
+    
+  </g>
+  
+  <!-- K8TAR text - much brighter for dark mode -->
+  <text x="45" y="38" font-family="Arial, Helvetica, sans-serif" font-size="32" font-weight="bold" fill="url(#darkHeaderTextGradient)" letter-spacing="1px">
+    K8TAR
+  </text>
+  
+  <!-- Field Day Logger text - bright white -->
+  <text x="165" y="30" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="600" fill="#e2e8f0" letter-spacing="0.5px">
+    Field Day Logger
+  </text>
+  
+  <!-- Technology in Amateur Radio Club - with T, A, R highlighted -->
+  <text x="165" y="46" font-family="Arial, Helvetica, sans-serif" font-size="11" font-weight="normal" fill="#cbd5e1" letter-spacing="0.5px">
+    <tspan font-weight="bold" fill="#93c5fd">T</tspan>echnology in <tspan font-weight="bold" fill="#93c5fd">A</tspan>mateur <tspan font-weight="bold" fill="#93c5fd">R</tspan>adio Club
+  </text>
+</svg>

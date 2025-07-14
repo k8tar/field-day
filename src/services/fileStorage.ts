@@ -85,6 +85,7 @@ export interface SettingsData {
   networkSettings?: any;
   qsosUploadedToServer?: boolean;
   lastSyncTimestamp?: number;
+  lastLogResetTimestamp?: string;
   lastUpdated: number;
 }
 

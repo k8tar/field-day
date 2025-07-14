@@ -145,6 +145,63 @@
               <span class="material-icons" :class="{ 'spinning': isSyncing }">sync</span>
               {{ isSyncing ? 'Syncing...' : 'Force Sync' }}
             </button>
+            
+            <button 
+              class="reset-log-button" 
+              @click="showResetConfirmation"
+              :disabled="isResettingLog"
+            >
+              <span class="material-icons" :class="{ 'spinning': isResettingLog }">delete_sweep</span>
+              {{ isResettingLog ? 'Resetting...' : 'Reset Network Log' }}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Log Reset Confirmation Dialog -->
+      <div v-if="showResetDialog" class="reset-confirmation-overlay" @click.self="cancelReset">
+        <div class="reset-confirmation-dialog">
+          <div class="reset-dialog-header">
+            <h3>
+              <span class="material-icons warning-icon">warning</span>
+              Reset Network Log
+            </h3>
+          </div>
+          <div class="reset-dialog-body">
+            <p><strong>This will permanently delete ALL QSOs and Messages from ALL stations in the network!</strong></p>
+            <p>This action:</p>
+            <ul>
+              <li>Clears all logged contacts from every station</li>
+              <li>Clears all messages from every station</li>
+              <li>Resets achievement progress for all stations</li>
+              <li>Cannot be undone</li>
+              <li>Will force late-joining stations to also clear their logs</li>
+            </ul>
+            <p>Only use this if you need to restart the Field Day logging session.</p>
+            
+            <div class="reset-confirmation-input">
+              <label for="reset-confirmation">Type "RESET" to confirm:</label>
+              <input 
+                id="reset-confirmation"
+                v-model="resetConfirmationText" 
+                type="text" 
+                placeholder="Type RESET to confirm"
+                @keyup.enter="confirmReset"
+              />
+            </div>
+          </div>
+          <div class="reset-dialog-footer">
+            <button class="cancel-reset-button" @click="cancelReset">
+              Cancel
+            </button>
+            <button 
+              class="confirm-reset-button" 
+              @click="confirmReset"
+              :disabled="resetConfirmationText.toUpperCase() !== 'RESET' || isResettingLog"
+            >
+              <span class="material-icons" :class="{ 'spinning': isResettingLog }">delete_sweep</span>
+              {{ isResettingLog ? 'Resetting...' : 'Reset Network Log' }}
+            </button>
           </div>
         </div>
       </div>
@@ -294,6 +351,11 @@ const isSyncing = ref(false);
 const connectionStatus = ref<string>('');
 const isRestarting = ref(false);
 const isRetrying = ref(false);
+
+// Log reset state
+const showResetDialog = ref(false);
+const resetConfirmationText = ref('');
+const isResettingLog = ref(false);
 
 // Environment detection
 const isElectron = computed(() => {
@@ -512,7 +574,7 @@ async function retryConnection() {
   try {
     console.log('🔄 Retrying backend connection...');
     
-    // Try to get station info to test connection
+    // Try to get station info to test connection (this will internally call checkConnection)
     await backendApi.getStationInfo();
     
     // Wait a moment for the connection to establish
@@ -520,11 +582,23 @@ async function retryConnection() {
     
     if (backendApi.connected.value) {
       console.log('✅ Backend connection successful');
+      connectionStatus.value = 'Backend connection restored!';
+      setTimeout(() => {
+        connectionStatus.value = '';
+      }, 3000);
     } else {
       console.log('❌ Backend still not available');
+      connectionStatus.value = 'Backend still not available. Please check if the backend service is running.';
+      setTimeout(() => {
+        connectionStatus.value = '';
+      }, 5000);
     }
   } catch (error) {
     console.error('❌ Error retrying connection:', error);
+    connectionStatus.value = `Connection failed: ${error instanceof Error ? error.message : 'Unknown error'}`;
+    setTimeout(() => {
+      connectionStatus.value = '';
+    }, 5000);
   } finally {
     isRetrying.value = false;
   }
@@ -808,6 +882,66 @@ async function checkMeshConnectionState() {
   }
 }
 
+// Log Reset Functions
+function showResetConfirmation() {
+  showResetDialog.value = true;
+  resetConfirmationText.value = '';
+}
+
+function cancelReset() {
+  showResetDialog.value = false;
+  resetConfirmationText.value = '';
+}
+
+async function confirmReset() {
+  if (resetConfirmationText.value.toUpperCase() !== 'RESET' || isResettingLog.value) {
+    return;
+  }
+  
+  isResettingLog.value = true;
+  
+  try {
+    console.log('🔄 Triggering network-wide log reset...');
+    
+    // Call the backend API to trigger the log reset
+    const result = await backendApi.triggerLogReset();
+    
+    if (result.success) {
+      console.log('✅ Network log reset successful:', result.reset_timestamp);
+      
+      // Process the reset locally
+      const { processLogReset } = await import('@/store/qso');
+      await processLogReset(result.reset_timestamp!);
+      
+      // Close the dialog
+      showResetDialog.value = false;
+      resetConfirmationText.value = '';
+      
+      // Show success status
+      connectionStatus.value = 'Network log reset successful!';
+      setTimeout(() => {
+        connectionStatus.value = '';
+      }, 5000);
+      
+    } else {
+      console.error('❌ Failed to reset network log:', result.error);
+      connectionStatus.value = `Failed to reset log: ${result.error}`;
+      setTimeout(() => {
+        connectionStatus.value = '';
+      }, 10000);
+    }
+    
+  } catch (error) {
+    console.error('❌ Error during log reset:', error);
+    connectionStatus.value = `Error during reset: ${error instanceof Error ? error.message : 'Unknown error'}`;
+    setTimeout(() => {
+      connectionStatus.value = '';
+    }, 10000);
+  } finally {
+    isResettingLog.value = false;
+  }
+}
+
 // Load initial data on mount
 onMounted(async () => {
   await refreshStationInfo();
@@ -861,6 +995,36 @@ onMounted(async () => {
   
   // Check mesh connection state on mount
   await checkMeshConnectionState();
+  
+  // Check for any pending log reset commands
+  if (isConnected.value) {
+    try {
+      const { checkForLogReset } = await import('@/store/qso');
+      await checkForLogReset();
+    } catch (error) {
+      console.error('Failed to check for log reset on mount:', error);
+    }
+  }
+  
+  // --- Periodically check backend connection status ---
+  let backendConnectionInterval: any = null;
+  onMounted(() => {
+    console.log('🔄 Starting backend connection polling...');
+    backendConnectionInterval = setInterval(async () => {
+      try {
+        console.log('🔄 Checking backend connection...');
+        await backendApi.refreshConnectionStatus(); // This will update backendApi.connected.value
+        console.log('✅ Backend connection check completed. Connected:', backendApi.connected.value);
+      } catch (e) {
+        console.log('❌ Backend connection check failed:', e);
+        // Ignore errors, connection state is updated internally
+      }
+    }, 2000); // Check every 2 seconds
+  });
+  
+  onUnmounted(() => {
+    if (backendConnectionInterval) clearInterval(backendConnectionInterval);
+  });
 });
 
 // Clean up event listeners on unmount
@@ -893,41 +1057,46 @@ watch(isConnected, async (connected) => {
 
 // Watch for modal opening/closing
 watch(() => props.isOpen, async (isOpen) => {
-  if (isOpen && isConnected.value) {
-    // Check and sync mesh connection state first
-    await checkMeshConnectionState();
+  if (isOpen) {
+    // Force an immediate backend connection check when modal opens
+    await backendApi.refreshConnectionStatus();
     
-    // Refresh discovered stations when modal opens, regardless of mode
-    try {
-      console.log('📱 Network modal opened - fetching discovered stations...');
-      const stations = await backendApi.getDiscoveredStations();
-      discoveredStations.value = stations;
+    if (isConnected.value) {
+      // Check and sync mesh connection state first
+      await checkMeshConnectionState();
       
-      // Update station statuses
-      updateStationStatuses(stations);
-      
-      console.log(`📡 Modal opened: ${stations.length} stations loaded from backend`);
-      
-      // Also trigger discovery to ensure fresh data
-      console.log('🔍 Triggering mesh discovery for fresh data...');
-      await backendApi.discoverStations();
+      // Refresh discovered stations when modal opens, regardless of mode
+      try {
+        console.log('📱 Network modal opened - fetching discovered stations...');
+        const stations = await backendApi.getDiscoveredStations();
+        discoveredStations.value = stations;
         
-      // Wait a moment then fetch updated list
-      setTimeout(async () => {
-        try {
-          const updatedStations = await backendApi.getDiscoveredStations();
-          discoveredStations.value = updatedStations;
+        // Update station statuses
+        updateStationStatuses(stations);
+        
+        console.log(`📡 Modal opened: ${stations.length} stations loaded from backend`);
+        
+        // Also trigger discovery to ensure fresh data
+        console.log('🔍 Triggering mesh discovery for fresh data...');
+        await backendApi.discoverStations();
           
-          // Update station statuses again
-          updateStationStatuses(updatedStations);
-          
-          console.log(`After discovery: ${updatedStations.length} stations found`);
-        } catch (error) {
-          console.error('Failed to get updated stations after discovery:', error);
-        }
-      }, 2000);
-    } catch (error) {
-      console.error('Failed to load discovered stations on modal open:', error);
+        // Wait a moment then fetch updated list
+        setTimeout(async () => {
+          try {
+            const updatedStations = await backendApi.getDiscoveredStations();
+            discoveredStations.value = updatedStations;
+            
+            // Update station statuses again
+            updateStationStatuses(updatedStations);
+            
+            console.log(`After discovery: ${updatedStations.length} stations found`);
+          } catch (error) {
+            console.error('Failed to get updated stations after discovery:', error);
+          }
+        }, 2000);
+      } catch (error) {
+        console.error('Failed to load discovered stations on modal open:', error);
+      }
     }
   }
 });
@@ -1058,8 +1227,8 @@ function handleStationStatusUpdate(event: Event) {
 }
 
 .connection-error {
-  background-color: var(--error-bg, #fee);
-  border: 1px solid var(--error-border, #fcc);
+  background-color: var(--error-bg);
+  border: 1px solid var(--error-border);
   border-radius: 8px;
   padding: 1.5rem;
   margin: 1rem 0;
@@ -1072,28 +1241,29 @@ function handleStationStatusUpdate(event: Event) {
   margin-bottom: 1rem;
   
   .error-icon {
-    color: var(--error-color, #d63384);
+    color: var(--error-color);
     font-size: 1.25rem;
   }
   
   h4 {
     margin: 0;
-    color: var(--error-color, #d63384);
+    color: var(--error-color);
   }
 }
 
 .error-details {
   p {
     margin: 0.5rem 0;
-    color: var(--text-color);
+    color: var(--error-text);
   }
   
   code {
-    background-color: var(--code-bg, #f8f9fa);
+    background-color: var(--code-bg);
     padding: 0.25rem 0.5rem;
     border-radius: 4px;
     font-family: 'Courier New', monospace;
     font-size: 0.9rem;
+    color: var(--text-color);
   }
 }
 
@@ -1475,9 +1645,9 @@ function handleStationStatusUpdate(event: Event) {
 }
 
 .disconnect-button {
-  background-color: #ef4444;
+  background-color: var(--error-color);
   color: white;
-  border-color: #ef4444;
+  border-color: var(--error-color);
 }
 
 .scan-button:hover,
@@ -1529,5 +1699,172 @@ function handleStationStatusUpdate(event: Event) {
 @keyframes spin {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
+}
+
+// Log Reset Styles
+.reset-log-button {
+  background-color: var(--error-color);
+  color: white;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: background-color 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+
+  &:hover:not(:disabled) {
+    background-color: var(--error-border);
+  }
+
+  &:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+}
+
+.reset-confirmation-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.8);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1001;
+}
+
+.reset-confirmation-dialog {
+  width: 90%;
+  max-width: 500px;
+  background-color: var(--form-bg);
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+  border: 2px solid var(--error-color);
+}
+
+.reset-dialog-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid var(--border-color);
+  background-color: var(--error-bg);
+  border-radius: 6px 6px 0 0;
+
+  h3 {
+    margin: 0;
+    color: var(--error-color);
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .warning-icon {
+    color: var(--error-color);
+    font-size: 1.25rem;
+  }
+}
+
+.reset-dialog-body {
+  padding: 1.5rem;
+  color: var(--text-color);
+
+  p {
+    margin: 0.75rem 0;
+  }
+
+  ul {
+    margin: 1rem 0;
+    padding-left: 1.5rem;
+  }
+
+  li {
+    margin: 0.5rem 0;
+  }
+}
+
+.reset-confirmation-input {
+  margin-top: 1.5rem;
+  
+  label {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-weight: 600;
+    color: var(--error-color);
+  }
+  
+  input {
+    width: 100%;
+    padding: 0.75rem;
+    border: 2px solid var(--error-border);
+    border-radius: 4px;
+    background-color: var(--form-bg);
+    color: var(--text-color);
+    font-size: 1rem;
+    font-family: monospace;
+    text-transform: uppercase;
+    
+    &:focus {
+      outline: none;
+      border-color: var(--error-color);
+    }
+  }
+}
+
+.reset-dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 1rem;
+  padding: 1rem 1.5rem;
+  border-top: 1px solid var(--border-color);
+  background-color: var(--bg-color);
+  border-radius: 0 0 6px 6px;
+}
+
+.cancel-reset-button {
+  padding: 0.5rem 1rem;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background-color: var(--form-bg);
+  color: var(--text-color);
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: all 0.2s ease;
+
+  &:hover {
+    background-color: var(--border-color);
+  }
+}
+
+.confirm-reset-button {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  background-color: var(--error-color);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: background-color 0.2s ease;
+
+  &:hover:not(:disabled) {
+    background-color: var(--error-border);
+  }
+
+  &:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  .material-icons {
+    font-size: 1rem;
+  }
 }
 </style>
