@@ -23,7 +23,9 @@
     "lint:fix": "vue-cli-service lint --fix",
     "electron": "electron .",
     "electron:dev": "electron .",
-    "electron:build": "npm run build && electron-builder"
+    "electron:build": "npm run build && electron-builder",
+    "start": "npm run build && electron .",
+    "start:dev": "npm run electron:dev"
   },
   "dependencies": {
     "marked": "^16.0.0",

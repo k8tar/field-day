@@ -2,6 +2,7 @@ import { app, BrowserWindow, protocol, shell, ipcMain } from 'electron';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import fs from 'node:fs';
+import { spawn } from 'node:child_process';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -59,6 +60,116 @@ app.on('select-client-certificate', (event, webContents, url, list, callback) =>
 
 let mainWindow;
 
+// Backend service management
+let backendProcess = null;
+let isBackendStarting = false;
+
+/**
+ * Start the Rust backend service
+ */
+async function startBackendService() {
+  if (backendProcess || isBackendStarting) {
+    console.log('🔧 Backend service already running or starting');
+    return;
+  }
+  
+  isBackendStarting = true;
+  console.log('🚀 Starting Rust backend service...');
+  
+  try {
+    const backendDir = path.join(__dirname, 'backend-service');
+    const binaryPath = process.platform === 'win32' 
+      ? path.join(backendDir, 'target', 'release', 'fieldday-backend.exe')
+      : path.join(backendDir, 'target', 'release', 'fieldday-backend');
+    
+    // Check if binary exists, if not try to build it
+    if (!fs.existsSync(binaryPath)) {
+      console.log('🔨 Backend binary not found, building...');
+      await buildBackendService(backendDir);
+    }
+    
+    // Start the backend service
+    backendProcess = spawn(binaryPath, ['--port', '3030', '--discovery-port', '3030', '--verbose'], {
+      cwd: backendDir,
+      stdio: ['pipe', 'pipe', 'pipe'],
+      detached: false
+    });
+    
+    backendProcess.stdout.on('data', (data) => {
+      console.log(`[BACKEND] ${data.toString().trim()}`);
+    });
+    
+    backendProcess.stderr.on('data', (data) => {
+      console.log(`[BACKEND ERROR] ${data.toString().trim()}`);
+    });
+    
+    backendProcess.on('close', (code) => {
+      console.log(`🛑 Backend service exited with code ${code}`);
+      backendProcess = null;
+    });
+    
+    backendProcess.on('error', (error) => {
+      console.error('❌ Failed to start backend service:', error);
+      backendProcess = null;
+    });
+    
+    console.log('✅ Backend service started successfully');
+    
+  } catch (error) {
+    console.error('❌ Failed to start backend service:', error);
+  } finally {
+    isBackendStarting = false;
+  }
+}
+
+/**
+ * Build the Rust backend service
+ */
+function buildBackendService(backendDir) {
+  return new Promise((resolve, reject) => {
+    console.log('🔨 Building Rust backend service...');
+    
+    const buildProcess = spawn('cargo', ['build', '--release'], {
+      cwd: backendDir,
+      stdio: ['pipe', 'pipe', 'pipe']
+    });
+    
+    buildProcess.stdout.on('data', (data) => {
+      console.log(`[CARGO] ${data.toString().trim()}`);
+    });
+    
+    buildProcess.stderr.on('data', (data) => {
+      console.log(`[CARGO ERROR] ${data.toString().trim()}`);
+    });
+    
+    buildProcess.on('close', (code) => {
+      if (code === 0) {
+        console.log('✅ Backend service built successfully');
+        resolve();
+      } else {
+        console.error(`❌ Backend build failed with code ${code}`);
+        reject(new Error(`Build failed with code ${code}`));
+      }
+    });
+    
+    buildProcess.on('error', (error) => {
+      console.error('❌ Failed to run cargo build:', error);
+      reject(error);
+    });
+  });
+}
+
+/**
+ * Stop the backend service
+ */
+function stopBackendService() {
+  if (backendProcess) {
+    console.log('🛑 Stopping backend service...');
+    backendProcess.kill();
+    backendProcess = null;
+  }
+}
+
 function createWindow() {
   // Create the browser window
   const preloadPath = path.join(__dirname, 'src', 'preload.js');
@@ -70,7 +181,7 @@ function createWindow() {
     height: 900,
     show: false,
     autoHideMenuBar: true,
-    icon: path.join(__dirname, 'public', 'favicon.ico'),
+    icon: path.join(__dirname, 'public', 'app-icon.ico'),
     webPreferences: {
       preload: preloadPath,
       nodeIntegration: false,
@@ -161,11 +272,14 @@ function createWindow() {
 }
 
 // This method will be called when Electron has finished initialization
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   // Set app user model id for windows
   if (process.platform === 'win32') {
     app.setAppUserModelId('com.k8tar.fieldday');
   }
+
+  // Start the backend service first
+  await startBackendService();
 
   // Setup IPC handlers for file operations
   ipcMain.handle('fs-write', async (event, filePath, data) => {
@@ -221,7 +335,10 @@ app.whenReady().then(() => {
     }
   });
 
-  createWindow();
+  // Give the backend a moment to start before opening the window
+  setTimeout(() => {
+    createWindow();
+  }, 2000);
 
   app.on('activate', function () {
     // On macOS, re-create a window when dock icon is clicked
@@ -231,7 +348,15 @@ app.whenReady().then(() => {
 
 // Quit when all windows are closed, except on macOS
 app.on('window-all-closed', () => {
+  // Stop the backend service when app is closing
+  stopBackendService();
+  
   if (process.platform !== 'darwin') app.quit();
+});
+
+// Ensure backend service is stopped when app quits
+app.on('before-quit', () => {
+  stopBackendService();
 });
 
 // Handle protocol for production builds

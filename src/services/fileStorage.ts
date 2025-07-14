@@ -5,51 +5,63 @@
 
 // Import path utilities - handle both browser and Electron environments
 const isElectron = typeof window !== 'undefined' && (window as any).Electron;
-const path = isElectron ? require('path') : null;
-const fs = isElectron ? require('fs') : null;
+
+// Get Electron file system API if available
+const electronFS = isElectron ? (window as any).electronFS : null;
 
 // Fallback path join for browser environment
 function pathJoin(...segments: string[]): string {
-  if (path && path.join) {
-    return path.join(...segments);
-  }
-  // Simple fallback for browser
+  // Simple path join implementation for browser/Electron renderer
   return segments.filter(s => s).join('/').replace(/\/+/g, '/');
 }
 
 // Fallback file existence check for browser environment
 function fileExists(filePath: string): boolean {
-  if (fs && fs.existsSync) {
-    return fs.existsSync(filePath);
-  }
   // In browser, we'll assume files don't exist and rely on localStorage fallback
+  // Electron file operations are handled via IPC in the file operations below
   return false;
 }
 
-// Fallback file read for browser environment
+// Async file read using Electron IPC or fallback
+async function readFileAsync(filePath: string): Promise<string> {
+  if (electronFS && electronFS.readFile) {
+    try {
+      const data = await electronFS.readFile(filePath);
+      return data || '';
+    } catch (error) {
+      console.warn('Failed to read file via Electron IPC:', error);
+      throw new Error('File system not available or file not found');
+    }
+  }
+  throw new Error('File system not available in browser environment');
+}
+
+// Async file write using Electron IPC or fallback
+async function writeFileAsync(filePath: string, data: string): Promise<void> {
+  if (electronFS && electronFS.writeFile) {
+    try {
+      await electronFS.writeFile(filePath, data);
+      return;
+    } catch (error) {
+      console.warn('Failed to write file via Electron IPC:', error);
+      throw new Error('File system write failed');
+    }
+  }
+  throw new Error('File system not available in browser environment');
+}
+
+// Legacy sync functions (deprecated in Electron renderer)
 function readFileSync(filePath: string): string {
-  if (fs && fs.readFileSync) {
-    return fs.readFileSync(filePath, 'utf8');
-  }
-  throw new Error('File system not available in browser environment');
+  throw new Error('Synchronous file operations not supported in Electron renderer - use async operations');
 }
 
-// Fallback file write for browser environment
 function writeFileSync(filePath: string, data: string): void {
-  if (fs && fs.writeFileSync) {
-    fs.writeFileSync(filePath, data, 'utf8');
-    return;
-  }
-  throw new Error('File system not available in browser environment');
+  throw new Error('Synchronous file operations not supported in Electron renderer - use async operations');
 }
 
-// Fallback mkdir for browser environment
 function mkdirSync(dirPath: string, options?: any): void {
-  if (fs && fs.mkdirSync) {
-    fs.mkdirSync(dirPath, options);
-    return;
-  }
-  // In browser, this is a no-op
+  // Directory creation is handled by the main process in our IPC handlers
+  console.log('Directory creation handled by main process via IPC');
 }
 
 export interface StationConfig {
@@ -162,29 +174,33 @@ class FileStorageService {
     try {
       // Check if we're in an Electron environment
       if (this.isElectron()) {
-        const configPath = pathJoin(this.DATA_DIR, 'station-config.json');
-        if (!fileExists(configPath)) {
-          return {
-            callsign: '',
-            designator: '',
-            stationClass: '',
-            stationSection: '',
-            port: this.getCurrentPort(),
-            lastUpdated: Date.now()
-          };
+        try {
+          const configData = await this.readFileElectron('station-config.json');
+          if (configData) {
+            const config = JSON.parse(configData);
+            
+            // Ensure all required fields exist
+            return {
+              callsign: config.callsign || '',
+              designator: config.designator || '',
+              stationClass: config.stationClass || '',
+              stationSection: config.stationSection || '',
+              port: config.port || this.getCurrentPort(),
+              lastUpdated: config.lastUpdated || Date.now()
+            };
+          }
+        } catch (error) {
+          console.warn('Failed to read station config:', error);
         }
-
-        const configData = readFileSync(configPath);
-        const config = JSON.parse(configData);
         
-        // Ensure all required fields exist
+        // File doesn't exist or read failed, return default config
         return {
-          callsign: config.callsign || '',
-          designator: config.designator || '',
-          stationClass: config.stationClass || '',
-          stationSection: config.stationSection || '',
-          port: config.port || this.getCurrentPort(),
-          lastUpdated: config.lastUpdated || Date.now()
+          callsign: '',
+          designator: '',
+          stationClass: '',
+          stationSection: '',
+          port: this.getCurrentPort(),
+          lastUpdated: Date.now()
         };
       } else {
         // Browser environment - use localStorage fallback

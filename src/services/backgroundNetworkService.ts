@@ -59,8 +59,8 @@ export const meshConnectionState = MeshConnectionState.getInstance();
 
 class BackgroundNetworkService {
   private isRunning = false;
-  private discoveryInterval: NodeJS.Timeout | null = null;
-  private syncInterval: NodeJS.Timeout | null = null;
+  private discoveryInterval: number | null = null;
+  private syncInterval: number | null = null;
   private knownStations = new Map<string, NetworkStation>();
   private localNetworkId: string = '';
 
@@ -140,12 +140,12 @@ class BackgroundNetworkService {
     // Start mesh discovery (every 60 seconds - reduced frequency)
     this.discoveryInterval = setInterval(() => {
       this.performMeshDiscovery();
-    }, 60000);
+    }, 60000) as unknown as number;
 
     // Start QSO sync (every 30 seconds - reduced frequency)
     this.syncInterval = setInterval(() => {
       this.performQsoSync();
-    }, 30000);
+    }, 30000) as unknown as number;
 
     // Do initial discovery and sync
     setTimeout(() => {
@@ -161,12 +161,12 @@ class BackgroundNetworkService {
     this.isRunning = false;
 
     if (this.discoveryInterval) {
-      clearInterval(this.discoveryInterval);
+      clearInterval(this.discoveryInterval as unknown as NodeJS.Timeout);
       this.discoveryInterval = null;
     }
 
     if (this.syncInterval) {
-      clearInterval(this.syncInterval);
+      clearInterval(this.syncInterval as unknown as NodeJS.Timeout);
       this.syncInterval = null;
     }
   }
