@@ -1,6 +1,8 @@
 import { ref, computed, watch } from 'vue';
 import { backendApi, type BackendMessage } from '@/services/backendApiService';
 import { fileStorage } from '@/services/fileStorage';
+import { CrossOriginStorage } from '@/services/crossOriginStorage';
+import { logger, ErrorHandler } from '@/utils/logger';
 
 export interface Message {
   id: string;
@@ -17,30 +19,29 @@ const MESSAGE_STORAGE_KEY = 'messages';
 export const messages = ref<Message[]>([]);
 export const isRefreshing = ref(false);
 
-// Local storage for dismissed message IDs (per station)
-const DISMISSED_MESSAGES_KEY = 'dismissedMessages';
+// Cross-origin storage for dismissed message IDs
 export const dismissedMessageIds = ref<Set<string>>(new Set());
 
-// Load dismissed messages from local storage
+// Load dismissed messages from cross-origin storage
 async function loadDismissedMessages() {
-  try {
-    const dismissed = localStorage.getItem(DISMISSED_MESSAGES_KEY);
+  const result = await ErrorHandler.handleAsync(async () => {
+    const dismissed = CrossOriginStorage.getJSON<string[]>('dismissedMessages');
     if (dismissed) {
-      dismissedMessageIds.value = new Set(JSON.parse(dismissed));
+      dismissedMessageIds.value = new Set(dismissed);
     }
-  } catch (error) {
-    console.error('Failed to load dismissed messages:', error);
+    return true;
+  }, 'load dismissed messages');
+  
+  if (!result) {
     dismissedMessageIds.value = new Set();
   }
 }
 
-// Save dismissed messages to local storage
+// Save dismissed messages to cross-origin storage
 async function saveDismissedMessages() {
-  try {
-    localStorage.setItem(DISMISSED_MESSAGES_KEY, JSON.stringify(Array.from(dismissedMessageIds.value)));
-  } catch (error) {
-    console.error('Failed to save dismissed messages:', error);
-  }
+  await ErrorHandler.handleAsync(async () => {
+    CrossOriginStorage.setJSON('dismissedMessages', Array.from(dismissedMessageIds.value));
+  }, 'save dismissed messages');
 }
 
 // Computed property for visible messages (excluding dismissed ones)

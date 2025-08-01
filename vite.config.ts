@@ -4,7 +4,15 @@ import path from 'path';
 
 export default defineConfig({
   plugins: [
-    vue(),
+    vue({
+      // Explicitly configure Vue plugin for better Docker compatibility
+      template: {
+        compilerOptions: {
+          // Ensure proper Vue template compilation in Docker
+          isCustomElement: (tag) => false
+        }
+      }
+    }),
     // No API middleware - all API calls handled by backend service on port 3030
   ],
   base: './', // Use relative paths for assets - needed for Electron
@@ -12,6 +20,12 @@ export default defineConfig({
     alias: {
       '@': path.resolve(__dirname, 'src'),
     },
+  },
+  build: {
+    // Ensure proper build configuration for Docker
+    target: 'esnext',
+    minify: 'esbuild',
+    sourcemap: false
   },
   server: {
     host: '0.0.0.0', // Listen on all interfaces, not just localhost

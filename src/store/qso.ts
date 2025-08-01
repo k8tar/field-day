@@ -1,6 +1,8 @@
 import { ref, watch } from 'vue';
 import { backendApi, type BackendQso } from '@/services/backendApiService';
 import { fileStorage } from '@/services/fileStorage';
+import { CrossOriginStorage } from '@/services/crossOriginStorage';
+import { logger, ErrorHandler } from '@/utils/logger';
 
 export interface QSO {
   id?: string;      // Unique UUID string identifier
@@ -18,7 +20,6 @@ export interface QSO {
 
 const QSO_STORAGE_KEY = 'qsos';
 const SETTINGS_KEY = 'qso_settings';
-const PENDING_DELETIONS_KEY = 'qso_pending_deletions';
 
 // Periodic QSO refresh interval
 let refreshInterval: NodeJS.Timeout | null = null;
@@ -838,29 +839,27 @@ if (backendApi.connected.value) {
   startPeriodicQsoRefresh();
 }
 
-// Load pending deletions from localStorage
+// Load pending deletions from cross-origin storage
 async function loadPendingDeletions() {
-  try {
-    const pending = localStorage.getItem(PENDING_DELETIONS_KEY);
-    if (pending) {
-      const deletionIds = JSON.parse(pending);
+  const result = await ErrorHandler.handleAsync(async () => {
+    const deletionIds = CrossOriginStorage.getJSON<string[]>('pendingDeletions');
+    if (deletionIds) {
       pendingDeletions.value = new Set(deletionIds);
-      console.log(`📋 Loaded ${deletionIds.length} pending deletions from storage`);
+      logger.info(`Loaded ${deletionIds.length} pending deletions from cross-origin storage`);
     }
-  } catch (error) {
-    console.error('Failed to load pending deletions:', error);
+    return true;
+  }, 'load pending deletions');
+  
+  if (!result) {
     pendingDeletions.value = new Set();
   }
 }
 
-// Save pending deletions to localStorage
+// Save pending deletions to cross-origin storage
 async function savePendingDeletions() {
-  try {
-    const deletionIds = Array.from(pendingDeletions.value);
-    localStorage.setItem(PENDING_DELETIONS_KEY, JSON.stringify(deletionIds));
-  } catch (error) {
-    console.error('Failed to save pending deletions:', error);
-  }
+  await ErrorHandler.handleAsync(async () => {
+    CrossOriginStorage.setJSON('pendingDeletions', Array.from(pendingDeletions.value));
+  }, 'save pending deletions');
 }
 
 // Add a QSO deletion to pending list

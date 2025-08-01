@@ -1,0 +1,23 @@
+services:
+  fieldday-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"  # Frontend
+      - "3030:3030"  # Backend API
+    environment:
+      - NODE_ENV=production
+    networks:
+      - fieldday-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+networks:
+  fieldday-network:
+    driver: bridge

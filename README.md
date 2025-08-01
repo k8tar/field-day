@@ -2,6 +2,54 @@
 
 A modern, offline-capable Field Day logging application built with Vue.js, TypeScript, and Electron for ARRL Field Day operations.
 
+## Screenshots
+
+The Field Day Logger provides a comprehensive logging experience with multiple features designed specifically for ARRL Field Day operations.
+
+### Main Interface
+![Field Day Logger Main Interface](docs/screenshots/main-interface.png)
+
+*The main logging interface featuring QSO entry form, recent contacts table, live statistics, section progress tracking, and messaging system.*
+
+![Field Day Logger Light Mode](docs/screenshots/main-interface-light.png)
+
+*The same interface shown in light mode, demonstrating the application's theme support.*
+
+### Section Progress Tracking
+![ARRL Section Progress Map](docs/screenshots/section-progress.png)
+
+*Interactive ARRL section progress map showing contacted sections by division with visual progress indicators and statistics.*
+
+### Contact Management
+![All Contacts View](docs/screenshots/all-contacts.png)
+
+*Complete contact log with search, filtering, and editing capabilities. Shows all QSOs with full details and action buttons.*
+
+### Field Day Bonuses
+![Field Day Scoring Bonuses](docs/screenshots/bonuses.png)
+
+*Field Day bonus point tracking system with checkboxes for Emergency Power, Media Publicity, Public Location, and other ARRL bonus categories.*
+
+### Live Statistics & Analytics
+![QSO Statistics Dashboard](docs/screenshots/statistics.png)
+
+*Comprehensive statistics dashboard with QSO counts, sections worked, hourly rates, band/mode distribution charts, and operator performance metrics.*
+
+### Multi-Station Networking
+![Network Synchronization](docs/screenshots/network-sync.png)
+
+*Network status and station discovery interface showing connected Field Day stations, mesh network health, and synchronization controls.*
+
+### Station Messaging
+![Station Messaging System](docs/screenshots/messaging.png)
+
+*Built-in messaging system for communication between Field Day stations with message history and real-time delivery.*
+
+### Configuration & Setup
+![Configuration Dialog](docs/screenshots/configuration.png)
+
+*Station configuration interface for setting up callsign, class, section, operators, and system backup/restore functionality.*
+
 ## Key Features
 
 - **🌐 Offline Operation**: Works completely without internet access for remote Field Day locations
@@ -16,13 +64,33 @@ A modern, offline-capable Field Day logging application built with Vue.js, TypeS
 
 ## Documentation
 
+- **[Docker Guide](DOCKER.md)** - Complete Docker setup and usage guide
 - **[Build Instructions](BUILD.md)** - Complete build and distribution guide
 - **[In-App Help](public/docs/README.md)** - User guide accessible via F1 or ? button
 - **[Release Notes](RELEASE-NOTES.md)** - Latest features, fixes, and version history
 
 ## Quick Start
 
-### Development Setup
+### Docker (Recommended)
+```bash
+# Run the complete application
+docker-compose up
+
+# Development mode with hot-reload
+docker-compose -f docker-compose.dev.yml up
+
+# Build Electron application in Docker
+./docker-build.sh          # Linux/macOS
+.\docker-build.ps1          # Windows PowerShell
+
+# Validate Docker setup
+./docker-validate.sh       # Linux/macOS
+.\docker-validate.ps1      # Windows PowerShell
+```
+
+See **[Docker Guide](DOCKER.md)** for complete Docker documentation.
+
+### Native Development Setup
 ```bash
 # Clone the repository
 git clone <repository-url>
@@ -37,7 +105,7 @@ npm run dev
 
 Access the application at `https://localhost:8080`
 
-### Production Build
+## Production Build
 ```bash
 # Build web application
 npm run build

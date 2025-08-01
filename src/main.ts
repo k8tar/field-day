@@ -4,6 +4,7 @@ import router from './router'
 import store from './store'
 import { backendApi } from './services/backendApiService'
 import { startPeriodicQsoRefresh } from './store/qso'
+import { CrossOriginStorage } from './services/crossOriginStorage'
 
 // Initialize the backend service and handle connection
 async function initializeBackend() {
@@ -89,7 +90,17 @@ ipcRenderer?.on?.('QSO_UPDATE', (event: any, { qsos }: { qsos: any[] }) => {
   // Update your Vue state/store with new qsos
 });
 
-createApp(App)
-    .use(store)
-    .use(router)
-    .mount('#app')
+// Initialize application
+async function initializeApp() {
+  // Sync cross-origin storage when app starts
+  await CrossOriginStorage.syncStationConfig();
+  
+  // Create and mount the Vue app
+  createApp(App)
+      .use(store)
+      .use(router)
+      .mount('#app')
+}
+
+// Start the application
+initializeApp();

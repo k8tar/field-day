@@ -2,6 +2,7 @@ import { ref, reactive, nextTick } from 'vue';
 import { fileStorage } from './fileStorage';
 import { startPeriodicQsoRefresh, stopPeriodicQsoRefresh } from '@/store/qso';
 import { backendApi } from './backendApiService';
+import { SafeInterval, SafeTimeout } from '../utils/performance';
 
 export interface NetworkStation {
   id: string;
@@ -37,8 +38,8 @@ class NetworkService {
   private hostPort = 8080; // Hardcoded to 8080 for all instances
   private connectedStations = reactive<NetworkStation[]>([]);
   private syncCallbacks: Array<(update: QsoUpdate) => void> = [];
-  private syncInterval: number | null = null;
-  private reconnectTimer: number | null = null; // Added missing property
+  private syncInterval: SafeInterval | null = null;
+  private reconnectTimer: SafeTimeout | null = null;
   private reconnectAttempts: number = 0; // Optional: used in scheduleReconnect
   private maxReconnectAttempts: number = 5; // Optional: used in scheduleReconnect
   private reconnectDelay: number = 2000; // Optional: used in scheduleReconnect
@@ -421,7 +422,7 @@ class NetworkService {
     
     // Stop periodic operations
     if (this.syncInterval) {
-      clearInterval(this.syncInterval);
+      this.syncInterval.stop();
       this.syncInterval = null;
     }
     
@@ -495,16 +496,17 @@ class NetworkService {
   private startPeriodicSync(): void {
     // Clear any existing sync interval
     if (this.syncInterval) {
-      clearInterval(this.syncInterval);
+      this.syncInterval.stop();
     }
 
     
     // Sync every 10 seconds
-    this.syncInterval = setInterval(async () => {
+    this.syncInterval = new SafeInterval(async () => {
       if (this.status.isConnected) {
         await this.performSync();
       }
-    }, 10000) as unknown as number;
+    }, 10000);
+    this.syncInterval.start();
 
     // Perform initial sync
     setTimeout(() => this.performSync(), 2000);
@@ -622,7 +624,7 @@ class NetworkService {
 
   private cancelReconnect(): void {
     if (this.reconnectTimer) {
-      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer.cancel();
       this.reconnectTimer = null;
       this.reconnectAttempts = 0;
     }
@@ -637,9 +639,10 @@ class NetworkService {
     const delay = this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1); // Exponential backoff
     
     
-    this.reconnectTimer = setTimeout(() => {
+    this.reconnectTimer = new SafeTimeout(() => {
       this.attemptAutoReconnect();
-    }, delay) as unknown as number;
+    }, delay);
+    this.reconnectTimer.start();
   }
 
   private async getLocalStationId(): Promise<string> {

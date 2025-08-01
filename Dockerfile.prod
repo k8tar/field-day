@@ -1,0 +1,74 @@
+# Production Dockerfile using development container approach
+FROM node:22
+
+# Install dependencies needed for Rust compilation and Electron building
+RUN apt-get update && apt-get install -y \
+    python3 \
+    make \
+    g++ \
+    git \
+    curl \
+    pkg-config \
+    libssl-dev \
+    ca-certificates \
+    wine \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Rust
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+WORKDIR /app
+
+# Copy package files
+COPY package*.json ./
+
+# Install Node.js dependencies
+RUN npm ci
+
+# Copy backend service
+COPY backend-service ./backend-service
+
+# Build backend service
+WORKDIR /app/backend-service
+RUN cargo build --release
+
+# Back to main directory and copy all source
+WORKDIR /app
+COPY . .
+
+# Clean any existing build artifacts
+RUN rm -rf dist/ dist-installers/ node_modules/.vite
+
+# Debug and build the frontend
+RUN echo "=== Checking vite.config.ts ===" && \
+    ls -la vite.config.ts && \
+    echo "=== Testing config compilation ===" && \
+    npx tsc vite.config.ts --noEmit --esModuleInterop --allowSyntheticDefaultImports --moduleResolution node || echo "TypeScript compilation failed" && \
+    echo "=== Starting build with debug ===" && \
+    npm run build
+
+# Build Electron app - just Linux for Docker, Windows signing issues
+RUN npm run electron:build -- --linux --publish=never
+
+# Create output directory and copy all build artifacts  
+RUN mkdir -p /output && \
+    cp -r dist-installers/* /output/ 2>/dev/null || echo "No Electron build artifacts found" && \
+    echo "=== Build artifacts ===" && \
+    ls -la /output/
+
+# Create run script for both scenarios
+RUN echo '#!/bin/bash\n\
+if [ "$1" = "extract" ]; then\n\
+  cp -r /output/* /host-output/ 2>/dev/null || echo "No files to extract"\n\
+else\n\
+  echo "Starting Field Day Logger..."\n\
+  echo "Frontend: http://localhost:8080"\n\
+  echo "Backend API: http://localhost:3030"\n\
+  npm run dev &\n\
+  cd backend-service && cargo run --release\n\
+fi' > /app/start.sh && chmod +x /app/start.sh
+
+EXPOSE 8080 3030
+
+CMD ["/app/start.sh"]

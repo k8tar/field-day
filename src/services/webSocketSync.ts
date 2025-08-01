@@ -5,7 +5,10 @@
  * as a complement to the HTTP-based polling system.
  */
 
-interface WebSocketMessage {
+import { CrossOriginStorage } from './crossOriginStorage';
+import { SafeInterval, SafeTimeout } from '../utils/performance';
+
+export interface WebSocketMessage {
   type: 'qso-update' | 'station-info' | 'ping' | 'pong' | 'discovery';
   data: any;
   timestamp: number;
@@ -18,8 +21,8 @@ class WebSocketSyncService {
   private hostPort = 9001; // Different port from HTTP API
   private connections: Set<WebSocket> = new Set();
   private messageHandlers: Map<string, Function[]> = new Map();
-  private reconnectTimer: number | null = null;
-  private pingInterval: number | null = null;
+  private reconnectTimer: SafeTimeout | null = null;
+  private pingInterval: SafeInterval | null = null;
 
   constructor() {
     this.setupMessageHandlers();
@@ -116,8 +119,8 @@ class WebSocketSyncService {
   // Setup discovery mechanism for host (using localStorage)
   private setupHostDiscovery(): void {
     const stationInfo = {
-      callsign: localStorage.getItem('stationCallsign') || 'UNKNOWN',
-      designator: localStorage.getItem('stationDesignator') || '1A',
+      callsign: CrossOriginStorage.getItem('stationCallsign') || 'UNKNOWN',
+      designator: CrossOriginStorage.getItem('stationDesignator') || '1A',
       host: true,
       port: this.hostPort,
       timestamp: Date.now(),
@@ -262,23 +265,25 @@ class WebSocketSyncService {
   // Start ping-pong to keep connection alive
   private startPingPong(): void {
     if (this.pingInterval) {
-      clearInterval(this.pingInterval);
+      this.pingInterval.stop();
     }
 
-    this.pingInterval = window.setInterval(() => {
+    this.pingInterval = new SafeInterval(() => {
       this.sendMessage({ type: 'ping', data: { timestamp: Date.now() } });
     }, 30000); // Ping every 30 seconds
+    this.pingInterval.start();
   }
 
   // Schedule reconnection
   private scheduleReconnect(): void {
     if (this.reconnectTimer) {
-      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer.cancel();
     }
 
-    this.reconnectTimer = window.setTimeout(() => {
+    this.reconnectTimer = new SafeTimeout(() => {
       // Reconnection logic would go here
     }, 5000);
+    this.reconnectTimer.start();
   }
 
   // Disconnect and cleanup
@@ -289,12 +294,12 @@ class WebSocketSyncService {
     }
 
     if (this.pingInterval) {
-      clearInterval(this.pingInterval);
+      this.pingInterval.stop();
       this.pingInterval = null;
     }
 
     if (this.reconnectTimer) {
-      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer.cancel();
       this.reconnectTimer = null;
     }
 
@@ -303,8 +308,8 @@ class WebSocketSyncService {
 
   // Helper methods
   private getLocalStationId(): string {
-    const callsign = localStorage.getItem('stationCallsign') || 'UNKNOWN';
-    const designator = localStorage.getItem('stationDesignator') || '1A';
+    const callsign = CrossOriginStorage.getItem('stationCallsign') || 'UNKNOWN';
+    const designator = CrossOriginStorage.getItem('stationDesignator') || '1A';
     return `${callsign}-${designator}`;
   }
 

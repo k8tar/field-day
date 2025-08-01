@@ -67,7 +67,7 @@
     "appId": "com.k8tar.fieldday",
     "productName": "Field Day Logger",
     "directories": {
-      "output": "dist-electron"
+      "output": "dist-installers"
     },
     "files": [
       "dist/**/*",
@@ -99,7 +99,8 @@
       ],
       "verifyUpdateCodeSignature": false,
       "requestedExecutionLevel": "asInvoker",
-      "forceCodeSigning": false
+      "forceCodeSigning": false,
+      "signAndEditExecutable": false
     },
     "nsis": {
       "oneClick": false,

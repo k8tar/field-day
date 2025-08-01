@@ -1,0 +1,42 @@
+# Development Dockerfile for Field Day Logger
+FROM node:20-alpine
+
+# Install dependencies for Rust and OpenSSL
+RUN apk add --no-cache \
+    curl \
+    build-base \
+    bash \
+    git \
+    pkgconfig \
+    openssl-dev \
+    openssl-libs-static
+
+# Install Rust
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+WORKDIR /app
+
+# Copy package files and install dependencies
+COPY package*.json ./
+RUN npm ci
+
+# Install nodemon for development
+RUN npm install -g nodemon
+
+# Copy source code
+COPY . .
+
+# Build backend in release mode for better performance in dev
+RUN cd backend-service && cargo build --release
+
+# Create development startup script
+RUN echo '#!/bin/bash' > /app/start-dev.sh && \
+    echo 'cd /app/backend-service && ./target/release/fieldday-backend --port 3030 --discovery-port 3030 &' >> /app/start-dev.sh && \
+    echo 'cd /app && npm run dev' >> /app/start-dev.sh && \
+    chmod +x /app/start-dev.sh
+
+# Expose ports
+EXPOSE 8080 3030
+
+CMD ["/app/start-dev.sh"]

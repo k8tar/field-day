@@ -1,0 +1,78 @@
+# Multi-stage Dockerfile for building Electron app
+FROM node:20 as base
+
+# Install dependencies needed for Electron building and Rust compilation
+RUN apt-get update && apt-get install -y \
+    python3 \
+    make \
+    g++ \
+    git \
+    curl \
+    pkg-config \
+    libssl-dev \
+    ca-certificates \
+    libx11-dev \
+    libxkbfile-dev \
+    && rm -rf /var/lib/apt/lists/* \
+    libsecret-dev \
+    nss-dev \
+    alsa-lib-dev \
+    gtk+3.0-dev \
+    gdk-pixbuf-dev \
+    cairo-dev \
+    pango-dev \
+    libdrm-dev \
+    mesa-dev \
+    xvfb
+
+# Install Rust for building the backend
+FROM base AS rust-installer
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+# Build stage
+FROM rust-installer AS builder
+
+WORKDIR /app
+
+# Copy package files
+COPY package*.json ./
+
+# Install Node.js dependencies
+RUN npm ci
+
+# Copy Rust backend
+COPY backend-service ./backend-service
+WORKDIR /app/backend-service
+RUN cargo build --release
+
+# Copy frontend source
+WORKDIR /app
+COPY . .
+
+# Clean any previous builds
+RUN rm -rf dist/ dist-electron/ node_modules/.vite
+
+# Explicitly install Vue plugin dependencies if missing
+RUN npm install @vitejs/plugin-vue --save-dev
+
+# Build frontend with verbose output
+RUN npm run build
+
+# Build Electron app
+RUN npm run electron:build
+
+# Output stage - copy built artifacts
+FROM ubuntu:latest AS output
+
+WORKDIR /output
+
+# Copy built Electron apps
+COPY --from=builder /app/dist-electron ./dist-electron
+
+# Create extraction script
+RUN echo '#!/bin/bash' > /output/extract.sh && \
+    echo 'cp -r /output/dist-electron/* /host-output/' >> /output/extract.sh && \
+    chmod +x /output/extract.sh
+
+CMD ["/output/extract.sh"]

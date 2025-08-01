@@ -3,6 +3,8 @@
  * Stores data in files specific to each port to avoid conflicts between instances
  */
 
+import { logger, ErrorHandler } from '../utils/logger';
+
 // Import path utilities - handle both browser and Electron environments
 const isElectron = typeof window !== 'undefined' && (window as any).Electron;
 
@@ -143,7 +145,14 @@ class FileStorageService {
   }
 
   private getStorageKey(type: string): string {
-    return `fieldday_${this.port}_${type}`;
+    // For cross-origin compatibility, use a port-agnostic key for shared data
+    // This ensures localhost:8080 and 127.0.0.1:8080 share the same data
+    return `fieldday_shared_${this.port}_${type}`;
+  }
+
+  // Helper method to get a machine-specific storage key for truly local data
+  private getMachineStorageKey(type: string): string {
+    return `fieldday_machine_${this.port}_${type}`;
   }
 
   private getFilePath(filename: string): string {
@@ -160,65 +169,60 @@ class FileStorageService {
       lastUpdated: Date.now()
     };
 
-    if (this.isElectron()) {
-      // Use Electron file system
-      await this.writeFileElectron('station-config.json', JSON.stringify(updatedConfig, null, 2));
-    } else {
-      // Browser environment - use localStorage
-      const configKey = `fieldday_station_config_${this.port}`;
-      localStorage.setItem(configKey, JSON.stringify(updatedConfig, null, 2));
+    await this.writeData('station-config.json', JSON.stringify(updatedConfig, null, 2));
+    
+    // Sync to cross-origin storage for immediate availability
+    this.syncToCrossOriginStorage(updatedConfig);
+  }
+
+  // Helper method to sync station config to cross-origin storage
+  private syncToCrossOriginStorage(config: StationConfig): void {
+    try {
+      import('./crossOriginStorage').then(({ CrossOriginStorage }) => {
+        if (config.callsign) CrossOriginStorage.setItem('stationCallsign', config.callsign);
+        if (config.designator) CrossOriginStorage.setItem('stationDesignator', config.designator);
+        if (config.stationClass) CrossOriginStorage.setItem('stationClass', config.stationClass);
+        if (config.stationSection) CrossOriginStorage.setItem('stationSection', config.stationSection);
+      });
+    } catch (error) {
+      console.warn('⚠️ Failed to sync to cross-origin storage:', error);
     }
+  }
+
+  // Generic data handler for arrays with timestamp
+  private async saveDataWithTimestamp<T>(
+    data: T[],
+    filename: string,
+    dataKey: string
+  ): Promise<void> {
+    const wrappedData = {
+      [dataKey]: data,
+      lastUpdated: Date.now()
+    };
+    await this.writeData(filename, JSON.stringify(wrappedData, null, 2));
+  }
+
+  private async getDataWithTimestamp<T>(
+    filename: string,
+    localStorageType: string,
+    dataKey: string,
+    defaultValue: T[] = []
+  ): Promise<T[]> {
+    return await ErrorHandler.handleAsync(async () => {
+      const dataStr = await this.readData(filename, localStorageType);
+      if (dataStr) {
+        const wrappedData = JSON.parse(dataStr);
+        return wrappedData[dataKey] || defaultValue;
+      }
+      return defaultValue;
+    }, `load ${dataKey} for port ${this.port}`, defaultValue) || defaultValue;
   }
 
   async getStationConfig(): Promise<StationConfig> {
     try {
-      // Check if we're in an Electron environment
-      if (this.isElectron()) {
-        try {
-          const configData = await this.readFileElectron('station-config.json');
-          if (configData) {
-            const config = JSON.parse(configData);
-            
-            // Ensure all required fields exist
-            return {
-              callsign: config.callsign || '',
-              designator: config.designator || '',
-              stationClass: config.stationClass || '',
-              stationSection: config.stationSection || '',
-              port: config.port || this.getCurrentPort(),
-              lastUpdated: config.lastUpdated || Date.now()
-            };
-          }
-        } catch (error) {
-          console.warn('Failed to read station config:', error);
-        }
-        
-        // File doesn't exist or read failed, return default config
-        return {
-          callsign: '',
-          designator: '',
-          stationClass: '',
-          stationSection: '',
-          port: this.getCurrentPort(),
-          lastUpdated: Date.now()
-        };
-      } else {
-        // Browser environment - use localStorage fallback
-        const configKey = `fieldday_station_config_${this.port}`;
-        const storedConfig = localStorage.getItem(configKey);
-        
-        if (!storedConfig) {
-          return {
-            callsign: '',
-            designator: '',
-            stationClass: '',
-            stationSection: '',
-            port: this.getCurrentPort(),
-            lastUpdated: Date.now()
-          };
-        }
-
-        const config = JSON.parse(storedConfig);
+      const configData = await this.readData('station-config.json', 'station_config');
+      if (configData) {
+        const config = JSON.parse(configData);
         
         // Ensure all required fields exist
         return {
@@ -230,6 +234,16 @@ class FileStorageService {
           lastUpdated: config.lastUpdated || Date.now()
         };
       }
+      
+      // No data found, return default config
+      return {
+        callsign: '',
+        designator: '',
+        stationClass: '',
+        stationSection: '',
+        port: this.getCurrentPort(),
+        lastUpdated: Date.now()
+      };
     } catch (error) {
       console.error('❌ Error reading station config:', error);
       throw error;
@@ -238,42 +252,11 @@ class FileStorageService {
 
   // QSO data methods
   async saveQsoData(qsos: any[]): Promise<void> {
-    const qsoData: QsoData = {
-      qsos,
-      lastUpdated: Date.now()
-    };
-
-    if (this.isElectron()) {
-      await this.writeFileElectron('qso-data.json', JSON.stringify(qsoData, null, 2));
-    } else {
-      // Browser environment - use localStorage
-      const qsoKey = `fieldday_qsos_${this.port}`;
-      localStorage.setItem(qsoKey, JSON.stringify(qsoData, null, 2));
-    }
+    await this.saveDataWithTimestamp(qsos, 'qso-data.json', 'qsos');
   }
 
   async getQsoData(): Promise<any[]> {
-    try {
-      if (this.isElectron()) {
-        const qsoDataStr = await this.readFileElectron('qso-data.json');
-        if (qsoDataStr) {
-          const qsoData: QsoData = JSON.parse(qsoDataStr);
-          return qsoData.qsos;
-        }
-      } else {
-        // Browser environment - use localStorage
-        const qsoKey = `fieldday_qsos_${this.port}`;
-        const qsoDataStr = localStorage.getItem(qsoKey);
-        if (qsoDataStr) {
-          const qsoData: QsoData = JSON.parse(qsoDataStr);
-          return qsoData.qsos;
-        }
-      }
-    } catch (error) {
-      console.warn(`⚠️ Failed to load QSOs for port ${this.port}:`, error);
-    }
-
-    return [];
+    return await this.getDataWithTimestamp('qso-data.json', 'qsos', 'qsos');
   }
 
   // Add QSOs (append to existing data)
@@ -285,82 +268,20 @@ class FileStorageService {
 
   // Operator data methods
   async saveOperators(operators: string[]): Promise<void> {
-    const operatorData: OperatorData = {
-      operators,
-      lastUpdated: Date.now()
-    };
-
-    if (this.isElectron()) {
-      await this.writeFileElectron('operators.json', JSON.stringify(operatorData, null, 2));
-    } else {
-      // Browser environment - use localStorage
-      const operatorsKey = `fieldday_operators_${this.port}`;
-      localStorage.setItem(operatorsKey, JSON.stringify(operatorData, null, 2));
-    }
+    await this.saveDataWithTimestamp(operators, 'operators.json', 'operators');
   }
 
   async getOperators(): Promise<string[]> {
-    try {
-      if (this.isElectron()) {
-        const operatorDataStr = await this.readFileElectron('operators.json');
-        if (operatorDataStr) {
-          const operatorData: OperatorData = JSON.parse(operatorDataStr);
-          return operatorData.operators;
-        }
-      } else {
-        // Browser environment - use localStorage
-        const operatorsKey = `fieldday_operators_${this.port}`;
-        const operatorDataStr = localStorage.getItem(operatorsKey);
-        if (operatorDataStr) {
-          const operatorData: OperatorData = JSON.parse(operatorDataStr);
-          return operatorData.operators;
-        }
-      }
-    } catch (error) {
-      console.warn(`⚠️ Failed to load operators for port ${this.port}:`, error);
-    }
-
-    return [];
+    return await this.getDataWithTimestamp<string>('operators.json', 'operators', 'operators');
   }
 
   // Bonus data methods
   async saveBonuses(bonuses: any[]): Promise<void> {
-    const bonusData: BonusData = {
-      bonuses,
-      lastUpdated: Date.now()
-    };
-
-    if (this.isElectron()) {
-      await this.writeFileElectron('bonuses.json', JSON.stringify(bonusData, null, 2));
-    } else {
-      // Browser environment - use localStorage
-      const bonusKey = `fieldday_bonuses_${this.port}`;
-      localStorage.setItem(bonusKey, JSON.stringify(bonusData, null, 2));
-    }
+    await this.saveDataWithTimestamp(bonuses, 'bonuses.json', 'bonuses');
   }
 
   async getBonuses(): Promise<any[]> {
-    try {
-      if (this.isElectron()) {
-        const bonusDataStr = await this.readFileElectron('bonuses.json');
-        if (bonusDataStr) {
-          const bonusData: BonusData = JSON.parse(bonusDataStr);
-          return bonusData.bonuses;
-        }
-      } else {
-        // Browser environment - use localStorage
-        const bonusKey = `fieldday_bonuses_${this.port}`;
-        const bonusDataStr = localStorage.getItem(bonusKey);
-        if (bonusDataStr) {
-          const bonusData: BonusData = JSON.parse(bonusDataStr);
-          return bonusData.bonuses;
-        }
-      }
-    } catch (error) {
-      console.warn(`⚠️ Failed to load bonuses for port ${this.port}:`, error);
-    }
-
-    return [];
+    return await this.getDataWithTimestamp('bonuses.json', 'bonuses', 'bonuses');
   }
 
   // Settings data methods
@@ -372,13 +293,7 @@ class FileStorageService {
       lastUpdated: Date.now()
     };
 
-    if (this.isElectron()) {
-      await this.writeFileElectron('settings.json', JSON.stringify(updatedSettings, null, 2));
-    } else {
-      // Browser environment - use localStorage
-      const settingsKey = `fieldday_settings_${this.port}`;
-      localStorage.setItem(settingsKey, JSON.stringify(updatedSettings, null, 2));
-    }
+    await this.writeData('settings.json', JSON.stringify(updatedSettings, null, 2));
   }
 
   async getSettings(): Promise<SettingsData> {
@@ -389,27 +304,23 @@ class FileStorageService {
       lastUpdated: Date.now()
     };
 
-    try {
-      if (this.isElectron()) {
-        const settingsDataStr = await this.readFileElectron('settings.json');
-        if (settingsDataStr) {
-          const settingsData: SettingsData = JSON.parse(settingsDataStr);
-          return { ...defaultSettings, ...settingsData };
-        }
-      } else {
-        // Browser environment - use localStorage
-        const settingsKey = `fieldday_settings_${this.port}`;
-        const settingsDataStr = localStorage.getItem(settingsKey);
-        if (settingsDataStr) {
-          const settingsData: SettingsData = JSON.parse(settingsDataStr);
-          return { ...defaultSettings, ...settingsData };
-        }
+    return await ErrorHandler.handleAsync(async () => {
+      const settingsDataStr = await this.readData('settings.json', 'settings');
+      if (settingsDataStr) {
+        const settingsData: SettingsData = JSON.parse(settingsDataStr);
+        return { ...defaultSettings, ...settingsData };
       }
-    } catch (error) {
-      console.warn(`⚠️ Failed to load settings for port ${this.port}:`, error);
-    }
+      return defaultSettings;
+    }, `load settings for port ${this.port}`, defaultSettings) || defaultSettings;
+  }
 
-    return defaultSettings;
+  // Message methods
+  async saveMessages(messages: any[]): Promise<void> {
+    await this.writeData('messages.json', JSON.stringify(messages, null, 2));
+  }
+
+  async getMessages(): Promise<any[]> {
+    return await this.getDataWithTimestamp('messages.json', 'messages', 'messages', []);
   }
 
   // Get or generate a persistent network ID for this station
@@ -460,6 +371,36 @@ class FileStorageService {
     } catch (error) {
       console.warn(`⚠️ Failed to read file ${filename}:`, error);
       return null;
+    }
+  }
+
+  // Universal storage methods that handle cross-origin data sharing
+  private async writeData(filename: string, content: string): Promise<void> {
+    if (this.isElectron()) {
+      await this.writeFileElectron(filename, content);
+    } else {
+      try {
+        await this.writeFileServer(filename, content);
+      } catch (error) {
+        console.warn(`⚠️ Server storage failed for ${filename}, using localStorage:`, error);
+        const storageKey = this.getStorageKey(filename.replace('.json', ''));
+        localStorage.setItem(storageKey, content);
+      }
+    }
+  }
+
+  private async readData(filename: string, localStorageType: string): Promise<string | null> {
+    if (this.isElectron()) {
+      return await this.readFileElectron(filename);
+    } else {
+      try {
+        const serverData = await this.readFileServer(filename);
+        if (serverData !== null) return serverData;
+      } catch (error) {
+        console.warn(`⚠️ Server storage read failed for ${filename}, trying localStorage:`, error);
+      }
+      
+      return localStorage.getItem(this.getStorageKey(localStorageType));
     }
   }
 
@@ -631,38 +572,7 @@ class FileStorageService {
     }
   }
 
-  // Message methods
-  async saveMessages(messages: any[]): Promise<void> {
-    if (this.isElectron()) {
-      await this.writeFileElectron('messages.json', JSON.stringify(messages, null, 2));
-    } else {
-      // Browser environment - use localStorage
-      const storageKey = this.getStorageKey('messages');
-      localStorage.setItem(storageKey, JSON.stringify(messages, null, 2));
-    }
-  }
 
-  async getMessages(): Promise<any[]> {
-    try {
-      if (this.isElectron()) {
-        const messagesDataStr = await this.readFileElectron('messages.json');
-        if (messagesDataStr) {
-          return JSON.parse(messagesDataStr);
-        }
-      } else {
-        // Browser environment - use localStorage
-        const storageKey = this.getStorageKey('messages');
-        const messagesDataStr = localStorage.getItem(storageKey);
-        if (messagesDataStr) {
-          return JSON.parse(messagesDataStr);
-        }
-      }
-    } catch (error) {
-      console.warn(`⚠️ Failed to load messages for port ${this.port}:`, error);
-    }
-
-    return [];
-  }
 }
 
 // Create a singleton instance for the current port
