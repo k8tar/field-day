@@ -1,6 +1,6 @@
 {
   "name": "k8tar-fieldday",
-  "version": "2.0.1",
+  "version": "1.0.0",
   "description": "Field Day Logger - ARRL Field Day Logging Application",
   "private": true,
   "type": "module",
