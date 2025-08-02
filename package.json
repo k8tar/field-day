@@ -1,6 +1,6 @@
 {
   "name": "k8tar-fieldday",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "Field Day Logger - ARRL Field Day Logging Application",
   "private": true,
   "type": "module",
@@ -80,6 +80,11 @@
       {
         "from": "public",
         "to": "public"
+      },
+      {
+        "from": "backend-service/target/release",
+        "to": "backend-service/target/release",
+        "filter": ["**/*"]
       }
     ],
     "win": {
@@ -111,9 +116,9 @@
       "runAfterFinish": true,
       "menuCategory": "Amateur Radio",
       "license": "LICENSE",
-      "installerHeaderIcon": "public/favicon.ico",
-      "installerIcon": "public/favicon.ico",
-      "uninstallerIcon": "public/favicon.ico"
+      "installerIcon": "build/icon.ico",
+      "installerHeaderIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico"
     },
     "portable": {
       "artifactName": "${productName}-${version}-portable.exe"

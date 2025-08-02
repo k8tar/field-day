@@ -98,9 +98,11 @@ import { backgroundNetworkService, meshConnectionState } from '@/services/backgr
 // Station designator
 const stationDesignator = ref('');
 
-// Logo source based on theme
+// Logo source based on theme - use relative paths for Electron compatibility
 const logoSrc = computed(() => {
-  return isDark.value ? '/k8tar-header-logo-dark.svg' : '/k8tar-header-logo.svg';
+  return isDark.value 
+    ? 'k8tar-header-logo-dark.svg' 
+    : 'k8tar-header-logo.svg';
 });
 
 // Mode selection

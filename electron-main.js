@@ -77,15 +77,40 @@ async function startBackendService() {
   console.log('🚀 Starting Rust backend service...');
   
   try {
-    const backendDir = path.join(__dirname, 'backend-service');
-    const binaryPath = process.platform === 'win32' 
-      ? path.join(backendDir, 'target', 'release', 'fieldday-backend.exe')
-      : path.join(backendDir, 'target', 'release', 'fieldday-backend');
+    // Determine if we're in a packaged app or development
+    const isPackaged = app.isPackaged;
+    console.log('📦 App is packaged:', isPackaged);
+    console.log('📂 __dirname:', __dirname);
+    console.log('📂 process.resourcesPath:', process.resourcesPath);
     
-    // Check if binary exists, if not try to build it
+    let backendDir, binaryPath;
+    
+    if (isPackaged) {
+      // In packaged app, look for the binary in the resources
+      backendDir = path.join(process.resourcesPath, 'backend-service');
+      binaryPath = process.platform === 'win32' 
+        ? path.join(backendDir, 'target', 'release', 'fieldday-backend.exe')
+        : path.join(backendDir, 'target', 'release', 'fieldday-backend');
+    } else {
+      // In development, use the local backend-service directory
+      backendDir = path.join(__dirname, 'backend-service');
+      binaryPath = process.platform === 'win32' 
+        ? path.join(backendDir, 'target', 'release', 'fieldday-backend.exe')
+        : path.join(backendDir, 'target', 'release', 'fieldday-backend');
+    }
+    
+    console.log('🔍 Backend directory:', backendDir);
+    console.log('🔍 Binary path:', binaryPath);
+    console.log('🔍 Binary exists:', fs.existsSync(binaryPath));
+    
+    // Check if binary exists, if not try to build it (only in development)
     if (!fs.existsSync(binaryPath)) {
-      console.log('🔨 Backend binary not found, building...');
-      await buildBackendService(backendDir);
+      if (isPackaged) {
+        throw new Error('Backend binary not found in packaged app. Please rebuild the application.');
+      } else {
+        console.log('🔨 Backend binary not found, building...');
+        await buildBackendService(backendDir);
+      }
     }
     
     // Start the backend service
@@ -181,7 +206,9 @@ function createWindow() {
     height: 900,
     show: false,
     autoHideMenuBar: true,
-    icon: path.join(__dirname, 'public', 'app-icon.ico'),
+    icon: app.isPackaged 
+      ? path.join(process.resourcesPath, 'app.asar.unpacked', 'public', 'icon.ico')
+      : path.join(__dirname, 'public', 'icon.ico'),
     webPreferences: {
       preload: preloadPath,
       nodeIntegration: false,
