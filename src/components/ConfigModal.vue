@@ -45,7 +45,7 @@
                 placeholder="1A"
               />
               <div class="validation-message" v-if="stationClass && !isStationClassValid">
-                Format: 1-3 digits + A-F (e.g., 1A, 2B)
+                Format: 1-3 digits + letter (Field Day: A-F, Winter FD: H/I/O/M, e.g., 1A, 1I)
               </div>
             </div>
             <div class="config-option">
@@ -62,6 +62,26 @@
               <div class="validation-message" v-if="stationSection && !isStationSectionValid">
                 Invalid ARRL section
               </div>
+            </div>
+          </div>
+          
+          <div class="config-section">
+            <h3>Advanced</h3>
+            <div class="debug-toggle-container">
+              <div class="debug-toggle-label">
+                <span class="toggle-title">Enable Debug Logging</span>
+                <span class="toggle-subtitle">Outputs detailed console logs for troubleshooting</span>
+              </div>
+              <button 
+                class="toggle-button"
+                :class="{ active: debugMode }"
+                @click="debugMode = !debugMode; updateDebugMode()"
+                type="button"
+              >
+                <span class="toggle-track">
+                  <span class="toggle-thumb"></span>
+                </span>
+              </button>
             </div>
           </div>
           
@@ -286,6 +306,7 @@ import { ref, watch, onMounted, computed } from 'vue';
 import { qsos, type QSO } from '@/store/qso';
 import { validateArrlSection, normalizeArrlSection, validateArrlClass, normalizeArrlClass } from '@/constants/arrl-sections';
 import { fileStorage } from '@/services/fileStorage';
+import { isDebugEnabled, setDebugEnabled, debugLog } from '@/utils/debug';
 
 const props = defineProps<{
   isOpen: boolean;
@@ -303,6 +324,12 @@ const newOperator = ref('');
 const newOperatorInput = ref<HTMLInputElement | null>(null);
 const showResetModal = ref(false);
 const showWipeQsosModal = ref(false);
+const debugMode = ref(isDebugEnabled());
+
+function updateDebugMode() {
+  setDebugEnabled(debugMode.value);
+  debugLog(`Debug mode ${debugMode.value ? 'enabled' : 'disabled'}`);
+}
 
 // Station section validation
 const isStationSectionValid = computed(() => {
@@ -384,7 +411,7 @@ async function saveConfig() {
   const normalizedClass = stationClass.value ? 
     normalizeArrlClass(stationClass.value) : '';
   
-  console.log('ConfigModal: About to save station config:', {
+  debugLog('ConfigModal: About to save station config:', {
     callsign: stationCallsign.value,
     designator: stationDesignator.value,
     stationClass: normalizedClass,
@@ -402,7 +429,7 @@ async function saveConfig() {
       stationSection: normalizedSection || ''
     });
 
-    console.log('ConfigModal: Station config saved successfully');
+    debugLog('ConfigModal: Station config saved successfully');
 
     // Emit a custom event to notify other components that station config has been updated
     window.dispatchEvent(new CustomEvent('stationInfoUpdate'));
@@ -495,19 +522,34 @@ function close() {
 // Watch for changes to isOpen prop to reset form data when opened
 watch(() => props.isOpen, async (newValue) => {
   if (newValue) {
+    debugLog('ConfigModal: Modal opened, loading configuration...');
     try {
       // Reload settings from file storage when modal is opened
       const stationConfig = await fileStorage.getStationConfig();
+      debugLog('ConfigModal: Loaded station config:', stationConfig);
+      
       stationCallsign.value = stationConfig.callsign || '';
       stationDesignator.value = stationConfig.designator || '';
       stationClass.value = stationConfig.stationClass || '';
       stationSection.value = stationConfig.stationSection || '';
+      
+      // Update debug mode state
+      debugMode.value = isDebugEnabled();
+
+      debugLog('ConfigModal: Set form values:', {
+        callsign: stationCallsign.value,
+        designator: stationDesignator.value,
+        class: stationClass.value,
+        section: stationSection.value
+      });
 
       // Load operators from file storage
       const savedOperators = await fileStorage.getOperators();
       operators.value = savedOperators;
+      
+      debugLog('ConfigModal: Configuration loaded successfully');
     } catch (error) {
-      console.error('Failed to reload configuration from file storage:', error);
+      console.error('ConfigModal: Failed to reload configuration from file storage:', error);
       // Initialize with defaults instead of localStorage fallback
       stationCallsign.value = '';
       stationDesignator.value = '';
@@ -1377,6 +1419,98 @@ function cancelImport() {
   .material-icons {
     font-size: 1rem !important;
   }
+}
+
+/* Debug toggle styling */
+.debug-toggle-container {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem;
+  background-color: var(--form-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  transition: all 0.2s ease;
+
+  &:hover {
+    border-color: var(--primary-color);
+    background-color: var(--hover-color);
+  }
+}
+
+.debug-toggle-label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  flex: 1;
+}
+
+.toggle-title {
+  font-weight: 500;
+  font-size: 1rem;
+  color: var(--text-color);
+}
+
+.toggle-subtitle {
+  font-size: 0.875rem;
+  color: var(--text-color);
+  opacity: 0.65;
+}
+
+.toggle-button {
+  position: relative;
+  width: 52px;
+  height: 28px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  flex-shrink: 0;
+  
+  &:focus {
+    outline: none;
+  }
+}
+
+.toggle-track {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #cbd5e0;
+  border-radius: 14px;
+  transition: background-color 0.2s ease;
+  display: block;
+}
+
+.toggle-button.active .toggle-track {
+  background-color: var(--primary-color);
+}
+
+.toggle-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 24px;
+  height: 24px;
+  background-color: white;
+  border-radius: 50%;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  transition: transform 0.2s ease;
+  display: block;
+}
+
+.toggle-button.active .toggle-thumb {
+  transform: translateX(24px);
+}
+
+.toggle-button:hover .toggle-track {
+  background-color: #a0aec0;
+}
+
+.toggle-button.active:hover .toggle-track {
+  background-color: #2563eb;
 }
 
 /* Cancel button in reset modal */

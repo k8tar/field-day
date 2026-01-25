@@ -6,6 +6,7 @@
  */
 
 import { fileStorage } from './fileStorage';
+import { debugLog } from '@/utils/debug';
 
 interface NetworkStation {
   ip: string;
@@ -37,7 +38,7 @@ class MeshConnectionState {
 
   setConnected(connected: boolean): void {
     if (this._isConnected !== connected) {
-      console.log(`🔄 [MeshConnectionState] State changing from ${this._isConnected} to ${connected}`);
+      debugLog(`🔄 [MeshConnectionState] State changing from ${this._isConnected} to ${connected}`);
       this._isConnected = connected;
       this.listeners.forEach(listener => listener(connected));
     }
@@ -87,18 +88,18 @@ class BackgroundNetworkService {
     
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
-        console.log(`🔄 [BackgroundNetworkService] Syncing mesh state with backend (attempt ${attempt}/${maxRetries})...`);
+        debugLog(`🔄 [BackgroundNetworkService] Syncing mesh state with backend (attempt ${attempt}/${maxRetries})...`);
         
         const response = await fetch('http://localhost:3030/api/config');
         if (response.ok) {
           const result = await response.json();
           if (result.success && result.data?.mesh) {
             const backendMeshEnabled = result.data.mesh.enabled;
-            console.log(`🔍 [BackgroundNetworkService] Backend mesh enabled: ${backendMeshEnabled}`);
+            debugLog(`🔍 [BackgroundNetworkService] Backend mesh enabled: ${backendMeshEnabled}`);
             
             // Update frontend mesh state to match backend
             meshConnectionState.setConnected(backendMeshEnabled);
-            console.log(`✅ [BackgroundNetworkService] Frontend mesh state synced with backend: ${backendMeshEnabled}`);
+            debugLog(`✅ [BackgroundNetworkService] Frontend mesh state synced with backend: ${backendMeshEnabled}`);
             return; // Success - exit retry loop
           }
         }
@@ -110,7 +111,7 @@ class BackgroundNetworkService {
         console.warn(`🔄 [BackgroundNetworkService] Mesh sync attempt ${attempt} failed:`, error);
         
         if (attempt < maxRetries) {
-          console.log(`⏳ [BackgroundNetworkService] Retrying mesh sync in ${retryDelay}ms...`);
+          debugLog(`⏳ [BackgroundNetworkService] Retrying mesh sync in ${retryDelay}ms...`);
           await new Promise(resolve => setTimeout(resolve, retryDelay));
         } else {
           console.warn('❌ [BackgroundNetworkService] Failed to sync mesh state after all retries - keeping current state');
@@ -123,7 +124,7 @@ class BackgroundNetworkService {
    * Manually trigger mesh state sync (can be called when backend comes online)
    */
   async reSyncMeshState(): Promise<void> {
-    console.log('🔄 [BackgroundNetworkService] Manual mesh state re-sync triggered');
+    debugLog('🔄 [BackgroundNetworkService] Manual mesh state re-sync triggered');
     await this.syncMeshStateWithBackend();
   }
 

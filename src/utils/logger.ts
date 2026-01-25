@@ -4,6 +4,8 @@
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
+import { debugLog, debugWarn } from '@/utils/debug';
+
 export class Logger {
   private static instance: Logger;
   private logLevel: LogLevel = 'info';
@@ -26,19 +28,19 @@ export class Logger {
 
   debug(message: string, ...args: any[]): void {
     if (this.shouldLog('debug')) {
-      console.log(`🔍 ${message}`, ...args);
+      debugLog(`🔍 ${message}`, ...args);
     }
   }
 
   info(message: string, ...args: any[]): void {
     if (this.shouldLog('info')) {
-      console.log(`ℹ️ ${message}`, ...args);
+      debugLog(`ℹ️ ${message}`, ...args);
     }
   }
 
   warn(message: string, ...args: any[]): void {
     if (this.shouldLog('warn')) {
-      console.warn(`⚠️ ${message}`, ...args);
+      debugWarn(`⚠️ ${message}`, ...args);
     }
   }
 
@@ -50,7 +52,7 @@ export class Logger {
 
   success(message: string, ...args: any[]): void {
     if (this.shouldLog('info')) {
-      console.log(`✅ ${message}`, ...args);
+      debugLog(`✅ ${message}`, ...args);
     }
   }
 }

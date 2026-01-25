@@ -4,6 +4,8 @@
  */
 
 import { logger, ErrorHandler } from '../utils/logger';
+import { backendApi, type BackendQso, type BackendMessage } from './backendApiService';
+import { debugLog } from '@/utils/debug';
 
 // Import path utilities - handle both browser and Electron environments
 const isElectron = typeof window !== 'undefined' && (window as any).Electron;
@@ -63,7 +65,7 @@ function writeFileSync(filePath: string, data: string): void {
 
 function mkdirSync(dirPath: string, options?: any): void {
   // Directory creation is handled by the main process in our IPC handlers
-  console.log('Directory creation handled by main process via IPC');
+  debugLog('Directory creation handled by main process via IPC');
 }
 
 export interface StationConfig {
@@ -103,9 +105,74 @@ export interface SettingsData {
   lastUpdated: number;
 }
 
+// Convert between backend QSO format and frontend QSO format
+async function backendQsoToFrontend(backendQso: BackendQso): Promise<any> {
+  // Get current station config to include in QSO
+  const stationConfig = new FileStorageService().getStationConfig().catch(() => ({ designator: 'UNKN' }));
+  const station = await stationConfig;
+  
+  return {
+    id: backendQso.id,
+    call: backendQso.call_sign,
+    name: backendQso.name,
+    class: backendQso.class,
+    section: backendQso.section,
+    band: backendQso.frequency, // frequency from backend maps to band in frontend
+    mode: backendQso.mode,
+    datetime: backendQso.timestamp, // Already ISO string from backend
+    operator: backendQso.operator,
+    power: backendQso.power,
+    station_id: backendQso.station_id,
+    notes: backendQso.notes,
+    timestamp: new Date(backendQso.timestamp).getTime(),
+    stationDesignator: station.designator || 'UNKN',
+  };
+}
+
+function frontendQsoToBackend(frontendQso: any): BackendQso {
+  return {
+    id: frontendQso.id || `qso-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+    call_sign: frontendQso.call,
+    name: frontendQso.name || '',
+    class: frontendQso.class || '',
+    section: frontendQso.section || '',
+    frequency: frontendQso.band || '40m', // band in frontend maps to frequency in backend
+    mode: frontendQso.mode || 'PH',
+    operator: frontendQso.operator || '',
+    station_id: frontendQso.station_id || '',
+    power: frontendQso.power,
+    notes: frontendQso.notes,
+    timestamp: frontendQso.datetime || new Date().toISOString(),
+  };
+}
+
+// Convert between backend message format and frontend message format
+function backendMessageToFrontend(backendMessage: BackendMessage): any {
+  return {
+    id: backendMessage.id,
+    message_type: backendMessage.message_type,
+    text: backendMessage.text,
+    from_station_id: backendMessage.from_station_id,
+    target_station_id: backendMessage.target_station_id,
+    timestamp: new Date(backendMessage.timestamp).getTime(),
+  };
+}
+
+function frontendMessageToBackend(frontendMessage: any): BackendMessage {
+  return {
+    id: frontendMessage.id || `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+    message_type: frontendMessage.message_type || 'chat',
+    text: frontendMessage.text || '',
+    from_station_id: frontendMessage.from_station_id || '',
+    target_station_id: frontendMessage.target_station_id,
+    timestamp: new Date(frontendMessage.timestamp || Date.now()).toISOString(),
+  };
+}
+
 class FileStorageService {
   private readonly DATA_DIR = 'fieldday-data';
   private port: number;
+  private serverStorageAvailable: boolean | null = false; // default to localStorage to avoid server 404s
   
   constructor(port?: number) {
     this.port = port || this.getCurrentPort();
@@ -220,7 +287,8 @@ class FileStorageService {
 
   async getStationConfig(): Promise<StationConfig> {
     try {
-      const configData = await this.readData('station-config.json', 'station_config');
+      const configData = await this.readData('station-config.json', 'station-config');
+      
       if (configData) {
         const config = JSON.parse(configData);
         
@@ -250,20 +318,57 @@ class FileStorageService {
     }
   }
 
-  // QSO data methods
+  // QSO data methods - use backend API if available
   async saveQsoData(qsos: any[]): Promise<void> {
-    await this.saveDataWithTimestamp(qsos, 'qso-data.json', 'qsos');
+    // QSOs are managed by the backend; save individually via API
+    for (const qso of qsos) {
+      try {
+        // Convert frontend QSO to backend format before saving
+        const backendQso = frontendQsoToBackend(qso);
+        // Use backendApi to add/update QSOs
+        const hasId = qso.id && qso.id.length > 0;
+        if (hasId) {
+          await backendApi.updateQso(backendQso);
+        } else {
+          await backendApi.addQso(backendQso);
+        }
+      } catch (error) {
+        debugLog(`Failed to save QSO via backend, falling back to file storage: ${error}`);
+        // Fallback to file storage
+        await this.saveDataWithTimestamp(qsos, 'qso-data.json', 'qsos');
+        return;
+      }
+    }
   }
 
   async getQsoData(): Promise<any[]> {
-    return await this.getDataWithTimestamp('qso-data.json', 'qsos', 'qsos');
+    // Try to get QSOs from backend API first
+    try {
+      const backendQsos = await backendApi.getQsos();
+      // Convert backend QSOs to frontend format
+      return await Promise.all(backendQsos.map(bq => backendQsoToFrontend(bq)));
+    } catch (error) {
+      debugLog(`Failed to fetch QSOs from backend, falling back to file storage: ${error}`);
+      // Fallback to file storage
+      return await this.getDataWithTimestamp('qso-data.json', 'qsos', 'qsos');
+    }
   }
 
   // Add QSOs (append to existing data)
   async addQsos(newQsos: any[]): Promise<void> {
-    const existingQsos = await this.getQsoData();
-    const allQsos = [...existingQsos, ...newQsos];
-    await this.saveQsoData(allQsos);
+    // Add QSOs individually via backend API
+    for (const qso of newQsos) {
+      try {
+        const backendQso = frontendQsoToBackend(qso);
+        await backendApi.addQso(backendQso);
+      } catch (error) {
+        debugLog(`Failed to add QSO via backend: ${error}`);
+        // Fallback: add to file storage
+        const existingQsos = await this.getDataWithTimestamp('qso-data.json', 'qsos', 'qsos');
+        const allQsos = [...existingQsos, qso];
+        await this.saveDataWithTimestamp(allQsos, 'qso-data.json', 'qsos');
+      }
+    }
   }
 
   // Operator data methods
@@ -314,13 +419,39 @@ class FileStorageService {
     }, `load settings for port ${this.port}`, defaultSettings) || defaultSettings;
   }
 
-  // Message methods
+  // Message methods - use backend API if available
   async saveMessages(messages: any[]): Promise<void> {
-    await this.writeData('messages.json', JSON.stringify(messages, null, 2));
+    // Messages are managed by the backend; save individually via API
+    for (const message of messages) {
+      try {
+        // Convert frontend message to backend format before saving
+        const backendMessage = frontendMessageToBackend(message);
+        // Check if message exists and needs update
+        if (message.id) {
+          await backendApi.updateMessage(backendMessage);
+        } else {
+          await backendApi.addMessage(backendMessage);
+        }
+      } catch (error) {
+        debugLog(`Failed to save message via backend, falling back to file storage: ${error}`);
+        // Fallback to file storage
+        await this.writeData('messages.json', JSON.stringify(messages, null, 2));
+        return;
+      }
+    }
   }
 
   async getMessages(): Promise<any[]> {
-    return await this.getDataWithTimestamp('messages.json', 'messages', 'messages', []);
+    // Try to get messages from backend API first
+    try {
+      const backendMessages = await backendApi.getMessages();
+      // Convert backend messages to frontend format
+      return backendMessages.map(bm => backendMessageToFrontend(bm));
+    } catch (error) {
+      debugLog(`Failed to fetch messages from backend, falling back to file storage: ${error}`);
+      // Fallback to file storage
+      return await this.getDataWithTimestamp('messages.json', 'messages', 'messages', []);
+    }
   }
 
   // Get or generate a persistent network ID for this station
@@ -379,10 +510,19 @@ class FileStorageService {
     if (this.isElectron()) {
       await this.writeFileElectron(filename, content);
     } else {
+      // Skip server attempt if we already know it's not available
+      if (this.serverStorageAvailable === false) {
+        const storageKey = this.getStorageKey(filename.replace('.json', ''));
+        localStorage.setItem(storageKey, content);
+        return;
+      }
+      
       try {
         await this.writeFileServer(filename, content);
+        this.serverStorageAvailable = true;
       } catch (error) {
-        console.warn(`⚠️ Server storage failed for ${filename}, using localStorage:`, error);
+        // Mark server storage as unavailable and use localStorage
+        this.serverStorageAvailable = false;
         const storageKey = this.getStorageKey(filename.replace('.json', ''));
         localStorage.setItem(storageKey, content);
       }
@@ -393,11 +533,20 @@ class FileStorageService {
     if (this.isElectron()) {
       return await this.readFileElectron(filename);
     } else {
+      // Skip server attempt if we already know it's not available
+      if (this.serverStorageAvailable === false) {
+        return localStorage.getItem(this.getStorageKey(localStorageType));
+      }
+      
       try {
         const serverData = await this.readFileServer(filename);
-        if (serverData !== null) return serverData;
+        if (serverData !== null) {
+          this.serverStorageAvailable = true;
+          return serverData;
+        }
       } catch (error) {
-        console.warn(`⚠️ Server storage read failed for ${filename}, trying localStorage:`, error);
+        // Mark server storage as unavailable
+        this.serverStorageAvailable = false;
       }
       
       return localStorage.getItem(this.getStorageKey(localStorageType));
@@ -407,7 +556,8 @@ class FileStorageService {
   // Server-side file storage methods for browser environments
   private async writeFileServer(filename: string, content: string): Promise<void> {
     try {
-      const response = await fetch('/api/files/write', {
+      const baseUrl = backendApi.getBaseUrl();
+      const response = await fetch(`${baseUrl}/api/files/write`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -419,19 +569,20 @@ class FileStorageService {
       });
 
       if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`HTTP ${response.status}: ${errorText}`);
+        // Server endpoint not implemented, will fall back to localStorage
+        throw new Error(`Server storage not available (HTTP ${response.status})`);
       }
 
     } catch (error) {
-      console.error(`❌ Failed to write file to server: ${filename}`, error);
+      // This is expected when the backend doesn't have file endpoints
       throw error;
     }
   }
 
   private async readFileServer(filename: string): Promise<string | null> {
     try {
-      const response = await fetch(`/api/files/read?filename=${encodeURIComponent(filename)}`);
+      const baseUrl = backendApi.getBaseUrl();
+      const response = await fetch(`${baseUrl}/api/files/read?filename=${encodeURIComponent(filename)}`);
       
       if (response.status === 404) {
         return null; // File doesn't exist
@@ -441,6 +592,13 @@ class FileStorageService {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
 
+      // Check if response is JSON before parsing
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        // Server returned HTML or other non-JSON (endpoint doesn't exist)
+        return null;
+      }
+
       const result = await response.json();
       if (result.content !== undefined) {
         return result.content;
@@ -448,7 +606,7 @@ class FileStorageService {
         return null;
       }
     } catch (error) {
-      console.error(`❌ Failed to read file from server: ${filename}`, error);
+      // Silently fall back to localStorage when server storage isn't available
       return null;
     }
   }

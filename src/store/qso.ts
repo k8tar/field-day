@@ -3,6 +3,7 @@ import { backendApi, type BackendQso } from '@/services/backendApiService';
 import { fileStorage } from '@/services/fileStorage';
 import { CrossOriginStorage } from '@/services/crossOriginStorage';
 import { logger, ErrorHandler } from '@/utils/logger';
+import { debugLog } from '@/utils/debug';
 
 export interface QSO {
   id?: string;      // Unique UUID string identifier
@@ -51,13 +52,13 @@ async function migrateQsoIds() {
       
       qso.id = `mig-${timestampPart}-${callPart}-${stationPart}-${oldIdPart}`;
       
-      console.log(`🔄 Migrated QSO ${qso.call} from ID ${oldId} to UUID ${qso.id}`);
+      debugLog(`🔄 Migrated QSO ${qso.call} from ID ${oldId} to UUID ${qso.id}`);
     }
   });
   
   if (migrationNeeded) {
     await saveQsos();
-    console.log('✅ QSO ID migration completed');
+    debugLog('✅ QSO ID migration completed');
   }
 }
 
@@ -157,7 +158,7 @@ export async function forceUploadAllQsos(): Promise<boolean> {
       }
     }
     
-    console.log('✅ All QSOs uploaded to backend service');
+    debugLog('✅ All QSOs uploaded to backend service');
     return true;
   } catch (error) {
     console.error('❌ Failed to upload QSOs to backend:', error);
@@ -168,14 +169,14 @@ export async function forceUploadAllQsos(): Promise<boolean> {
 // Auto-sync with backend service when available
 setTimeout(async () => {
   if (backendApi.connected.value) {
-    console.log('✅ Backend service available - starting automatic QSO sync');
+    debugLog('✅ Backend service available - starting automatic QSO sync');
     // Backend service will handle synchronization automatically
     // Just upload existing QSOs if any
     if (qsos.value.length > 0) {
       await forceUploadAllQsos();
     }
   } else {
-    console.log('⚠️ Backend service not available - QSO sync disabled');
+    debugLog('⚠️ Backend service not available - QSO sync disabled');
   }
 }, 1000); // 1 second delay
 
@@ -190,7 +191,7 @@ if (typeof window !== 'undefined') {
       
       // Listen for QSO updates from the network
       networkService.onQsoUpdate((update) => {
-        console.log(`📡 Received QSO update from network: ${update.action} - ${update.qso?.call || update.id}`);
+        debugLog(`📡 Received QSO update from network: ${update.action} - ${update.qso?.call || update.id}`);
         
         switch (update.action) {
           case 'add':
@@ -205,7 +206,7 @@ if (typeof window !== 'undefined') {
         }
       });
       
-      console.log('✅ Network QSO listener registered');
+      debugLog('✅ Network QSO listener registered');
     } catch (error) {
       console.error('Failed to set up network QSO listener:', error);
     }
@@ -266,7 +267,7 @@ async function refreshQsosFromBackend(): Promise<void> {
     convertedQsos.forEach(backendQso => {
       // Skip QSOs that are pending deletion
       if (backendQso.id && pendingDeletions.value.has(backendQso.id)) {
-        console.log(`🗑️ Skipping backend QSO ${backendQso.id} - pending deletion`);
+        debugLog(`🗑️ Skipping backend QSO ${backendQso.id} - pending deletion`);
         return;
       }
       
@@ -314,7 +315,7 @@ async function refreshQsosFromBackend(): Promise<void> {
       await saveQsos();
       
       if (newQsosAdded > 0 || qsosDeleted > 0 || qsosUpdated > 0) {
-        console.log(`🔄 QSO sync: +${newQsosAdded} added, ~${qsosUpdated} updated, -${qsosDeleted} deleted from backend`);
+        debugLog(`🔄 QSO sync: +${newQsosAdded} added, ~${qsosUpdated} updated, -${qsosDeleted} deleted from backend`);
       }
     }
   } catch (error) {
@@ -401,11 +402,11 @@ function updateNetworkQso(networkQso: any) {
     const existingLastModified = existingQso.lastModified || 0;
     
     if (networkLastModified >= existingLastModified) {
-      console.log(`📝 Updating QSO from network: ${networkQso.call} (ID: ${networkQso.id})`);
+      debugLog(`📝 Updating QSO from network: ${networkQso.call} (ID: ${networkQso.id})`);
       qsos.value[index] = { ...networkQso };
       saveQsos(); // Use file storage
     } else {
-      console.log(`⏭️ Skipping network QSO update (older): ${networkQso.call} (network: ${networkLastModified}, local: ${existingLastModified})`);
+      debugLog(`⏭️ Skipping network QSO update (older): ${networkQso.call} (network: ${networkLastModified}, local: ${existingLastModified})`);
     }
   } else {
     console.warn(`⚠️ Cannot update QSO ${networkQso.id} - not found locally`);
@@ -531,7 +532,7 @@ export async function deleteQso(id: string) {
   if (backendApi.connected.value && deletedQso) {
     try {
       await backendApi.deleteQso(deletedQso.id!);
-      console.log(`✅ QSO ${deletedQso.id} deleted from backend`);
+      debugLog(`✅ QSO ${deletedQso.id} deleted from backend`);
     } catch (error) {
       console.error('Failed to delete QSO from backend:', error);
       // Add to pending deletions if backend delete fails
@@ -671,7 +672,7 @@ export async function refreshQsosFromServer(): Promise<void> {
 
 // Log Reset Functions
 export async function clearAllQsos(): Promise<void> {
-  console.log('🗑️ Clearing all QSOs from local storage');
+  debugLog('🗑️ Clearing all QSOs from local storage');
   qsos.value = [];
   await saveQsos();
   triggerAchievementCheck(); // Update achievements after clearing
@@ -679,7 +680,7 @@ export async function clearAllQsos(): Promise<void> {
 
 export async function clearQsosAfterTimestamp(resetTimestamp: string): Promise<void> {
   const resetTime = new Date(resetTimestamp).getTime();
-  console.log(`🗑️ Clearing QSOs after reset timestamp: ${resetTimestamp}`);
+  debugLog(`🗑️ Clearing QSOs after reset timestamp: ${resetTimestamp}`);
   
   // Keep only QSOs that were created before the reset timestamp
   const filteredQsos = qsos.value.filter(qso => {
@@ -691,12 +692,12 @@ export async function clearQsosAfterTimestamp(resetTimestamp: string): Promise<v
   qsos.value = filteredQsos;
   await saveQsos();
   
-  console.log(`🗑️ Removed ${removedCount} QSOs after reset timestamp`);
+  debugLog(`🗑️ Removed ${removedCount} QSOs after reset timestamp`);
   triggerAchievementCheck(); // Update achievements after clearing
 }
 
 export async function processLogReset(resetTimestamp: string): Promise<void> {
-  console.log(`📋 Processing log reset command with timestamp: ${resetTimestamp}`);
+  debugLog(`📋 Processing log reset command with timestamp: ${resetTimestamp}`);
   
   // Clear all QSOs locally
   await clearAllQsos();
@@ -705,7 +706,7 @@ export async function processLogReset(resetTimestamp: string): Promise<void> {
   try {
     const { clearAllMessages } = await import('@/store/message');
     await clearAllMessages();
-    console.log('✅ Successfully cleared all messages during log reset');
+    debugLog('✅ Successfully cleared all messages during log reset');
   } catch (error) {
     console.error('❌ Failed to clear messages during log reset:', error);
   }
@@ -718,7 +719,7 @@ export async function processLogReset(resetTimestamp: string): Promise<void> {
       mode: mode.value,
       lastLogResetTimestamp: resetTimestamp
     });
-    console.log('✅ Log reset timestamp saved to settings');
+    debugLog('✅ Log reset timestamp saved to settings');
   } catch (error) {
     console.error('❌ Failed to save log reset timestamp:', error);
   }
@@ -734,20 +735,20 @@ export async function processLogReset(resetTimestamp: string): Promise<void> {
 export async function checkForLogReset(): Promise<void> {
   // Only check if we're connected to the backend
   if (!backendApi.connected.value) {
-    console.log('📋 Skipping log reset check - backend not connected');
+    debugLog('📋 Skipping log reset check - backend not connected');
     return;
   }
   
   try {
-    console.log('📋 Checking for log reset commands...');
+    debugLog('📋 Checking for log reset commands...');
     // Check if there's a recent log reset command
     const lastResetTime = await backendApi.getLastLogResetTime();
     if (!lastResetTime) {
-      console.log('📋 No log reset commands found');
+      debugLog('📋 No log reset commands found');
       return;
     }
     
-    console.log(`📋 Found log reset command with timestamp: ${lastResetTime}`);
+    debugLog(`📋 Found log reset command with timestamp: ${lastResetTime}`);
     
     // Get our stored reset timestamp
     const settings = await fileStorage.getSettings().catch(() => ({})) as any;
@@ -755,10 +756,10 @@ export async function checkForLogReset(): Promise<void> {
     
     // If backend has a newer reset time, process it
     if (!localResetTime || new Date(lastResetTime) > new Date(localResetTime)) {
-      console.log(`🔄 Processing newer log reset command: ${lastResetTime} (local: ${localResetTime})`);
+      debugLog(`🔄 Processing newer log reset command: ${lastResetTime} (local: ${localResetTime})`);
       await processLogReset(lastResetTime);
     } else {
-      console.log(`📋 Local reset time is up to date: ${localResetTime}`);
+      debugLog(`📋 Local reset time is up to date: ${localResetTime}`);
     }
   } catch (error) {
     console.error('❌ Failed to check for log reset:', error);
@@ -807,7 +808,7 @@ export function stopPeriodicQsoRefresh(): void {
 
 // Set up backend connection event listeners
 window.addEventListener('backendConnected', async () => {
-  console.log('📡 Backend connected - syncing mesh state and uploading local QSOs');
+  debugLog('📡 Backend connected - syncing mesh state and uploading local QSOs');
   
   // Sync mesh state first (in case it changed while backend was offline)
   try {
@@ -822,7 +823,7 @@ window.addEventListener('backendConnected', async () => {
   
   // Upload any local QSOs that might not be in the backend
   if (qsos.value.length > 0) {
-    console.log(`📤 Uploading ${qsos.value.length} local QSOs to backend...`);
+    debugLog(`📤 Uploading ${qsos.value.length} local QSOs to backend...`);
     await forceUploadAllQsos();
   }
   
@@ -830,7 +831,7 @@ window.addEventListener('backendConnected', async () => {
 });
 
 window.addEventListener('backendDisconnected', () => {
-  console.log('📡 Backend disconnected - stopping QSO refresh');
+  debugLog('📡 Backend disconnected - stopping QSO refresh');
   stopPeriodicQsoRefresh();
 });
 
@@ -866,14 +867,14 @@ async function savePendingDeletions() {
 async function addPendingDeletion(qsoId: string) {
   pendingDeletions.value.add(qsoId);
   await savePendingDeletions();
-  console.log(`📝 Added QSO ${qsoId} to pending deletions`);
+  debugLog(`📝 Added QSO ${qsoId} to pending deletions`);
 }
 
 // Remove a QSO deletion from pending list (when successfully synced)
 async function removePendingDeletion(qsoId: string) {
   pendingDeletions.value.delete(qsoId);
   await savePendingDeletions();
-  console.log(`✅ Removed QSO ${qsoId} from pending deletions`);
+  debugLog(`✅ Removed QSO ${qsoId} from pending deletions`);
 }
 
 // Apply pending deletions to backend
@@ -882,14 +883,14 @@ async function applyPendingDeletions() {
     return;
   }
   
-  console.log(`🗑️ Applying ${pendingDeletions.value.size} pending deletions to backend...`);
+  debugLog(`🗑️ Applying ${pendingDeletions.value.size} pending deletions to backend...`);
   
   const deletionsToProcess = Array.from(pendingDeletions.value);
   for (const qsoId of deletionsToProcess) {
     try {
       await backendApi.deleteQso(qsoId);
       await removePendingDeletion(qsoId);
-      console.log(`✅ Applied pending deletion for QSO ${qsoId}`);
+      debugLog(`✅ Applied pending deletion for QSO ${qsoId}`);
     } catch (error) {
       console.error(`❌ Failed to apply pending deletion for QSO ${qsoId}:`, error);
       // Keep the deletion in pending list to retry later

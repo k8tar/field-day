@@ -1,4 +1,5 @@
 import { ref, computed } from 'vue';
+import { debugLog } from '@/utils/debug';
 
 export interface BackendConfig {
   baseUrl: string;
@@ -107,10 +108,10 @@ class BackendApiService {
       
       // Only log connection state changes to reduce noise
       if (!wasConnected && this.isConnected.value) {
-        console.log('✅ Backend service connected');
+        debugLog('✅ Backend service connected');
         window.dispatchEvent(new CustomEvent('backendConnected'));
       } else if (wasConnected && !this.isConnected.value) {
-        console.log('❌ Backend service disconnected');
+        debugLog('❌ Backend service disconnected');
         window.dispatchEvent(new CustomEvent('backendDisconnected'));
       }
       
@@ -121,7 +122,7 @@ class BackendApiService {
       // Only log the first disconnection to avoid spam
       if (wasConnected) {
         this.lastError.value = error instanceof Error ? error.message : 'Connection refused';
-        console.log('❌ Backend service disconnected:', this.lastError.value);
+        debugLog('❌ Backend service disconnected:', this.lastError.value);
         window.dispatchEvent(new CustomEvent('backendDisconnected'));
       }
     }
@@ -399,7 +400,7 @@ class BackendApiService {
       method: 'POST',
     });
     
-    if (response.success && response.data) {
+    if (response && response.success && response.data) {
       return {
         success: true,
         reset_timestamp: response.data.reset_timestamp,
@@ -407,7 +408,7 @@ class BackendApiService {
     } else {
       return {
         success: false,
-        error: response.error || 'Failed to trigger log reset',
+        error: response?.error || 'Failed to trigger log reset',
       };
     }
   }
@@ -420,7 +421,7 @@ class BackendApiService {
       reason?: string;
     }>('/admin/reset-status');
     
-    if (response.success && response.data?.timestamp) {
+    if (response && response.success && response.data?.timestamp) {
       // Convert timestamp (milliseconds since epoch) to ISO string
       return new Date(response.data.timestamp).toISOString();
     }
@@ -432,6 +433,10 @@ class BackendApiService {
   setBaseUrl(url: string): void {
     this.config.baseUrl = url;
     this.checkConnection();
+  }
+
+  getBaseUrl(): string {
+    return this.config.baseUrl;
   }
 
   setTimeout(timeout: number): void {

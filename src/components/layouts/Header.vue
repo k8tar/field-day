@@ -85,6 +85,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount, watch, computed } from 'vue';
 import { band as storeBand, operator as storeOperator, mode as storeMode } from '@/store/qso';
+import { debugLog } from '@/utils/debug';
 import { isDark, toggleTheme } from '@/store/theme';
 import { FIELD_DAY_BANDS, FIELD_DAY_MODES } from '@/constants/arrl-sections';
 import ConfigModal from '@/components/ConfigModal.vue';
@@ -268,7 +269,7 @@ async function loadDiscoveredStations() {
       // Update request counts for missed stations
       stationStatusService.updateMissedStations(seenStationIds);
       
-      console.log(`📡 Header updated station status: ${stationStatusService.getConnectedCount()} connected, ${stationStatusService.getTotalDiscoveredCount()} total discovered`);
+      debugLog(`📡 Header updated station status: ${stationStatusService.getConnectedCount()} connected, ${stationStatusService.getTotalDiscoveredCount()} total discovered`);
     } catch (error) {
       console.error('Error loading discovered stations:', error);
       discoveredStations.value = [];
@@ -335,7 +336,7 @@ async function checkFirstTimeSetup() {
     const qsos = await fileStorage.getQsoData();
     const operators = await fileStorage.getOperators();
     
-    console.log('Header: Checking first-time setup:', {
+    debugLog('Header: Checking first-time setup:', {
       config,
       operators,
       qsosLength: qsos.length
@@ -347,7 +348,7 @@ async function checkFirstTimeSetup() {
                            operators.length > 0;
     const hasQsos = qsos.length > 0;
     
-    console.log('Header: Setup check results:', {
+    debugLog('Header: Setup check results:', {
       hasActualConfig,
       hasQsos,
       willShowFirstTime: !hasActualConfig && !hasQsos
@@ -373,6 +374,9 @@ function handleKeydown(event: KeyboardEvent) {
   }
 }
 
+// Store interval reference at top level for cleanup
+let stationRefreshInterval: any = null;
+
 onMounted(async () => {
   // Load operators and station info
   await loadOperators();
@@ -383,7 +387,7 @@ onMounted(async () => {
   await checkFirstTimeSetup();
   
   // Set up periodic refresh of discovered stations to keep counts updated
-  const stationRefreshInterval = setInterval(async () => {
+  stationRefreshInterval = setInterval(async () => {
     if (backendApi.connected.value && isMeshConnected.value) {
       await loadDiscoveredStations();
     }
@@ -391,15 +395,17 @@ onMounted(async () => {
   
   // Store interval for cleanup
   (window as any).headerStationRefreshInterval = stationRefreshInterval;
-  
-  // Clean up interval on unmount
-  onBeforeUnmount(() => {
+});
+
+// Clean up interval and listeners on unmount
+onBeforeUnmount(() => {
+  if (stationRefreshInterval) {
     clearInterval(stationRefreshInterval);
-    document.removeEventListener('keydown', handleKeydown);
-    window.removeEventListener('stationInfoUpdate', loadStationInfo);
-    // Clean up mesh state listener
-    meshConnectionState.removeConnectionListener(updateMeshState);
-  });
+  }
+  document.removeEventListener('keydown', handleKeydown);
+  window.removeEventListener('stationInfoUpdate', loadStationInfo);
+  // Clean up mesh state listener
+  meshConnectionState.removeConnectionListener(updateMeshState);
 });
 
 // Watch for backend connection changes

@@ -6,7 +6,7 @@ import StatisticsModal from './StatisticsModal.vue';ue -->
 <template>
   <div class="score-statistics">
     <div class="stats-header">
-      <h2>Score Statistics - {{ qsos.length }} Contacts, {{ totalScore }} Points</h2>
+      <h2>{{ totalScore.toLocaleString() }} Points</h2>
       <div class="header-buttons">
         <button class="expand-button" @click="openStatsModal" title="View detailed QSO statistics">
           <span class="material-icons">analytics</span>
@@ -21,15 +21,15 @@ import StatisticsModal from './StatisticsModal.vue';ue -->
     <div class="stats-content">
       <div class="stats-grid">
         <div class="stat-item">
-          <label>CW Contacts ({{ cwCount }}):</label>
-          <span class="stat-value">{{ qsoPointsByMode.cw }} pts</span>
-        </div>
-        <div class="stat-item">
-          <label>Phone Contacts ({{ phCount }}):</label>
+          <label>PH ({{ phCount }}):</label>
           <span class="stat-value">{{ qsoPointsByMode.ph }} pts</span>
         </div>
         <div class="stat-item">
-          <label>Digital Contacts ({{ digCount }}):</label>
+          <label>CW ({{ cwCount }}) ×2:</label>
+          <span class="stat-value">{{ qsoPointsByMode.cw }} pts</span>
+        </div>
+        <div class="stat-item">
+          <label>DIG ({{ digCount }}) ×2:</label>
           <span class="stat-value">{{ qsoPointsByMode.dig }} pts</span>
         </div>
         <div class="stat-item">
@@ -51,6 +51,14 @@ import StatisticsModal from './StatisticsModal.vue';ue -->
           <label>Bonuses Completed:</label>
           <span class="stat-value">{{ completedBonusCount }}</span>
         </div>
+        <div class="stat-item multiplier-item">
+          <label>Sections Worked (Multiplier):</label>
+          <span class="stat-value multiplier-value">{{ sectionsWorked }}×</span>
+        </div>
+        <div class="stat-item calculation-item">
+          <label>Score Calculation:</label>
+          <span class="stat-value calculation-value">{{ baseScore }} × {{ sectionsWorked }}</span>
+        </div>
       </div>
     </div>
 
@@ -68,7 +76,7 @@ import StatisticsModal from './StatisticsModal.vue';ue -->
 
 <script setup lang="ts">
 import { computed, ref } from 'vue';
-import { qsos, getTotalQsoPoints, getQsoPointsByMode } from '@/store/qso';
+import { qsos, getTotalQsoPoints, getQsoPointsByMode, getCompletedSections } from '@/store/qso';
 import { getTotalBonusPoints, getCompletedBonusCount } from '@/store/bonus';
 import BonusModal from './BonusModal.vue';
 import StatisticsModal from './StatisticsModal.vue';
@@ -90,8 +98,12 @@ const totalQsoPoints = computed(() => getTotalQsoPoints());
 const totalBonusPoints = computed(() => getTotalBonusPoints());
 const completedBonusCount = computed(() => getCompletedBonusCount());
 
-// Total score calculation
-const totalScore = computed(() => totalQsoPoints.value + totalBonusPoints.value);
+// Multiplier (sections worked)
+const sectionsWorked = computed(() => getCompletedSections().length);
+
+// Total score calculation: (QSO Points + Bonus Points) × Sections Worked
+const baseScore = computed(() => totalQsoPoints.value + totalBonusPoints.value);
+const totalScore = computed(() => baseScore.value * Math.max(1, sectionsWorked.value));
 
 // Calculate QSOs per hour (last 60 minutes)
 const qsosPerHour = computed(() => {
@@ -277,6 +289,26 @@ h2 {
   
   &:hover {
     opacity: 1;
+  }
+}
+
+.multiplier-item {
+  border-left: 3px solid #2196f3;
+  
+  .stat-value {
+    background-color: rgba(33, 150, 243, 0.15);
+    color: #2196f3;
+  }
+}
+
+.calculation-item {
+  border-left: 3px solid #9c27b0;
+  
+  .stat-value {
+    background-color: rgba(156, 39, 176, 0.15);
+    color: #9c27b0;
+    min-width: auto;
+    font-size: 0.75rem;
   }
 }
 </style>

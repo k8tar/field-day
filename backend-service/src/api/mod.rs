@@ -8,6 +8,7 @@ mod mesh;
 mod qso;
 mod config;
 mod message;
+mod files;
 pub mod admin;
 
 pub fn create_routes(
@@ -20,6 +21,7 @@ pub fn create_routes(
     let qso_routes = qso::routes(app_state.clone());
     let config_routes = config::routes(app_state.clone());
     let message_routes = message::routes(app_state.clone());
+    let file_routes = files::routes(app_state.clone());
     let admin_routes = admin::routes(app_state.clone());
     
     api.and(
@@ -28,6 +30,7 @@ pub fn create_routes(
             .or(qso_routes)
             .or(config_routes)
             .or(message_routes)
+            .or(file_routes)
             .or(admin_routes)
     )
 }

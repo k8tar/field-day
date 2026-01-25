@@ -19,6 +19,7 @@ class BuildPipeline {
     this.distDir = path.join(__dirname, 'dist-electron');
     this.installerDir = path.join(__dirname, 'installer');
     this.logFile = path.join(__dirname, 'build.log');
+    this.isccPath = null; // Will be set by checkPrerequisites
     
     console.log('🚀 Field Day Logger Build Pipeline Starting...\n');
   }
@@ -71,13 +72,36 @@ class BuildPipeline {
       throw new Error('npm is not installed or not in PATH');
     }
 
+    // Check Rust/Cargo
+    try {
+      const cargoVersion = execSync('cargo --version', { encoding: 'utf8' }).trim();
+      this.log(`Cargo version: ${cargoVersion}`);
+    } catch (error) {
+      throw new Error('Rust/Cargo is not installed or not in PATH. Please install Rust from https://rustup.rs/');
+    }
+
     // Check if Inno Setup is available (optional for non-Windows builds)
     if (process.platform === 'win32') {
-      try {
-        execSync('iscc /?', { stdio: 'ignore' });
-        this.log('Inno Setup Compiler found');
-      } catch (error) {
-        this.log('Inno Setup Compiler not found in PATH - installer creation will be skipped', true);
+      // Try common installation paths directly (for Windows)
+      const potentialPaths = [
+        'C:\\Program Files (x86)\\Inno Setup 6\\iscc.exe',
+        'C:\\Program Files\\Inno Setup 6\\iscc.exe',
+        'C:\\Program Files (x86)\\Inno Setup\\iscc.exe',
+        'C:\\Program Files\\Inno Setup\\iscc.exe',
+      ];
+      
+      let found = false;
+      for (const potentialPath of potentialPaths) {
+        if (fs.existsSync(potentialPath)) {
+          this.log('Inno Setup Compiler found at: ' + potentialPath);
+          this.isccPath = potentialPath;
+          found = true;
+          break;
+        }
+      }
+      
+      if (!found) {
+        this.log('Inno Setup Compiler not found - installer creation will be skipped', true);
       }
     }
 
@@ -85,7 +109,47 @@ class BuildPipeline {
   }
 
   async installDependencies() {
-    await this.runCommand('npm ci', 'Installing dependencies');
+    // Check if node_modules exists and skip if it does
+    const nodeModulesPath = path.join(this.projectRoot, 'node_modules');
+    if (fs.existsSync(nodeModulesPath)) {
+      this.log('Dependencies already installed, skipping npm install');
+      return;
+    }
+    
+    try {
+      await this.runCommand('npm ci', 'Installing dependencies');
+    } catch (error) {
+      // If npm ci fails (e.g., file lock), try npm install as fallback
+      this.log('npm ci failed, trying npm install as fallback...');
+      await this.runCommand('npm install', 'Installing dependencies (fallback)');
+    }
+  }
+
+  async buildRustBackend() {
+    this.log('Building Rust backend service...');
+    
+    const backendDir = path.join(this.projectRoot, 'backend-service');
+    const releaseDir = path.join(backendDir, 'target', 'release');
+    
+    // Check if backend binary already exists
+    const binaryName = process.platform === 'win32' ? 'fieldday-backend.exe' : 'fieldday-backend';
+    const binaryPath = path.join(releaseDir, binaryName);
+    
+    if (fs.existsSync(binaryPath)) {
+      this.log(`Backend binary already exists at ${binaryPath}`);
+      return;
+    }
+    
+    try {
+      this.log('Compiling Rust backend (this may take a few minutes)...');
+      execSync('cargo build --release', {
+        cwd: backendDir,
+        stdio: 'inherit'
+      });
+      this.log('Rust backend compilation completed');
+    } catch (error) {
+      throw new Error(`Failed to compile Rust backend: ${error.message}`);
+    }
   }
 
   async buildVueApp() {
@@ -102,10 +166,8 @@ class BuildPipeline {
       return;
     }
 
-    // Check if Inno Setup is available
-    try {
-      execSync('iscc /?', { stdio: 'ignore' });
-    } catch (error) {
+    // Check if Inno Setup compiler was found
+    if (!this.isccPath) {
       this.log('Inno Setup not available - skipping installer creation', true);
       return;
     }
@@ -117,10 +179,11 @@ class BuildPipeline {
 
     // Create installer using Inno Setup
     const issFile = path.join(this.installerDir, 'field-day-logger.iss');
-    await this.runCommand(
-      `iscc "${issFile}"`,
-      'Creating Windows installer with Inno Setup'
-    );
+    const command = this.isccPath.includes(' ') 
+      ? `"${this.isccPath}" "${issFile}"`
+      : `${this.isccPath} "${issFile}"`;
+    
+    await this.runCommand(command, 'Creating Windows installer with Inno Setup');
   }
 
   async createDistributionPackages() {
@@ -139,6 +202,11 @@ class BuildPipeline {
   }
 
   async generateBuildInfo() {
+    // Ensure dist-electron directory exists
+    if (!fs.existsSync(this.distDir)) {
+      fs.mkdirSync(this.distDir, { recursive: true });
+    }
+    
     const buildInfo = {
       buildDate: new Date().toISOString(),
       version: this.getPackageVersion(),
@@ -256,6 +324,7 @@ class BuildPipeline {
       
       await this.checkPrerequisites();
       await this.installDependencies();
+      await this.buildRustBackend();
       await this.buildVueApp();
       await this.buildElectronApp();
       await this.createWindowsInstaller();

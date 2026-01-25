@@ -1,6 +1,7 @@
 
 import { backendApi } from '@/services/backendApiService';
 import { stationStatusService } from '@/services/stationStatusService';
+import { debugLog } from '@/utils/debug';
 
 class StationStatusTracker {
   private intervalId: number | null = null;
@@ -12,11 +13,11 @@ class StationStatusTracker {
    */
   start(): void {
     if (this.isRunning) {
-      console.log('🔄 Station status tracker already running');
+      debugLog('🔄 Station status tracker already running');
       return;
     }
 
-    console.log('🚀 Starting station status tracker');
+    debugLog('🚀 Starting station status tracker');
     this.isRunning = true;
 
     // Start the periodic refresh
@@ -36,7 +37,7 @@ class StationStatusTracker {
       return;
     }
 
-    console.log('🛑 Stopping station status tracker');
+    debugLog('🛑 Stopping station status tracker');
     this.isRunning = false;
 
     if (this.intervalId !== null) {
@@ -87,7 +88,7 @@ class StationStatusTracker {
       const warningStations = allStatuses.filter(s => s.status === 'warning');
       
       if (offlineStations.length > 0 || warningStations.length > 0) {
-        console.log(`📊 Station status update: ${allStatuses.length} total, ${warningStations.length} warning, ${offlineStations.length} offline`);
+        debugLog(`📊 Station status update: ${allStatuses.length} total, ${warningStations.length} warning, ${offlineStations.length} offline`);
       }
 
       // Dispatch a custom event so components can listen for status updates

@@ -2,13 +2,14 @@ import { createApp } from 'vue'
 import App from './App.vue'
 import router from './router'
 import store from './store'
+import { debugLog } from '@/utils/debug'
 import { backendApi } from './services/backendApiService'
 import { startPeriodicQsoRefresh } from './store/qso'
 import { CrossOriginStorage } from './services/crossOriginStorage'
 
 // Initialize the backend service and handle connection
 async function initializeBackend() {
-  console.log('� Checking for Rust backend service...');
+  debugLog('� Checking for Rust backend service...');
   
   // Wait up to 10 seconds for backend connection
   let backendConnected = false;
@@ -21,7 +22,7 @@ async function initializeBackend() {
   }
   
   if (backendConnected) {
-    console.log('🚀 Rust backend service connected successfully');
+    debugLog('🚀 Rust backend service connected successfully');
     startPeriodicQsoRefresh();
     
     // Show success message in UI
@@ -44,7 +45,7 @@ async function initializeBackend() {
 
 // Function to attempt restarting the backend service
 async function restartBackendService(): Promise<boolean> {
-  console.log('� Attempting to restart backend service...');
+  debugLog('� Attempting to restart backend service...');
   
   // In an Electron environment, we could potentially start the backend service
   if (typeof window !== 'undefined' && (window as any).Electron) {
@@ -52,7 +53,7 @@ async function restartBackendService(): Promise<boolean> {
     try {
       const result = await ipcRenderer.invoke('restart-backend-service');
       if (result.success) {
-        console.log('✅ Backend service restart initiated');
+        debugLog('✅ Backend service restart initiated');
         // Wait a moment and then re-check connection
         await new Promise(resolve => setTimeout(resolve, 3000));
         return backendApi.connected.value;

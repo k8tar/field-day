@@ -11,7 +11,7 @@
   },
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "npx vite build",
     "serve": "vite preview",
     "test": "npm run test:unit && npm run test:ui",
     "test:unit": "vue-cli-service test:unit",
@@ -23,9 +23,17 @@
     "lint:fix": "vue-cli-service lint --fix",
     "electron": "electron .",
     "electron:dev": "electron .",
+    "electron:pack": "npm run build && electron-builder --dir",
+    "electron:dist": "npm run build && electron-builder",
     "electron:build": "npm run build && electron-builder",
+    "dist:win": "npm run build && electron-builder --win",
+    "dist:mac": "npm run build && electron-builder --mac",
+    "dist:linux": "npm run build && electron-builder --linux",
+    "build:pipeline": "node build-pipeline.js",
+    "build:installer": "node build-pipeline.js",
     "start": "npm run build && electron .",
-    "start:dev": "npm run electron:dev"
+    "start:dev": "npm run electron:dev",
+    "release": "npm run build:pipeline"
   },
   "dependencies": {
     "marked": "^16.0.0",

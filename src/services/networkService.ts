@@ -3,6 +3,7 @@ import { fileStorage } from './fileStorage';
 import { startPeriodicQsoRefresh, stopPeriodicQsoRefresh } from '@/store/qso';
 import { backendApi } from './backendApiService';
 import { SafeInterval, SafeTimeout } from '../utils/performance';
+import { debugLog } from '@/utils/debug';
 
 export interface NetworkStation {
   id: string;
@@ -384,36 +385,36 @@ class NetworkService {
 
   // Legacy host network method - no longer used (mesh only)
   async startHost(): Promise<boolean> {
-    console.log('⚠️ [NetworkService] startHost() is deprecated - use mesh networking instead');
+    debugLog('⚠️ [NetworkService] startHost() is deprecated - use mesh networking instead');
     return false;
   }
 
   // Legacy station monitoring method - no longer used (mesh only)
   private startStationMonitoring(): void {
-    console.log('⚠️ [NetworkService] startStationMonitoring() is deprecated - backend handles station monitoring');
+    debugLog('⚠️ [NetworkService] startStationMonitoring() is deprecated - backend handles station monitoring');
   }
 
   // Legacy heartbeat method - no longer used (mesh only)
   private startHeartbeat(hostAddress: string): void {
-    console.log('⚠️ [NetworkService] startHeartbeat() is deprecated - backend handles heartbeat');
+    debugLog('⚠️ [NetworkService] startHeartbeat() is deprecated - backend handles heartbeat');
   }
 
   // Legacy client monitoring method - no longer used (mesh only)
   private startClientMonitoring(hostAddress: string): void {
-    console.log('⚠️ [NetworkService] startClientMonitoring() is deprecated - backend handles monitoring');
+    debugLog('⚠️ [NetworkService] startClientMonitoring() is deprecated - backend handles monitoring');
   }
 
   // Legacy join network method - no longer used (mesh only)
   async connectToHost(address: string): Promise<boolean> {
-    console.log('⚠️ [NetworkService] connectToHost() is deprecated - use mesh networking instead');
+    debugLog('⚠️ [NetworkService] connectToHost() is deprecated - use mesh networking instead');
     return false;
   }
 
   private disconnect(): void {
-    console.log('🔌 [NetworkService] Disconnecting from network');
+    debugLog('🔌 [NetworkService] Disconnecting from network');
     
     // Legacy mesh network stop - now handled by backend
-    console.log('⚠️ [NetworkService] Frontend mesh network stop is deprecated');
+    debugLog('⚠️ [NetworkService] Frontend mesh network stop is deprecated');
     
     // Clear connection state
     this.status.isConnected = false;
@@ -432,7 +433,7 @@ class NetworkService {
     // Stop QSO refresh
     stopPeriodicQsoRefresh();
     
-    console.log('🔌 [NetworkService] Disconnected from network');
+    debugLog('🔌 [NetworkService] Disconnected from network');
   }
 
   // Sync QSOs from connected stations (polling)
@@ -618,8 +619,8 @@ class NetworkService {
     
     
     // Auto-reconnect disabled - all mesh discovery now handled by backend service
-    console.log('ℹ️ [NetworkService] Auto-reconnect disabled - using backend mesh discovery only');
-    console.log('ℹ️ [NetworkService] Frontend mesh network service disabled to prevent connection conflicts');
+    debugLog('ℹ️ [NetworkService] Auto-reconnect disabled - using backend mesh discovery only');
+    debugLog('ℹ️ [NetworkService] Frontend mesh network service disabled to prevent connection conflicts');
   }
 
   private cancelReconnect(): void {
@@ -735,7 +736,7 @@ class NetworkService {
   // Broadcast QSO update to network
   async broadcastQsoUpdate(qso: any, action: 'add' | 'update' | 'delete'): Promise<void> {
     if (!this.status.isConnected) {
-      console.log('🔇 [NetworkService] Not connected to network, skipping QSO broadcast');
+      debugLog('🔇 [NetworkService] Not connected to network, skipping QSO broadcast');
       return;
     }
     
@@ -748,15 +749,15 @@ class NetworkService {
       stationId: localStationId
     };
 
-    console.log(`📡 [NetworkService] Broadcasting QSO ${action} to mesh network:`, {
+    debugLog(`📡 [NetworkService] Broadcasting QSO ${action} to mesh network:`, {
       qsoId: qso.id,
       action,
       stationId: localStationId
     });
     
     // Legacy mesh node discovery - now handled by backend
-    console.log('⚠️ [NetworkService] QSO broadcast via frontend mesh is deprecated');
-    console.log('🔍 [NetworkService] QSO sync is now handled automatically by backend mesh discovery');
+    debugLog('⚠️ [NetworkService] QSO broadcast via frontend mesh is deprecated');
+    debugLog('🔍 [NetworkService] QSO sync is now handled automatically by backend mesh discovery');
     return;
   }
 
@@ -780,7 +781,7 @@ class NetworkService {
         throw new Error('Failed to send message');
       }
       
-      console.log(`📨 Message sent via backend API: "${text}" to ${target}`);
+      debugLog(`📨 Message sent via backend API: "${text}" to ${target}`);
     } catch (error) {
       console.error('❌ Error sending message:', error);
       throw error;
@@ -1022,18 +1023,18 @@ class NetworkService {
   // Mesh network methods
   async startMesh(): Promise<boolean> {
     // Mesh networking now handled entirely by backend - disable frontend mesh
-    console.log('ℹ️ [NetworkService] Mesh networking disabled - using backend mesh discovery only');
+    debugLog('ℹ️ [NetworkService] Mesh networking disabled - using backend mesh discovery only');
     return false;
   }
 
   async stopMesh(): Promise<void> {
     // Mesh networking disabled - no-op
-    console.log('ℹ️ [NetworkService] Mesh stop called - no action needed (backend handles mesh)');
+    debugLog('ℹ️ [NetworkService] Mesh stop called - no action needed (backend handles mesh)');
   }
 
   private setupMeshEventHandlers(): void {
     // Legacy mesh event handlers - no longer used
-    console.log('⚠️ [NetworkService] setupMeshEventHandlers() is deprecated - backend handles mesh events');
+    debugLog('⚠️ [NetworkService] setupMeshEventHandlers() is deprecated - backend handles mesh events');
   }
 
   // Remove duplicate stations from the connected stations list
@@ -1074,24 +1075,24 @@ class NetworkService {
 
   // Legacy mesh methods - no longer used (backend handles mesh discovery)
   getMeshNodes(): any[] {
-    console.log('⚠️ [NetworkService] getMeshNodes() is deprecated - use backend API');
+    debugLog('⚠️ [NetworkService] getMeshNodes() is deprecated - use backend API');
     return [];
   }
 
   // Legacy mesh status - no longer used (backend handles mesh discovery)
   getMeshStatus() {
-    console.log('⚠️ [NetworkService] getMeshStatus() is deprecated - use backend API');
+    debugLog('⚠️ [NetworkService] getMeshStatus() is deprecated - use backend API');
     return { isActive: false, connectedNodes: 0, discoveredNodes: 0, meshHealth: 'unknown' };
   }
 
   // Legacy mesh discovery refresh - no longer used (backend handles mesh discovery)
   async refreshMeshDiscovery(): Promise<void> {
-    console.log('⚠️ [NetworkService] refreshMeshDiscovery() is deprecated - use backend API');
+    debugLog('⚠️ [NetworkService] refreshMeshDiscovery() is deprecated - use backend API');
   }
 
   // Legacy mesh sync - no longer used (backend handles mesh discovery)
   async forceMeshSync(): Promise<void> {
-    console.log('⚠️ [NetworkService] forceMeshSync() is deprecated - use backend API');
+    debugLog('⚠️ [NetworkService] forceMeshSync() is deprecated - use backend API');
   }
 }
 

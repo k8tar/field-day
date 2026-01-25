@@ -257,6 +257,7 @@ import { fileStorage } from '@/services/fileStorage';
 import { stationStatusService as stationService, type StationStatus } from '@/services/stationStatusService';
 import { backgroundNetworkService, meshConnectionState } from '@/services/backgroundNetworkService';
 import { meshNetworkService } from '@/services/meshNetworkService';
+import { debugLog } from '@/utils/debug';
 
 const props = defineProps<{
   isOpen: boolean;
@@ -407,7 +408,7 @@ async function refreshStationInfo() {
 // Sync station configuration between file storage and backend
 async function syncStationConfigWithBackend() {
   if (!backendApi.connected.value) {
-    console.log('Backend not connected - skipping sync');
+    debugLog('Backend not connected - skipping sync');
     return;
   }
   
@@ -420,7 +421,7 @@ async function syncStationConfigWithBackend() {
     
     if (!backendStationInfo) {
       // Backend has no station info - update it with file storage data
-      console.log('📝 Backend has no station info - updating from file storage');
+      debugLog('📝 Backend has no station info - updating from file storage');
       await backendApi.updateStationInfo({
         call_sign: fileConfig.callsign || '',
         name: fileConfig.callsign || '',
@@ -438,7 +439,7 @@ async function syncStationConfigWithBackend() {
         
         // If file config was updated recently (within last hour), prefer it
         if (currentTime - fileConfigTime < 3600000) { // 1 hour
-          console.log('📝 File storage updated recently - updating backend configuration');
+          debugLog('📝 File storage updated recently - updating backend configuration');
           await backendApi.updateStationInfo({
             call_sign: fileConfig.callsign || '',
             name: fileConfig.callsign || '',
@@ -447,7 +448,7 @@ async function syncStationConfigWithBackend() {
           });
         } else {
           // Use backend data as source of truth
-          console.log('📝 Using backend as source of truth - updating file storage');
+          debugLog('📝 Using backend as source of truth - updating file storage');
           await fileStorage.saveStationConfig({
             callsign: backendStationInfo.call_sign || '',
             designator: backendStationInfo.class || '1A',
@@ -462,7 +463,7 @@ async function syncStationConfigWithBackend() {
       }
     }
     
-    console.log('✅ Station configuration synchronized successfully');
+    debugLog('✅ Station configuration synchronized successfully');
   } catch (error) {
     console.error('❌ Failed to sync station configuration:', error);
   }
@@ -488,7 +489,7 @@ watch(() => localStationInfo.value.callsign, async (newCallsign) => {
         });
         
         if (success) {
-          console.log('✅ Station callsign updated in backend');
+          debugLog('✅ Station callsign updated in backend');
         } else {
           console.error('❌ Failed to update station callsign in backend');
         }
@@ -520,7 +521,7 @@ watch(() => localStationInfo.value.designator, async (newDesignator) => {
         });
         
         if (success) {
-          console.log('✅ Station designator updated in backend');
+          debugLog('✅ Station designator updated in backend');
         } else {
           console.error('❌ Failed to update station designator in backend');
         }
@@ -544,14 +545,14 @@ async function attemptRestart() {
   
   isRestarting.value = true;
   try {
-    console.log('🔄 Attempting to restart backend service...');
+    debugLog('🔄 Attempting to restart backend service...');
     
     if (isElectron.value) {
       const restartFunction = (window as any).restartBackendService;
       if (restartFunction) {
         const success = await restartFunction();
         if (success) {
-          console.log('✅ Backend service restarted successfully');
+          debugLog('✅ Backend service restarted successfully');
         } else {
           console.error('❌ Failed to restart backend service');
         }
@@ -572,7 +573,7 @@ async function retryConnection() {
   
   isRetrying.value = true;
   try {
-    console.log('🔄 Retrying backend connection...');
+    debugLog('🔄 Retrying backend connection...');
     
     // Try to get station info to test connection (this will internally call checkConnection)
     await backendApi.getStationInfo();
@@ -581,13 +582,13 @@ async function retryConnection() {
     await new Promise(resolve => setTimeout(resolve, 1000));
     
     if (backendApi.connected.value) {
-      console.log('✅ Backend connection successful');
+      debugLog('✅ Backend connection successful');
       connectionStatus.value = 'Backend connection restored!';
       setTimeout(() => {
         connectionStatus.value = '';
       }, 3000);
     } else {
-      console.log('❌ Backend still not available');
+      debugLog('❌ Backend still not available');
       connectionStatus.value = 'Backend still not available. Please check if the backend service is running.';
       setTimeout(() => {
         connectionStatus.value = '';
@@ -635,7 +636,7 @@ function updateStationStatuses(stations: BackendStation[]) {
 }
 
 function connectToStation(station: BackendStation) {
-  console.log('Connecting to station:', station.call_sign);
+  debugLog('Connecting to station:', station.call_sign);
   // Backend handles the connection logic
 }
 
@@ -656,7 +657,7 @@ async function startConnection() {
     const stations = await backendApi.getDiscoveredStations();
     discoveredStations.value = stations;
     
-    console.log(`🚀 Mesh network started: ${stations.length} stations discovered`);
+    debugLog(`🚀 Mesh network started: ${stations.length} stations discovered`);
     connectionStatus.value = 'Mesh network started successfully!';
     
     // Clear status after 3 seconds
@@ -677,19 +678,19 @@ async function startConnection() {
 }
 
 async function disconnect() {
-  console.log('🔍 [NetworkModal] Disconnect clicked');
+  debugLog('🔍 [NetworkModal] Disconnect clicked');
   isDisconnecting.value = true;
   
   try {
-    console.log('🔍 [NetworkModal] Setting mesh connection state to false...');
+    debugLog('🔍 [NetworkModal] Setting mesh connection state to false...');
     // Update shared mesh state first - this will automatically stop background operations
     meshConnectionState.setConnected(false);
     meshConnectionStateReactive.value = false; // Force reactive update
-    console.log('🔍 [NetworkModal] Mesh connection state set to:', meshConnectionState.isConnected);
+    debugLog('🔍 [NetworkModal] Mesh connection state set to:', meshConnectionState.isConnected);
     
     // Force Vue to detect the change
     await nextTick();
-    console.log('🔍 [NetworkModal] After nextTick - isMeshActive:', isMeshActive.value);
+    debugLog('🔍 [NetworkModal] After nextTick - isMeshActive:', isMeshActive.value);
     
     // Stop mesh network service
     await meshNetworkService.stopMesh();
@@ -707,7 +708,7 @@ async function disconnect() {
         })
       });
       if (response.ok) {
-        console.log('🛑 Backend mesh configuration disabled');
+        debugLog('🛑 Backend mesh configuration disabled');
       } else {
         console.error('❌ Backend mesh config disable failed:', response.status, response.statusText);
       }
@@ -721,7 +722,7 @@ async function disconnect() {
     // Clear station status when mesh is disabled
     stationStatusService.clearDiscoveredCount();
     
-    console.log('🔌 Mesh network disconnected');
+    debugLog('🔌 Mesh network disconnected');
     
     // Show disconnected status briefly
     connectionStatus.value = 'Disconnected';
@@ -732,17 +733,17 @@ async function disconnect() {
   } catch (error) {
     console.error('❌ Error disconnecting from mesh network:', error);
   } finally {
-    console.log('🔍 [NetworkModal] Setting isDisconnecting to false');
+    debugLog('🔍 [NetworkModal] Setting isDisconnecting to false');
     isDisconnecting.value = false;
   }
 }
 
 async function connectToMesh() {
-  console.log('🔍 [NetworkModal] Connect to Mesh clicked');
+  debugLog('🔍 [NetworkModal] Connect to Mesh clicked');
   isConnecting.value = true;
   
   try {
-    console.log('🔍 [NetworkModal] Enabling backend mesh configuration...');
+    debugLog('🔍 [NetworkModal] Enabling backend mesh configuration...');
     // Enable mesh networking in backend configuration
     try {
       const response = await fetch('http://localhost:3030/api/config/mesh', {
@@ -756,7 +757,7 @@ async function connectToMesh() {
         })
       });
       if (response.ok) {
-        console.log('🚀 Backend mesh configuration enabled');
+        debugLog('🚀 Backend mesh configuration enabled');
       } else {
         console.error('❌ Backend mesh config failed:', response.status, response.statusText);
         throw new Error('Failed to enable backend mesh configuration');
@@ -766,18 +767,18 @@ async function connectToMesh() {
       throw error;
     }
     
-    console.log('🔍 [NetworkModal] Backend mesh enabled, setting frontend connection state...');
+    debugLog('🔍 [NetworkModal] Backend mesh enabled, setting frontend connection state...');
     
     // Update shared mesh state - this will automatically start background operations
     meshConnectionState.setConnected(true);
     meshConnectionStateReactive.value = true; // Force reactive update
-    console.log('🔍 [NetworkModal] Mesh connection state set to:', meshConnectionState.isConnected);
+    debugLog('🔍 [NetworkModal] Mesh connection state set to:', meshConnectionState.isConnected);
     
     // Force Vue to detect the change
     await nextTick();
-    console.log('🔍 [NetworkModal] After nextTick - isMeshActive:', isMeshActive.value);
+    debugLog('🔍 [NetworkModal] After nextTick - isMeshActive:', isMeshActive.value);
     
-    console.log('🌐 Mesh network connected');
+    debugLog('🌐 Mesh network connected');
     
     // Show connected status briefly
     connectionStatus.value = 'Connected to mesh network';
@@ -786,7 +787,7 @@ async function connectToMesh() {
     }, 3000);
     
     // Start discovering stations immediately
-    console.log('🔍 [NetworkModal] Starting mesh discovery...');
+    debugLog('🔍 [NetworkModal] Starting mesh discovery...');
     await refreshMeshDiscovery();
     
   } catch (error) {
@@ -796,7 +797,7 @@ async function connectToMesh() {
       connectionStatus.value = '';
     }, 5000);
   } finally {
-    console.log('🔍 [NetworkModal] Setting isConnecting to false');
+    debugLog('🔍 [NetworkModal] Setting isConnecting to false');
     isConnecting.value = false;
   }
 }
@@ -863,12 +864,12 @@ async function checkMeshConnectionState() {
       // Status check failed, fall back to station check
     }
     
-    console.log(`🔍 [checkMeshConnectionState] Backend mesh enabled: ${meshEnabled}, Frontend mesh connected: ${meshConnectionState.isConnected}`);
+    debugLog(`🔍 [checkMeshConnectionState] Backend mesh enabled: ${meshEnabled}, Frontend mesh connected: ${meshConnectionState.isConnected}`);
     
     // Only sync state if frontend mesh is connected and backend is disabled
     // DO NOT automatically enable mesh just because backend is enabled
     if (meshConnectionState.isConnected && !meshEnabled) {
-      console.log('🔄 Frontend shows connected but backend disabled - disabling frontend');
+      debugLog('🔄 Frontend shows connected but backend disabled - disabling frontend');
       meshConnectionState.setConnected(false);
     }
     
@@ -901,13 +902,13 @@ async function confirmReset() {
   isResettingLog.value = true;
   
   try {
-    console.log('🔄 Triggering network-wide log reset...');
+    debugLog('🔄 Triggering network-wide log reset...');
     
     // Call the backend API to trigger the log reset
     const result = await backendApi.triggerLogReset();
     
     if (result.success) {
-      console.log('✅ Network log reset successful:', result.reset_timestamp);
+      debugLog('✅ Network log reset successful:', result.reset_timestamp);
       
       // Process the reset locally
       const { processLogReset } = await import('@/store/qso');
@@ -942,6 +943,9 @@ async function confirmReset() {
   }
 }
 
+// Periodically check backend connection status
+let backendConnectionInterval: any = null;
+
 // Load initial data on mount
 onMounted(async () => {
   await refreshStationInfo();
@@ -961,14 +965,14 @@ onMounted(async () => {
   // Always fetch discovered stations on mount if connected
   if (isConnected.value) {
     try {
-      console.log('🔍 Fetching discovered stations on mount...');
+      debugLog('🔍 Fetching discovered stations on mount...');
       const stations = await backendApi.getDiscoveredStations();
       discoveredStations.value = stations;
       
       // Update station statuses
       updateStationStatuses(stations);
       
-      console.log(`📡 Found ${stations.length} discovered stations on mount`);
+      debugLog(`📡 Found ${stations.length} discovered stations on mount`);
     } catch (error) {
       console.error('Failed to fetch discovered stations on mount:', error);
     }
@@ -1006,25 +1010,18 @@ onMounted(async () => {
     }
   }
   
-  // --- Periodically check backend connection status ---
-  let backendConnectionInterval: any = null;
-  onMounted(() => {
-    console.log('🔄 Starting backend connection polling...');
-    backendConnectionInterval = setInterval(async () => {
-      try {
-        console.log('🔄 Checking backend connection...');
-        await backendApi.refreshConnectionStatus(); // This will update backendApi.connected.value
-        console.log('✅ Backend connection check completed. Connected:', backendApi.connected.value);
-      } catch (e) {
-        console.log('❌ Backend connection check failed:', e);
-        // Ignore errors, connection state is updated internally
-      }
-    }, 2000); // Check every 2 seconds
-  });
-  
-  onUnmounted(() => {
-    if (backendConnectionInterval) clearInterval(backendConnectionInterval);
-  });
+  // Start backend connection polling
+  debugLog('🔄 Starting backend connection polling...');
+  backendConnectionInterval = setInterval(async () => {
+    try {
+      debugLog('🔄 Checking backend connection...');
+      await backendApi.refreshConnectionStatus(); // This will update backendApi.connected.value
+      debugLog('✅ Backend connection check completed. Connected:', backendApi.connected.value);
+    } catch (e) {
+      debugLog('❌ Backend connection check failed:', e);
+      // Ignore errors, connection state is updated internally
+    }
+  }, 2000); // Check every 2 seconds
 });
 
 // Clean up event listeners on unmount
@@ -1039,6 +1036,11 @@ onUnmounted(() => {
   const modalRefreshInterval = (window as any).networkModalRefreshInterval;
   if (modalRefreshInterval) {
     clearInterval(modalRefreshInterval);
+  }
+  
+  // Clean up backend connection polling
+  if (backendConnectionInterval) {
+    clearInterval(backendConnectionInterval);
   }
 });
 
@@ -1067,17 +1069,17 @@ watch(() => props.isOpen, async (isOpen) => {
       
       // Refresh discovered stations when modal opens, regardless of mode
       try {
-        console.log('📱 Network modal opened - fetching discovered stations...');
+        debugLog('📱 Network modal opened - fetching discovered stations...');
         const stations = await backendApi.getDiscoveredStations();
         discoveredStations.value = stations;
         
         // Update station statuses
         updateStationStatuses(stations);
         
-        console.log(`📡 Modal opened: ${stations.length} stations loaded from backend`);
+        debugLog(`📡 Modal opened: ${stations.length} stations loaded from backend`);
         
         // Also trigger discovery to ensure fresh data
-        console.log('🔍 Triggering mesh discovery for fresh data...');
+        debugLog('🔍 Triggering mesh discovery for fresh data...');
         await backendApi.discoverStations();
           
         // Wait a moment then fetch updated list
@@ -1089,7 +1091,7 @@ watch(() => props.isOpen, async (isOpen) => {
             // Update station statuses again
             updateStationStatuses(updatedStations);
             
-            console.log(`After discovery: ${updatedStations.length} stations found`);
+            debugLog(`After discovery: ${updatedStations.length} stations found`);
           } catch (error) {
             console.error('Failed to get updated stations after discovery:', error);
           }
@@ -1123,7 +1125,7 @@ function handleStationStatusUpdate(event: Event) {
     // Log status update details if we have them
     if (customEvent.detail) {
       const { total, online, warning, offline } = customEvent.detail;
-      console.log(`📊 Station status updated: ${total} total (${online} online, ${warning} warning, ${offline} offline)`);
+      debugLog(`📊 Station status updated: ${total} total (${online} online, ${warning} warning, ${offline} offline)`);
     }
   } catch (error) {
     console.error('Error handling station status update:', error);

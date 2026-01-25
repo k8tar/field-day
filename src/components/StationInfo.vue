@@ -20,6 +20,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount } from 'vue';
 import { fileStorage } from '@/services/fileStorage';
+import { debugLog } from '@/utils/debug';
 
 const stationCallsign = ref('');
 const stationClass = ref('');
@@ -27,17 +28,17 @@ const stationSection = ref('');
 
 // Function to refresh data from file storage
 const refreshData = async () => {
-  console.log('StationInfo: refreshData() called');
+  debugLog('StationInfo: refreshData() called');
   try {
     const config = await fileStorage.getStationConfig();
-    console.log('StationInfo: Loaded config:', config);
+    debugLog('StationInfo: Loaded config:', config);
     
     // Update all fields from config, with proper fallbacks
     stationCallsign.value = config.callsign || '';
     stationClass.value = config.stationClass || '';  // Keep this simple, one source of truth
     stationSection.value = config.stationSection || '';
 
-    console.log('StationInfo: Set values:', {
+    debugLog('StationInfo: Set values:', {
       callsign: stationCallsign.value,
       class: stationClass.value,
       section: stationSection.value

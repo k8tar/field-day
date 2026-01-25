@@ -1,52 +1,41 @@
-// ARRL Divisions and their sections - the single source of truth
+// ARRL Divisions and their sections - organized by U.S. Call Area
+// Source: https://contests.arrl.org/contestmultipliers.php?a=wve
 export const ARRL_DIVISIONS = {
-  'Dakota': {
-    number: 0,
+  'Section 0': {
     sections: ['CO', 'IA', 'KS', 'MN', 'MO', 'ND', 'NE', 'SD']
   },
-  'New England': {
-    number: 1,
+  'Section 1': {
     sections: ['CT', 'EMA', 'ME', 'NH', 'RI', 'VT', 'WMA']
   },
-  'Hudson': {
-    number: 2,
+  'Section 2': {
     sections: ['ENY', 'NLI', 'NNJ', 'NNY', 'SNJ', 'WNY']
   },
-  'Atlantic': {
-    number: 3,
+  'Section 3': {
     sections: ['DE', 'EPA', 'MDC', 'WPA']
   },
-  'Southeastern': {
-    number: 4,
+  'Section 4': {
     sections: ['AL', 'GA', 'KY', 'NC', 'NFL', 'PR', 'SC', 'SFL', 'TN', 'VA', 'VI', 'WCF']
   },
-  'West Gulf': {
-    number: 5,
+  'Section 5': {
     sections: ['AR', 'LA', 'MS', 'NM', 'NTX', 'OK', 'STX', 'WTX']
   },
-  'Pacific': {
-    number: 6,
+  'Section 6': {
     sections: ['EB', 'LAX', 'ORG', 'PAC', 'SB', 'SCV', 'SDG', 'SF', 'SJV', 'SV']
   },
-  'Northwestern': {
-    number: 7,
+  'Section 7': {
     sections: ['AK', 'AZ', 'EWA', 'ID', 'MT', 'NV', 'OR', 'UT', 'WWA', 'WY']
   },
-  'Great Lakes': {
-    number: 8,
-    sections: ['MI', 'OH']
+  'Section 8': {
+    sections: ['MI', 'OH', 'WV']
   },
-  'Central': {
-    number: 9,
+  'Section 9': {
     sections: ['IL', 'IN', 'WI']
   },
   'Canada': {
-    number: 10,
-    sections: ['AB', 'BC', 'GTA', 'MAR', 'MB', 'NL', 'NT', 'ONE', 'ONN', 'ONS', 'QC', 'SK']
+    sections: ['AB', 'BC', 'GH', 'MB', 'NB', 'NL', 'NS', 'ONE', 'ONN', 'ONS', 'PE', 'QC', 'SK', 'TER']
   },
   'DX': {
-    number: 11,
-    sections: ['DX']
+    sections: ['DX', 'MX']
   }
 };
 
@@ -135,13 +124,15 @@ export function normalizeArrlSection(section: string): string | null {
   return ARRL_SECTIONS.includes(normalizedSection) ? normalizedSection : null;
 }
 
-// Valid ARRL class letters for Field Day
-const VALID_CLASS_LETTERS = ['A', 'B', 'C', 'D', 'E', 'F'];
+// Valid class letters for Field Day (A-F) and Winter Field Day (H, I, O, M)
+const VALID_CLASS_LETTERS = ['A', 'B', 'C', 'D', 'E', 'F', 'H', 'I', 'O', 'M'];
 
 /**
- * Validates if a class string matches valid ARRL Field Day format
- * Format: 1-3 digits followed by a valid class letter (A, B, C, D, E, F)
- * Examples: 1A, 2A, 10B, 123F
+ * Validates if a class string matches valid Field Day format
+ * Format: 1-3 digits followed by a valid class letter
+ * Field Day (A-F): A=Battery, B=Home, C=Emergency, D=Home+Alternate, E=Home+Battery, F=EOC
+ * Winter Field Day (H, I, O, M): H=Home, I=Indoor, O=Outdoor, M=Mobile
+ * Examples: 1A, 2B, 1H, 1I, 1O, 1M
  * @param classStr The class string to validate (case-insensitive)
  * @returns true if the class is valid, false otherwise
  */
@@ -152,8 +143,8 @@ export function validateArrlClass(classStr: string): boolean {
   
   const normalizedClass = classStr.trim().toUpperCase();
   
-  // Match 1-3 digits followed by a valid class letter
-  const classPattern = /^(\d{1,3})([A-F])$/;
+  // Match 1-3 digits followed by a valid class letter (A-F for Field Day, H/I/O/M for Winter Field Day)
+  const classPattern = /^(\d{1,3})([A-FHIOM])$/;
   const match = normalizedClass.match(classPattern);
   
   if (!match) {

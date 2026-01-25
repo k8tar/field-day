@@ -15,6 +15,8 @@
 import { ref, reactive } from 'vue';
 import { fileStorage } from './fileStorage';
 import { QSO } from '@/store/qso';
+import { debugLog } from '@/utils/debug';
+import { debugLog } from '@/utils/debug';
 
 export interface MeshNode {
   id: string;
@@ -489,14 +491,14 @@ class MeshNetworkService {
   private async discoverPeers(): Promise<void> {
     if (!this.localNode) return;
     
-    console.log('🔍 [MeshNetworkService] Starting peer discovery...');
+    debugLog('🔍 [MeshNetworkService] Starting peer discovery...');
     
     try {
       // First, try to get discovered stations from backend mesh discovery
       const backendStations = await this.getBackendDiscoveredStations();
       
       if (backendStations.length > 0) {
-        console.log(`🎯 [MeshNetworkService] Got ${backendStations.length} stations from backend discovery`);
+        debugLog(`🎯 [MeshNetworkService] Got ${backendStations.length} stations from backend discovery`);
         
         // Process backend-discovered stations
         for (const station of backendStations) {
@@ -508,8 +510,8 @@ class MeshNetworkService {
       }
       
       // Legacy manual scan disabled - all discovery now handled by backend
-      console.log('ℹ️ [MeshNetworkService] No stations from backend discovery - relying on backend mesh discovery only');
-      console.log('ℹ️ [MeshNetworkService] Manual frontend discovery disabled to avoid connection conflicts');
+      debugLog('ℹ️ [MeshNetworkService] No stations from backend discovery - relying on backend mesh discovery only');
+      debugLog('ℹ️ [MeshNetworkService] Manual frontend discovery disabled to avoid connection conflicts');
     } catch (error) {
       console.error('❌ Error during peer discovery:', error);
     }
@@ -535,7 +537,7 @@ class MeshNetworkService {
       const result = await response.json();
       
       if (result.success && Array.isArray(result.data)) {
-        console.log(`✅ [MeshNetworkService] Backend discovered ${result.data.length} stations`);
+        debugLog(`✅ [MeshNetworkService] Backend discovered ${result.data.length} stations`);
         return result.data;
       } else {
         console.warn('⚠️ [MeshNetworkService] Backend response format unexpected:', result);
@@ -575,7 +577,7 @@ class MeshNetworkService {
       const isReachable = await this.testStationConnection(meshNode);
       
       if (isReachable) {
-        console.log(`✅ [MeshNetworkService] Confirmed station: ${meshNode.callsign} at ${meshNode.ip}:${meshNode.port}`);
+        debugLog(`✅ [MeshNetworkService] Confirmed station: ${meshNode.callsign} at ${meshNode.ip}:${meshNode.port}`);
         
         // Add to discovered nodes
         this.discoveredNodes.set(meshNode.id, meshNode);
@@ -585,7 +587,7 @@ class MeshNetworkService {
         
         this.emit('node:discovered', meshNode);
       } else {
-        console.log(`❌ [MeshNetworkService] Cannot reach station: ${meshNode.callsign} at ${meshNode.ip}:${meshNode.port}`);
+        debugLog(`❌ [MeshNetworkService] Cannot reach station: ${meshNode.callsign} at ${meshNode.ip}:${meshNode.port}`);
       }
     } catch (error) {
       console.error('❌ [MeshNetworkService] Error processing discovered station:', error);
@@ -597,7 +599,7 @@ class MeshNetworkService {
     try {
       const testUrl = `http://${node.ip}:${node.port}/api/station-info`;
       
-      console.log(`🔍 [MeshNetworkService] Testing connection to ${node.callsign} at ${testUrl}`);
+      debugLog(`🔍 [MeshNetworkService] Testing connection to ${node.callsign} at ${testUrl}`);
       
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
@@ -627,10 +629,10 @@ class MeshNetworkService {
       return false;
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') {
-        console.log(`⏱️ [MeshNetworkService] Connection test timeout for ${node.ip}:${node.port}`);
+        debugLog(`⏱️ [MeshNetworkService] Connection test timeout for ${node.ip}:${node.port}`);
       } else {
         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        console.log(`❌ [MeshNetworkService] Connection test failed for ${node.ip}:${node.port}:`, errorMessage);
+        debugLog(`❌ [MeshNetworkService] Connection test failed for ${node.ip}:${node.port}:`, errorMessage);
       }
       return false;
     }

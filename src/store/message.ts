@@ -3,6 +3,7 @@ import { backendApi, type BackendMessage } from '@/services/backendApiService';
 import { fileStorage } from '@/services/fileStorage';
 import { CrossOriginStorage } from '@/services/crossOriginStorage';
 import { logger, ErrorHandler } from '@/utils/logger';
+import { debugLog } from '@/utils/debug';
 
 export interface Message {
   id: string;
@@ -73,7 +74,7 @@ async function initializeMessages() {
   if (backendApi.connected.value) {
     try {
       await refreshMessagesFromBackend();
-      console.log(`📨 Loaded ${messages.value.length} messages from backend`);
+      debugLog(`📨 Loaded ${messages.value.length} messages from backend`);
       return;
     } catch (error) {
       console.warn('⚠️ Failed to load from backend, trying file storage:', error);
@@ -85,11 +86,11 @@ async function initializeMessages() {
     const savedMessages = await fileStorage.getMessages();
     if (savedMessages && savedMessages.length > 0) {
       messages.value = savedMessages;
-      console.log(`📨 Loaded ${messages.value.length} messages from file storage`);
+      debugLog(`📨 Loaded ${messages.value.length} messages from file storage`);
       
       // If backend is connected and we have local messages, try to migrate them
       if (backendApi.connected.value) {
-        console.log('📨 Migrating local messages to backend...');
+        debugLog('📨 Migrating local messages to backend...');
         let migratedCount = 0;
         for (const message of savedMessages) {
           if (message.type === 'chat' && message.from) {
@@ -107,7 +108,7 @@ async function initializeMessages() {
           }
         }
         if (migratedCount > 0) {
-          console.log(`📨 Migrated ${migratedCount} messages to backend`);
+          debugLog(`📨 Migrated ${migratedCount} messages to backend`);
           // Refresh from backend to get the canonical list
           await refreshMessagesFromBackend();
         }
@@ -135,7 +136,7 @@ initializeMessages();
 
 // Listen for backend connection to re-initialize from backend
 window.addEventListener('backendConnected', async () => {
-  console.log('📨 Backend connected - re-initializing messages from backend');
+  debugLog('📨 Backend connected - re-initializing messages from backend');
   await initializeMessages();
 });
 
@@ -212,7 +213,7 @@ export async function addMessage(
     try {
       const backendMessage = await convertToBackendMessage(message);
       await backendApi.addMessage(backendMessage);
-      console.log('📨 Message sent to backend:', text);
+      debugLog('📨 Message sent to backend:', text);
       
       // Trigger a refresh to get any new messages from other stations
       setTimeout(() => refreshMessagesFromBackend(), 1000);
@@ -237,7 +238,7 @@ export async function sendMessage(text: string, target: string = 'all'): Promise
     // Add message locally first
     await addMessage('chat', text.trim(), stationId, target, messageId);
     
-    console.log('📨 Message sent:', text);
+    debugLog('📨 Message sent:', text);
   } catch (error) {
     console.error('❌ Failed to send message:', error);
     addMessage('info', 'Failed to send message');
@@ -270,7 +271,7 @@ export async function editMessage(messageId: string, newText: string): Promise<v
     try {
       const backendMessage = await convertToBackendMessage(messages.value[messageIndex]);
       await backendApi.updateMessage(backendMessage);
-      console.log('📨 Message edited:', newText);
+      debugLog('📨 Message edited:', newText);
     } catch (error) {
       console.error('❌ Failed to update message in backend:', error);
       addMessage('info', 'Failed to update message on network');
@@ -297,7 +298,7 @@ export async function deleteMessage(messageId: string): Promise<void> {
   if (backendApi.connected.value) {
     try {
       await backendApi.deleteMessage(messageId);
-      console.log('📨 Message deleted:', messageId);
+      debugLog('📨 Message deleted:', messageId);
     } catch (error) {
       console.error('❌ Failed to delete message from backend:', error);
       addMessage('info', 'Failed to delete message from network');
@@ -368,7 +369,7 @@ export async function refreshMessagesFromBackend(): Promise<void> {
         messages.value = allMessages;
       }
       
-      console.log(`📨 Message sync: +${newMessagesAdded} from backend, ${newMessagesSentToBackend} sent to backend`);
+      debugLog(`📨 Message sync: +${newMessagesAdded} from backend, ${newMessagesSentToBackend} sent to backend`);
     }
   } catch (error) {
     console.error('❌ Failed to refresh messages from backend:', error);
@@ -400,7 +401,7 @@ function stopMessageRefresh() {
 
 // Listen for backend connection events
 window.addEventListener('backendConnected', async () => {
-  console.log('📨 Backend connected - starting message sync');
+  debugLog('📨 Backend connected - starting message sync');
   
   // Immediately refresh messages from backend and sync local messages
   await refreshMessagesFromBackend();
@@ -410,7 +411,7 @@ window.addEventListener('backendConnected', async () => {
 });
 
 window.addEventListener('backendDisconnected', () => {
-  console.log('📨 Backend disconnected - stopping message sync');
+  debugLog('📨 Backend disconnected - stopping message sync');
   stopMessageRefresh();
 });
 
@@ -435,14 +436,14 @@ export { initializeMessages };
 export async function dismissMessage(messageId: string) {
   dismissedMessageIds.value.add(messageId);
   await saveDismissedMessages();
-  console.log(`📨 Dismissed message: ${messageId}`);
+  debugLog(`📨 Dismissed message: ${messageId}`);
 }
 
 // Un-dismiss a message (show it again)
 export async function undismissMessage(messageId: string) {
   dismissedMessageIds.value.delete(messageId);
   await saveDismissedMessages();
-  console.log(`📨 Un-dismissed message: ${messageId}`);
+  debugLog(`📨 Un-dismissed message: ${messageId}`);
 }
 
 // Check if a message is dismissed
@@ -454,12 +455,12 @@ export function isMessageDismissed(messageId: string): boolean {
 export async function clearAllDismissed() {
   dismissedMessageIds.value.clear();
   await saveDismissedMessages();
-  console.log('📨 Cleared all dismissed messages');
+  debugLog('📨 Cleared all dismissed messages');
 }
 
 // Clear all messages (for log reset)
 export async function clearAllMessages() {
-  console.log('🗑️ Clearing all messages from local storage');
+  debugLog('🗑️ Clearing all messages from local storage');
   messages.value = [];
   await saveMessages();
   
@@ -467,5 +468,5 @@ export async function clearAllMessages() {
   dismissedMessageIds.value.clear();
   await saveDismissedMessages();
   
-  console.log('✅ Successfully cleared all messages');
+  debugLog('✅ Successfully cleared all messages');
 }

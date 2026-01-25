@@ -1,3 +1,5 @@
+import { debugLog } from '@/utils/debug';
+
 export interface StationStatus {
   id: string;
   callSign: string;
@@ -22,11 +24,11 @@ class StationStatusService {
   getTotalDiscoveredCount(): number {
     try {
       const stored = localStorage.getItem(this.DISCOVERED_KEY);
-      console.log(`🔍 [StationStatusService] Getting discovered count, stored data:`, stored);
+      debugLog(`🔍 [StationStatusService] Getting discovered count, stored data:`, stored);
       if (!stored) return 0;
       
       const discoveredIds = JSON.parse(stored) as string[];
-      console.log(`📊 [StationStatusService] Total discovered stations: ${discoveredIds.length}`, discoveredIds);
+      debugLog(`📊 [StationStatusService] Total discovered stations: ${discoveredIds.length}`, discoveredIds);
       return discoveredIds.length;
     } catch (error) {
       console.error('Failed to load discovered stations count:', error);
@@ -45,9 +47,9 @@ class StationStatusService {
       if (!discoveredIds.includes(stationId)) {
         discoveredIds.push(stationId);
         localStorage.setItem(this.DISCOVERED_KEY, JSON.stringify(discoveredIds));
-        console.log(`✅ [StationStatusService] Added new station to discovered list: ${stationId}`, discoveredIds);
+        debugLog(`✅ [StationStatusService] Added new station to discovered list: ${stationId}`, discoveredIds);
       } else {
-        console.log(`🔄 [StationStatusService] Station already in discovered list: ${stationId}`);
+        debugLog(`🔄 [StationStatusService] Station already in discovered list: ${stationId}`);
       }
     } catch (error) {
       console.error('Failed to update discovered stations:', error);
@@ -102,7 +104,7 @@ class StationStatusService {
     ip_address: string;
     port: number;
   }): void {
-    console.log(`🔍 [StationStatusService] Updating station seen:`, station);
+    debugLog(`🔍 [StationStatusService] Updating station seen:`, station);
     const statuses = this.getStationStatuses();
     const now = Date.now();
     
