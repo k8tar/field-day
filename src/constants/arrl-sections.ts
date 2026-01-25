@@ -72,7 +72,15 @@ export function getDivisionProgress(workedSections: string[]) {
 }
 
 export function getTotalSections(): number {
-  return ARRL_SECTIONS.length;
+  // Count only valid ARRL sections (Sections 0-9 and Canada), exclude DX placeholder
+  let total = 0;
+  Object.entries(ARRL_DIVISIONS).forEach(([name, divisionData]) => {
+    // Skip 'DX' division as it's not a valid ARRL multiplier
+    if (name !== 'DX') {
+      total += divisionData.sections.length;
+    }
+  });
+  return total;
 }
 
 export function isDivisionComplete(divisionName: string, workedSections: string[]): boolean {
@@ -83,7 +91,11 @@ export function isDivisionComplete(divisionName: string, workedSections: string[
 }
 
 export function getLoggedSectionsCount(workedSections: string[]): number {
-  return workedSections.filter(section => ARRL_SECTIONS.includes(section)).length;
+  // Filter to only count valid ARRL sections (exclude DX and MX)
+  return workedSections.filter(section => {
+    if (section === 'DX' || section === 'MX') return false;
+    return ARRL_SECTIONS.includes(section);
+  }).length;
 }
 
 // Utility function for checking which sections are logged from a list

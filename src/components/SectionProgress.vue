@@ -92,8 +92,9 @@ const getSortedSections = (sections: string[]): string[] => {
 const totalSections = computed(() => getTotalSections());
 
 const totalLoggedSections = computed(() => {
-  const workedSections = qsos.value.map(qso => qso.section);
-  return getLoggedSectionsCount(workedSections);
+  // Get unique sections from QSOs
+  const uniqueWorkedSections = [...new Set(qsos.value.map(qso => qso.section))];
+  return getLoggedSectionsCount(uniqueWorkedSections);
 });
 
 const progressPercentage = computed(() => {
