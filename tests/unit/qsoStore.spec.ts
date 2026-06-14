@@ -501,4 +501,150 @@ describe('QSO store helpers', () => {
       expect.objectContaining({ lastLogResetTimestamp: '2024-06-14T12:00:00.000Z' })
     );
   });
+
+  it('returns false from force upload when backend add fails', async () => {
+    qsoStore.qsos.value = [
+      {
+        id: 'qso-1',
+        call: 'W1AW',
+        class: '1A',
+        section: 'CT',
+        datetime: '2024-06-14T11:00:00.000Z',
+        band: '20m',
+        mode: 'CW',
+        operator: 'K8TAR'
+      }
+    ];
+
+    backendApiMock.connected.value = true;
+    backendApiMock.addQso.mockRejectedValue(new Error('upload failed'));
+
+    const ok = await qsoStore.forceUploadAllQsos();
+
+    expect(ok).to.equal(false);
+  });
+
+  it('refreshes from backend and reconciles adds, updates, and deletes', async () => {
+    qsoStore.qsos.value = [
+      {
+        id: 'keep-update',
+        call: 'OLD',
+        class: '1A',
+        section: 'CT',
+        datetime: '2024-06-14T09:00:00.000Z',
+        band: '20m',
+        mode: 'PH',
+        operator: 'K8TAR',
+        lastModified: Date.parse('2024-06-14T09:00:00.000Z')
+      },
+      {
+        id: 'delete-me',
+        call: 'DEL',
+        class: '1A',
+        section: 'EMA',
+        datetime: '2024-06-14T09:05:00.000Z',
+        band: '20m',
+        mode: 'PH',
+        operator: 'K8TAR'
+      }
+    ];
+
+    backendApiMock.connected.value = true;
+    backendApiMock.getQsos.mockResolvedValue([
+      {
+        id: 'keep-update',
+        timestamp: '2024-06-14T10:00:00.000Z',
+        frequency: '40m',
+        mode: 'CW',
+        call_sign: 'NEW',
+        name: 'NEW',
+        section: 'MA',
+        class: '2A',
+        station_id: 'K8TAR-1A',
+        operator: 'K8TAR'
+      },
+      {
+        id: 'new-one',
+        timestamp: '2024-06-14T10:10:00.000Z',
+        frequency: '15m',
+        mode: 'DIG',
+        call_sign: 'ADD',
+        name: 'ADD',
+        section: 'NH',
+        class: '1D',
+        station_id: 'K8TAR-1A',
+        operator: 'K8TAR'
+      }
+    ]);
+
+    await qsoStore.refreshQsosFromServer();
+
+    expect(qsoStore.qsos.value.map((qso) => qso.id)).to.deep.equal(['keep-update', 'new-one']);
+    expect(qsoStore.qsos.value.find((qso) => qso.id === 'keep-update')?.call).to.equal('NEW');
+    expect(fileStorageMock.saveQsoData).toHaveBeenCalled();
+  });
+
+  it('keeps local QSOs when backend returns empty list', async () => {
+    qsoStore.qsos.value = [
+      {
+        id: 'local-1',
+        call: 'W1AW',
+        class: '1A',
+        section: 'CT',
+        datetime: '2024-06-14T12:00:00.000Z',
+        band: '20m',
+        mode: 'PH',
+        operator: 'K8TAR'
+      }
+    ];
+
+    backendApiMock.connected.value = true;
+    backendApiMock.getQsos.mockResolvedValue([]);
+
+    await qsoStore.refreshQsosFromServer();
+
+    expect(qsoStore.qsos.value).to.have.length(1);
+    expect(qsoStore.qsos.value[0].id).to.equal('local-1');
+  });
+
+  it('processes log reset locally without backend refresh when disconnected', async () => {
+    qsoStore.qsos.value = [
+      {
+        id: 'qso-1',
+        call: 'W1AW',
+        class: '1A',
+        section: 'CT',
+        datetime: '2024-06-14T11:00:00.000Z',
+        band: '20m',
+        mode: 'CW',
+        operator: 'K8TAR'
+      }
+    ];
+
+    backendApiMock.connected.value = false;
+
+    await qsoStore.processLogReset('2024-06-14T12:00:00.000Z');
+
+    expect(qsoStore.qsos.value).to.deep.equal([]);
+    expect(backendApiMock.getQsos).not.toHaveBeenCalled();
+    expect(fileStorageMock.saveSettings).toHaveBeenCalledWith(
+      expect.objectContaining({ lastLogResetTimestamp: '2024-06-14T12:00:00.000Z' })
+    );
+  });
+
+  it('handles backend reset check errors without processing reset', async () => {
+    backendApiMock.connected.value = true;
+    backendApiMock.getLastLogResetTime.mockRejectedValue(new Error('reset query failed'));
+
+    await qsoStore.checkForLogReset();
+
+    expect(fileStorageMock.saveQsoData).not.toHaveBeenCalledWith([]);
+  });
+
+  it('does not throw when deleting a non-existent QSO id', async () => {
+    backendApiMock.connected.value = false;
+
+    await expect(qsoStore.deleteQso('missing-id')).resolves.toBeUndefined();
+    expect(backendApiMock.refreshConnectionStatus).toHaveBeenCalledTimes(1);
+  });
 });
