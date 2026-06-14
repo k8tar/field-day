@@ -19,6 +19,8 @@ describe('NodeStationInfoService', () => {
     vi.clearAllMocks();
     vi.spyOn(Date, 'now').mockReturnValue(1718366400000);
     vi.spyOn(Math, 'random').mockReturnValue(0.123456789);
+    vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    vi.spyOn(console, 'error').mockImplementation(() => undefined);
   });
 
   it('reads station config and existing network ID from disk', async () => {
@@ -67,5 +69,47 @@ describe('NodeStationInfoService', () => {
     expect(stationInfo.score).to.equal(0);
     expect(fsMock.mkdirSync).toHaveBeenCalledWith('/data', { recursive: true });
     expect(fsMock.writeFileSync).toHaveBeenCalled();
+  });
+
+  it('falls back safely when config and network reads fail', async () => {
+    fsMock.existsSync.mockImplementation((path: string) => {
+      if (path.endsWith('station-config.json')) {
+        return true;
+      }
+      return false;
+    });
+
+    fsMock.readFileSync.mockImplementation(() => {
+      throw new Error('read failed');
+    });
+
+    fsMock.mkdirSync.mockImplementation(() => {
+      throw new Error('mkdir failed');
+    });
+
+    const { NodeStationInfoService } = await importService();
+    const stationInfo = await NodeStationInfoService.getStationInfo(3030, '/broken-data', [
+      { call: 'W1AW', class: '1A', section: 'CT', datetime: '2024-06-14T12:00:00.000Z', band: '20m', mode: 'DIG', operator: 'K8TAR' }
+    ]);
+
+    expect(stationInfo.callsign).to.equal('K8TAR');
+    expect(stationInfo.designator).to.equal('1A');
+    expect(stationInfo.networkId).to.match(/^MESH-node-/);
+    expect(stationInfo.score).to.equal(2);
+    expect(stationInfo.online).to.equal(true);
+    expect(console.warn).toHaveBeenCalled();
+  });
+
+  it('returns error fallback when unexpected failures occur', async () => {
+    const { NodeStationInfoService } = await importService();
+
+    // @ts-expect-error Intentional invalid runtime input to exercise hard fallback path.
+    const stationInfo = await NodeStationInfoService.getStationInfo(7000, '/data', null);
+
+    expect(stationInfo.callsign).to.equal('ERROR');
+    expect(stationInfo.online).to.equal(false);
+    expect(stationInfo.port).to.equal(7000);
+    expect(stationInfo.networkId).to.match(/^MESH-error-7000-/);
+    expect(console.error).toHaveBeenCalled();
   });
 });
