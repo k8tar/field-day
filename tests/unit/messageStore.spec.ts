@@ -19,19 +19,36 @@ const crossOriginStorageMock = {
   setJSON: vi.fn()
 };
 
+const errorHandlerMock = {
+  handleAsync: vi.fn(async <T>(operation: () => Promise<T> | T) => operation())
+};
+
+const windowEventHandlers = new Map<string, Array<() => void | Promise<void>>>();
+const intervalCallbacks: Array<() => void> = [];
+
 vi.mock('@/services/backendApiService', () => ({ backendApi: backendApiMock }));
 vi.mock('@/services/fileStorage', () => ({ fileStorage: fileStorageMock }));
 vi.mock('@/services/crossOriginStorage', () => ({ CrossOriginStorage: crossOriginStorageMock }));
 vi.mock('@/utils/debug', () => ({ debugLog: vi.fn(), debugWarn: vi.fn(), debugError: vi.fn() }));
+vi.mock('@/utils/logger', () => ({ ErrorHandler: errorHandlerMock }));
 
 describe('message store', () => {
   let messageStore: typeof import('@/store/message');
 
   beforeAll(async () => {
     vi.stubGlobal('window', {
-      addEventListener: vi.fn(),
+      addEventListener: vi.fn((event: string, handler: () => void | Promise<void>) => {
+        const handlers = windowEventHandlers.get(event) ?? [];
+        handlers.push(handler);
+        windowEventHandlers.set(event, handlers);
+      }),
       removeEventListener: vi.fn()
     });
+    vi.stubGlobal('setInterval', vi.fn((handler: () => void) => {
+      intervalCallbacks.push(handler);
+      return intervalCallbacks.length;
+    }));
+    vi.stubGlobal('clearInterval', vi.fn());
 
     messageStore = await import('@/store/message');
     await vi.waitFor(() => expect(fileStorageMock.getMessages).toHaveBeenCalled());
@@ -42,7 +59,17 @@ describe('message store', () => {
     messageStore.dismissedMessageIds.value = new Set();
     messageStore.isRefreshing.value = false;
     backendApiMock.connected.value = false;
+    intervalCallbacks.length = 0;
     vi.clearAllMocks();
+    backendApiMock.getMessages.mockResolvedValue([]);
+    backendApiMock.addMessage.mockResolvedValue(undefined);
+    backendApiMock.updateMessage.mockResolvedValue(undefined);
+    backendApiMock.deleteMessage.mockResolvedValue(undefined);
+    fileStorageMock.getMessages.mockResolvedValue([]);
+    fileStorageMock.saveMessages.mockResolvedValue(undefined);
+    fileStorageMock.getStationConfig.mockResolvedValue({ callsign: 'K8TAR', designator: '1A' });
+    crossOriginStorageMock.getJSON.mockReturnValue(undefined);
+    errorHandlerMock.handleAsync.mockImplementation(async <T>(operation: () => Promise<T> | T) => operation());
   });
 
   it('filters dismissed messages from computed collections', () => {
@@ -170,5 +197,76 @@ describe('message store', () => {
 
     expect(backendApiMock.addMessage).toHaveBeenCalledTimes(1);
     expect(messageStore.messages.value.map(message => message.id)).to.deep.equal(['l1', 'b1']);
+  });
+
+  it('loads from file storage when backend is disconnected', async () => {
+    backendApiMock.connected.value = false;
+    fileStorageMock.getMessages.mockResolvedValueOnce([
+      { id: 'm1', type: 'chat', text: 'local chat', timestamp: 1, from: 'K8TAR-1A', target: 'all' },
+      { id: 'm2', type: 'info', text: 'status', timestamp: 2 }
+    ]);
+
+    await messageStore.initializeMessages();
+
+    expect(messageStore.messages.value.map(message => message.id)).to.deep.equal(['m1', 'm2']);
+    expect(backendApiMock.getMessages).not.toHaveBeenCalled();
+  });
+
+  it('sets messages empty when file storage read fails during initialization', async () => {
+    backendApiMock.connected.value = false;
+    messageStore.messages.value = [{ id: 'existing', type: 'info', text: 'old', timestamp: 1 }];
+    fileStorageMock.getMessages.mockRejectedValue(new Error('read failed'));
+
+    await messageStore.initializeMessages();
+
+    expect(messageStore.messages.value).to.deep.equal([]);
+  });
+
+  it('deduplicates by message id and enforces max 100 messages', async () => {
+    for (let i = 0; i < 101; i += 1) {
+      await messageStore.addMessage('info', `msg-${i}`, 'K8TAR-1A', 'all', `id-${i}`);
+    }
+
+    expect(messageStore.messages.value.length).to.equal(100);
+
+    await messageStore.addMessage('info', 'dup', 'K8TAR-1A', 'all', 'id-100');
+    expect(messageStore.messages.value.length).to.equal(100);
+  });
+
+  it('adds info message when station config lookup fails during sendMessage', async () => {
+    fileStorageMock.getStationConfig.mockRejectedValueOnce(new Error('config missing'));
+
+    await messageStore.sendMessage('hello');
+
+    expect(messageStore.messages.value.some(message => message.type === 'info' && message.text.includes('Failed to send message'))).to.equal(true);
+  });
+
+  it('resets refreshing flag when backend refresh throws', async () => {
+    backendApiMock.connected.value = true;
+    backendApiMock.getMessages.mockRejectedValueOnce(new Error('refresh failed'));
+
+    await messageStore.refreshMessagesFromBackend();
+
+    expect(messageStore.isRefreshing.value).to.equal(false);
+  });
+
+  it('runs backend connection listeners and stops refresh on disconnect event', async () => {
+    backendApiMock.connected.value = true;
+    backendApiMock.getMessages.mockResolvedValue([]);
+
+    const connectedHandlers = windowEventHandlers.get('backendConnected') ?? [];
+    for (const handler of connectedHandlers) {
+      await handler();
+    }
+
+    expect(backendApiMock.getMessages).toHaveBeenCalled();
+    expect((globalThis.setInterval as unknown as { mock: { calls: unknown[] } }).mock.calls.length).to.be.greaterThan(0);
+
+    const disconnectedHandlers = windowEventHandlers.get('backendDisconnected') ?? [];
+    for (const handler of disconnectedHandlers) {
+      await handler();
+    }
+
+    expect((globalThis.clearInterval as unknown as { mock: { calls: unknown[] } }).mock.calls.length).to.be.greaterThan(0);
   });
 });
