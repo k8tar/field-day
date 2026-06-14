@@ -44,7 +44,7 @@ RUN rm -rf dist/ dist-electron/ node_modules/.vite
 RUN npm run build
 
 # Stage 3: Runtime image
-FROM node:22-alpine
+FROM node:22.12-alpine
 
 WORKDIR /app
 
