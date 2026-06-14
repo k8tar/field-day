@@ -247,4 +247,142 @@ describe('FileStorageService', () => {
     const storedConfig = JSON.parse(storedConfigRaw || '{}') as { networkId?: string };
     expect(storedConfig.networkId).to.equal(networkId);
   });
+
+  it('adds QSOs via backend and falls back to wrapped storage on backend add failure', async () => {
+    backendApiMock.addQso.mockRejectedValue(new Error('add failed'));
+    storage.set('fieldday_shared_8080_qsos', JSON.stringify({ qsos: [], lastUpdated: Date.now() }));
+
+    const { fileStorage } = await importService();
+    await fileStorage.addQsos([
+      {
+        id: 'new-qso-1',
+        call: 'N0CALL',
+        class: '1A',
+        section: 'OH',
+        datetime: '2024-06-14T14:00:00.000Z',
+        band: '40m',
+        mode: 'PH',
+        operator: 'K8TAR'
+      }
+    ]);
+
+    const stored = storage.get('fieldday_shared_8080_qso-data');
+    expect(stored).to.be.a('string');
+    const parsed = JSON.parse(stored || '{}') as { qsos?: Array<{ id: string }> };
+    expect(parsed.qsos?.some((qso) => qso.id === 'new-qso-1')).to.equal(true);
+  });
+
+  it('falls back to local messages file when backend message write fails', async () => {
+    backendApiMock.updateMessage.mockRejectedValue(new Error('message update failed'));
+
+    const { fileStorage } = await importService();
+    await fileStorage.saveMessages([
+      {
+        id: 'm-local',
+        type: 'chat',
+        text: 'hello',
+        from: 'K8TAR-1A',
+        target: 'all',
+        timestamp: Date.now()
+      }
+    ]);
+
+    const stored = storage.get('fieldday_shared_8080_messages');
+    expect(stored).to.be.a('string');
+    const parsed = JSON.parse(stored || '[]') as Array<{ id: string }>;
+    expect(parsed[0]?.id).to.equal('m-local');
+  });
+
+  it('computes storage info for default config and setup test data', async () => {
+    const { FileStorageService } = await importService();
+    const service = new FileStorageService(8080);
+
+    const defaultInfo = await service.getStorageInfo();
+    expect(defaultInfo.configExists).to.equal(true);
+    expect(defaultInfo.port).to.equal(8080);
+
+    await service.setupTestConfiguration('K8TAR', '1A', 3);
+    expect(backendApiMock.updateQso).toHaveBeenCalled();
+  });
+
+  it('uses server storage APIs when serverStorageAvailable is unknown', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.includes('/api/files/write')) {
+        return {
+          ok: true,
+          status: 200,
+          statusText: 'OK',
+          headers: { get: () => 'application/json' },
+          json: async () => ({})
+        };
+      }
+
+      if (url.includes('/api/files/read')) {
+        return {
+          ok: true,
+          status: 200,
+          statusText: 'OK',
+          headers: { get: () => 'application/json' },
+          json: async () => ({ content: JSON.stringify({ band: '15m', operator: 'W1AW', mode: 'CW' }) })
+        };
+      }
+
+      return {
+        ok: false,
+        status: 500,
+        statusText: 'Error',
+        headers: { get: () => 'text/html' },
+        json: async () => ({})
+      };
+    }));
+
+    const { FileStorageService } = await importService();
+    const service = new FileStorageService(8080) as unknown as {
+      serverStorageAvailable: boolean | null;
+      saveSettings: (settings: { band: string }) => Promise<void>;
+      getSettings: () => Promise<{ band?: string; operator?: string; mode?: string }>;
+    };
+    service.serverStorageAvailable = null;
+
+    await service.saveSettings({ band: '15m' });
+    const loaded = await service.getSettings();
+
+    expect(loaded.band).to.equal('15m');
+    expect(loaded.operator).to.equal('W1AW');
+    expect(loaded.mode).to.equal('CW');
+  });
+
+  it('falls back from server read on non-json response and 404', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        headers: { get: () => 'text/html' },
+        json: async () => ({})
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 404,
+        statusText: 'Not Found',
+        headers: { get: () => 'application/json' },
+        json: async () => ({})
+      });
+    vi.stubGlobal('fetch', fetchMock);
+
+    storage.set('fieldday_shared_8080_settings', JSON.stringify({ band: '40m', operator: 'K8TAR', mode: 'PH' }));
+
+    const { FileStorageService } = await importService();
+    const service = new FileStorageService(8080) as unknown as {
+      serverStorageAvailable: boolean | null;
+      getSettings: () => Promise<{ band?: string }>;
+    };
+    service.serverStorageAvailable = null;
+
+    const first = await service.getSettings();
+    const second = await service.getSettings();
+
+    expect(first.band).to.equal('40m');
+    expect(second.band).to.equal('40m');
+  });
 });

@@ -66,6 +66,10 @@ npm run dev
 # Run built Electron app
 npm run electron
 
+# Build Linux packages
+npm run dist:deb
+npm run dist:rpm
+
 # Run Docker containers
 docker-compose up
 ```

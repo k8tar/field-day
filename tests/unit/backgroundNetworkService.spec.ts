@@ -91,6 +91,7 @@ describe('BackgroundNetworkService', () => {
     const { meshConnectionState } = await importService();
     const listener = vi.fn();
 
+    meshConnectionState.setConnected(true);
     meshConnectionState.onConnectionChange(listener);
     meshConnectionState.setConnected(false);
     meshConnectionState.setConnected(false);
