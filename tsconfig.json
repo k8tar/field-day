@@ -15,7 +15,7 @@
     "baseUrl": ".",
     "types": [
       "node",
-      "mocha"
+      "vitest/globals"
     ],
     "paths": {
       "@/*": [
