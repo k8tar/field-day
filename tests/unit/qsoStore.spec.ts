@@ -7,6 +7,7 @@ const backendApiMock = {
   addQso: vi.fn(),
   updateQso: vi.fn(),
   deleteQso: vi.fn(),
+  getQsos: vi.fn().mockResolvedValue([]),
   getLastLogResetTime: vi.fn(),
   sendMessage: vi.fn(),
   addMessage: vi.fn(),
@@ -260,6 +261,72 @@ describe('QSO store helpers', () => {
     expect(mockNetworkService.networkService.broadcastQsoUpdate).toHaveBeenCalledWith(
       expect.objectContaining({ id: 'qso-1', section: 'CT' }),
       'delete'
+    );
+  });
+
+  it('logs a QSO offline and triggers connection refresh', async () => {
+    qsoStore.band.value = '20m';
+    qsoStore.mode.value = 'CW';
+    qsoStore.operator.value = 'K8TAR';
+    backendApiMock.connected.value = false;
+
+    await qsoStore.logQso({
+      call: 'W1AW',
+      class: '1A',
+      section: 'CT',
+      datetime: '2024-06-14T12:00:00.000Z'
+    });
+
+    expect(qsoStore.qsos.value).to.have.length(1);
+    expect(qsoStore.qsos.value[0].call).to.equal('W1AW');
+    expect(qsoStore.qsos.value[0].band).to.equal('20m');
+    expect(qsoStore.qsos.value[0].mode).to.equal('CW');
+    expect(fileStorageMock.saveQsoData).toHaveBeenCalled();
+    expect(backendApiMock.refreshConnectionStatus).toHaveBeenCalledTimes(1);
+    expect(mockNetworkService.networkService.broadcastQsoUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ call: 'W1AW', section: 'CT' }),
+      'add'
+    );
+  });
+
+  it('refreshes from server only when backend is connected', async () => {
+    backendApiMock.connected.value = false;
+    await qsoStore.refreshQsosFromServer();
+    expect(backendApiMock.getQsos).not.toHaveBeenCalled();
+
+    backendApiMock.connected.value = true;
+    await qsoStore.refreshQsosFromServer();
+    expect(backendApiMock.getQsos).toHaveBeenCalledTimes(1);
+  });
+
+  it('checks log reset and processes newer backend reset', async () => {
+    backendApiMock.connected.value = true;
+    backendApiMock.getLastLogResetTime.mockResolvedValue('2024-06-14T12:00:00.000Z');
+    fileStorageMock.getSettings.mockResolvedValue({
+      band: '40m',
+      operator: 'K8TAR',
+      mode: 'PH',
+      lastLogResetTimestamp: '2024-06-14T10:00:00.000Z'
+    });
+
+    qsoStore.qsos.value = [
+      {
+        id: 'qso-1',
+        call: 'W1AW',
+        class: '1A',
+        section: 'CT',
+        datetime: '2024-06-14T11:00:00.000Z',
+        band: '20m',
+        mode: 'CW',
+        operator: 'K8TAR'
+      }
+    ];
+
+    await qsoStore.checkForLogReset();
+
+    expect(fileStorageMock.saveQsoData).toHaveBeenCalledWith([]);
+    expect(fileStorageMock.saveSettings).toHaveBeenCalledWith(
+      expect.objectContaining({ lastLogResetTimestamp: '2024-06-14T12:00:00.000Z' })
     );
   });
 });
