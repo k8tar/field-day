@@ -68,4 +68,116 @@ describe('WebSocketSyncService', () => {
 
     expect(handler).not.toHaveBeenCalled();
   });
+
+  it('connects successfully when websocket opens', async () => {
+    class FakeSocket {
+      static readonly OPEN = 1;
+      static latest: FakeSocket | null = null;
+      readyState = FakeSocket.OPEN;
+      private listeners: Map<string, Array<() => void>> = new Map();
+
+      constructor(_url: string) {
+        FakeSocket.latest = this;
+      }
+
+      addEventListener(event: string, handler: () => void): void {
+        const handlers = this.listeners.get(event) ?? [];
+        handlers.push(handler);
+        this.listeners.set(event, handlers);
+      }
+
+      emit(event: string): void {
+        const handlers = this.listeners.get(event) ?? [];
+        handlers.forEach((handler) => handler());
+      }
+
+      send(): void {}
+      close(): void {}
+    }
+
+    vi.stubGlobal('WebSocket', FakeSocket);
+
+    const { webSocketSync } = await importService();
+    const connectionPromise = webSocketSync.connectToHost('localhost:9001');
+    FakeSocket.latest?.emit('open');
+
+    await expect(connectionPromise).resolves.to.equal(true);
+    expect(webSocketSync.getStatus().connected).to.equal(true);
+  });
+
+  it('falls back to client discovery when websocket construction throws', async () => {
+    class ThrowingSocket {
+      static readonly OPEN = 1;
+      constructor(_url: string) {
+        throw new Error('socket unavailable');
+      }
+    }
+
+    vi.stubGlobal('WebSocket', ThrowingSocket);
+
+    const { webSocketSync } = await importService();
+    await expect(webSocketSync.connectToHost('localhost:9001')).resolves.to.equal(true);
+
+    expect(storageState.has('ws_client_discovery')).to.equal(true);
+  });
+
+  it('responds to ping messages with pong', async () => {
+    const { webSocketSync } = await importService();
+    const sendSpy = vi.spyOn(webSocketSync, 'sendMessage');
+
+    const internal = webSocketSync as {
+      handleMessage: (message: { type: 'ping'; data: Record<string, number>; timestamp: number; stationId: string }) => void;
+    };
+
+    internal.handleMessage({
+      type: 'ping',
+      data: { timestamp: Date.now() },
+      timestamp: Date.now(),
+      stationId: 'K8TAR-1A'
+    });
+
+    expect(sendSpy).toHaveBeenCalledWith(expect.objectContaining({ type: 'pong' }));
+  });
+
+  it('broadcasts station info payload through sendMessage', async () => {
+    storageState.set('stationCallsign', 'K8TAR');
+    storageState.set('stationDesignator', '1A');
+    storageState.set('qsos', JSON.stringify([{ id: 'q1' }, { id: 'q2' }]));
+
+    const { webSocketSync } = await importService();
+    const sendSpy = vi.spyOn(webSocketSync, 'sendMessage');
+
+    webSocketSync.broadcastStationInfo();
+
+    expect(sendSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'station-info',
+        data: expect.objectContaining({ callsign: 'K8TAR', designator: '1A', qsoCount: 2 })
+      })
+    );
+  });
+
+  it('disconnects websocket and clears timers', async () => {
+    const { webSocketSync } = await importService();
+    const close = vi.fn();
+    const stop = vi.fn();
+    const cancel = vi.fn();
+
+    const internal = webSocketSync as {
+      ws: { close: () => void } | null;
+      pingInterval: { stop: () => void } | null;
+      reconnectTimer: { cancel: () => void } | null;
+    };
+
+    internal.ws = { close };
+    internal.pingInterval = { stop };
+    internal.reconnectTimer = { cancel };
+
+    webSocketSync.disconnect();
+
+    expect(close).toHaveBeenCalledTimes(1);
+    expect(stop).toHaveBeenCalledTimes(1);
+    expect(cancel).toHaveBeenCalledTimes(1);
+    expect(webSocketSync.getStatus().isHost).to.equal(false);
+  });
 });
