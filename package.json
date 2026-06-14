@@ -73,7 +73,7 @@
     "typescript": "^5.8.3",
     "vite": "^8.0.16",
     "vitest": "^4.1.8",
-    "vue-tsc": "^2.2.12"
+    "vue-tsc": "^3.3.5"
   },
   "build": {
     "appId": "com.k8tar.fieldday",
