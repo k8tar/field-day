@@ -105,6 +105,7 @@
       }
     ],
     "win": {
+      "icon": "public/app-icon.ico",
       "target": [
         {
           "target": "nsis",
@@ -133,9 +134,9 @@
       "runAfterFinish": true,
       "menuCategory": "Amateur Radio",
       "license": "LICENSE",
-      "installerIcon": "build/icon.ico",
-      "installerHeaderIcon": "build/icon.ico",
-      "uninstallerIcon": "build/icon.ico"
+      "installerIcon": "public/app-icon.ico",
+      "installerHeaderIcon": "public/app-icon.ico",
+      "uninstallerIcon": "public/app-icon.ico"
     },
     "portable": {
       "artifactName": "${productName}-${version}-portable.exe"
