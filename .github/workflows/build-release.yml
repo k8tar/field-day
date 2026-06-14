@@ -6,6 +6,11 @@ on:
       - 'v*'
       - 'k8tar-fieldday-v*'
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing release tag to upload artifacts to during a manual backfill run.
+        required: false
+        type: string
 
 jobs:
   build-windows:
@@ -35,7 +40,7 @@ jobs:
       run: npm run build
       
     - name: Build Electron app
-      run: npm run electron:dist
+      run: npm run build && npx electron-builder --win --publish never
       
     - name: Setup Inno Setup
       run: choco install innosetup
@@ -50,7 +55,7 @@ jobs:
         name: windows-release
         path: |
           installer/*.exe
-          dist-electron/*.exe
+          dist-installers/*.exe
           
   build-macos:
     runs-on: macos-latest
@@ -79,13 +84,15 @@ jobs:
       run: npm run build
       
     - name: Build Electron app
-      run: npm run dist:mac
+      run: npm run build && npx electron-builder --mac --publish never
       
     - name: Upload artifacts
       uses: actions/upload-artifact@v7
       with:
         name: macos-release
-        path: dist-electron/*.dmg
+        path: |
+          dist-installers/*.dmg
+          dist-installers/*.zip
         
   build-linux:
     runs-on: ubuntu-latest
@@ -114,21 +121,21 @@ jobs:
       run: npm run build
       
     - name: Build Electron app
-      run: npm run dist:linux
+      run: npm run build && npx electron-builder --linux AppImage deb rpm --publish never
       
     - name: Upload artifacts
       uses: actions/upload-artifact@v7
       with:
         name: linux-release
         path: |
-          dist-electron/*.AppImage
-          dist-electron/*.deb
-          dist-electron/*.rpm
+          dist-installers/*.AppImage
+          dist-installers/*.deb
+          dist-installers/*.rpm
           
   release:
     needs: [build-windows, build-macos, build-linux]
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/')
+    if: startsWith(github.ref, 'refs/tags/') || github.event.inputs.release_tag != ''
     
     steps:
     - name: Download all artifacts
@@ -137,11 +144,13 @@ jobs:
     - name: Create GitHub Release
       uses: softprops/action-gh-release@v3
       with:
+        tag_name: ${{ github.event.inputs.release_tag || github.ref_name }}
         files: |
           windows-release/*
           macos-release/*
           linux-release/*
         draft: false
+        overwrite_files: true
         prerelease: ${{ contains(github.ref_name, '-beta') }}
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
