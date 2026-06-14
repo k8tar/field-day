@@ -282,7 +282,9 @@ class MeshNetworkService {
       
     } catch (e: unknown) {
       console.error('❌ Failed to initialize local node:', e);
-      throw new Error(`Mesh node initialization failed: ${e instanceof Error ? (e instanceof Error ? e.message : String(e)) : 'Unknown error'}`);
+      const enhancedError = new Error(`Mesh node initialization failed: ${e instanceof Error ? (e instanceof Error ? e.message : String(e)) : 'Unknown error'}`) as Error & { cause?: unknown };
+      enhancedError.cause = e;
+      throw enhancedError;
     }
   }
 
@@ -362,11 +364,11 @@ class MeshNetworkService {
             }
           }, 3000); // Increased timeout
           
-        } catch (e: unknown) {
+        } catch (_e: unknown) {
           resolve('192.168.1.100');
         }
       });
-    } catch (e: unknown) {
+    } catch (_e: unknown) {
       return '192.168.1.100'; // Fallback
     }
   }

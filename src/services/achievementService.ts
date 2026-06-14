@@ -211,7 +211,7 @@ class AchievementService {
     try {
       const config = await fileStorage.getStationConfig();
       return config.designator || 'STATION';
-    } catch (e: unknown) {
+    } catch (_e: unknown) {
       return 'STATION';
     }
   }

@@ -21,6 +21,12 @@ export interface StationInfoResponse {
 }
 
 export class StationInfoService {
+  private readonly instanceTag = 'station-info-service';
+
+  private constructor() {
+    void this.instanceTag;
+  }
+
   private static networkIdCache: string | null = null;
   private static readonly SOFTWARE_NAME = 'K8TAR Field Day Logger';
   private static readonly VERSION = '2.0.0';
@@ -185,13 +191,13 @@ export class StationInfoService {
    */
   static validateStationInfo(stationInfo: unknown): boolean {
     const requiredFields = ['callsign', 'designator', 'networkId', 'software', 'qsoCount', 'score', 'timestamp', 'online'];
-    if (typeof stationInfo !== 'object' || stationInfo === null) {
+    if (typeof stationInfo !== 'object' || stationInfo == null) {
       return false;
     }
     const info = stationInfo as Record<string, unknown>;
     
     for (const field of requiredFields) {
-      if (info[field] === undefined || info[field] === null) {
+      if (info[field] == null) {
         console.error(`❌ StationInfoService: Missing required field: ${field}`);
         return false;
       }

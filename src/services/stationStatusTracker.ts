@@ -40,7 +40,7 @@ class StationStatusTracker {
     debugLog('🛑 Stopping station status tracker');
     this.isRunning = false;
 
-    if (this.intervalId !== null) {
+    if (this.intervalId != null) {
       clearInterval(this.intervalId);
       this.intervalId = null;
     }

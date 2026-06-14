@@ -474,7 +474,7 @@ class FileStorageService {
       try {
         await this.writeFileServer(filename, content);
         this.serverStorageAvailable = true;
-      } catch (e: unknown) {
+      } catch (_e: unknown) {
         // Mark server storage as unavailable and use localStorage
         this.serverStorageAvailable = false;
         const storageKey = this.getStorageKey(filename.replace('.json', ''));
@@ -494,11 +494,11 @@ class FileStorageService {
       
       try {
         const serverData = await this.readFileServer(filename);
-        if (serverData !== null) {
+        if (serverData != null) {
           this.serverStorageAvailable = true;
           return serverData;
         }
-      } catch (e: unknown) {
+      } catch (_e: unknown) {
         // Mark server storage as unavailable
         this.serverStorageAvailable = false;
       }
@@ -548,12 +548,12 @@ class FileStorageService {
       }
 
       const result = await response.json() as { content?: string };
-      if (result.content !== undefined) {
+      if (result.content != null) {
         return result.content;
       } else {
         return null;
       }
-    } catch (e: unknown) {
+    } catch (_e: unknown) {
       // Silently fall back to localStorage when server storage isn't available
       return null;
     }

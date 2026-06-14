@@ -64,6 +64,12 @@ export const logger = Logger.getInstance();
  * Reusable error handling utility
  */
 export class ErrorHandler {
+  private readonly instanceTag = 'error-handler';
+
+  private constructor() {
+    void this.instanceTag;
+  }
+
   /**
    * Handle async operations with consistent error logging
    */

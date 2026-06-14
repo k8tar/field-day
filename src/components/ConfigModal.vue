@@ -787,10 +787,10 @@ function handleFileUpload(event: Event) {
     selectedFileName.value = file.name;
     const reader = new FileReader();
     
-    reader.onload = (e) => {
+    reader.addEventListener('load', (e) => {
       const content = e.target?.result as string;
       parseJsonFile(content);
-    };
+    });
     
     reader.readAsText(file);
   }
@@ -801,7 +801,7 @@ function parseJsonFile(content: string) {
     const data = JSON.parse(content);
     
     // Validate the structure
-    if (typeof data === 'object' && data !== null) {
+    if (typeof data === 'object' && data != null) {
       importPreview.value = {
         stationCallsign: data.stationCallsign || '',
         stationDesignator: data.stationDesignator || '',

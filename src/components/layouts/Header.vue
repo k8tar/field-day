@@ -315,18 +315,18 @@ async function checkFirstTimeSetup() {
   try {
     const config = await fileStorage.getStationConfig();
     const qsos = await fileStorage.getQsoData();
-    const operators = await fileStorage.getOperators();
+    const storedOperators = await fileStorage.getOperators();
     
     debugLog('Header: Checking first-time setup:', {
       config,
-      operators,
+      operators: storedOperators,
       qsosLength: qsos.length
     });
     
     // Check if we have meaningful configuration (not just defaults)
     const hasActualConfig = (config.stationClass && config.stationClass !== '') || 
                            (config.stationSection && config.stationSection !== '') ||
-                           operators.length > 0;
+                           storedOperators.length > 0;
     const hasQsos = qsos.length > 0;
     
     debugLog('Header: Setup check results:', {

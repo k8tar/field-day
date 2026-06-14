@@ -22,6 +22,12 @@ export interface StationInfoResponse {
 }
 
 export class NodeStationInfoService {
+  private readonly instanceTag = 'node-station-info-service';
+
+  private constructor() {
+    void this.instanceTag;
+  }
+
   /**
    * Get station info for Node.js environments (like Vite config)
    */

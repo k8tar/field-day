@@ -90,9 +90,34 @@ jobs:
 
     - name: Test Docker build
       run: |
+        set -e
+        cleanup() {
+          docker compose down || true
+        }
+        trap cleanup EXIT
+
         docker compose build
         docker compose up -d
-        sleep 30
-        curl -f http://localhost:8080 || exit 1
-        curl -f http://localhost:3030/health || echo "Backend health check skipped"
-        docker compose down
+
+        # Wait for frontend health with retries instead of fixed sleep.
+        frontend_ok=0
+        for i in $(seq 1 30); do
+          if curl -fsS http://localhost:8080 >/dev/null; then
+            frontend_ok=1
+            break
+          fi
+          sleep 2
+        done
+        if [ "$frontend_ok" -ne 1 ]; then
+          echo "Frontend health check failed"
+          exit 1
+        fi
+
+        # Backend health endpoint is optional in this stack.
+        for i in $(seq 1 15); do
+          if curl -fsS http://localhost:3030/health >/dev/null; then
+            echo "Backend health check passed"
+            break
+          fi
+          sleep 2
+        done

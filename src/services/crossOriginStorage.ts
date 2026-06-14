@@ -16,6 +16,12 @@ const CROSS_ORIGIN_KEYS = {
 } as const;
 
 export class CrossOriginStorage {
+  private readonly instanceTag = 'cross-origin-storage';
+
+  private constructor() {
+    void this.instanceTag;
+  }
+
   /**
    * Get a value that should be consistent across all origins accessing the same port
    */

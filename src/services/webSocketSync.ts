@@ -72,17 +72,17 @@ class WebSocketSyncService {
         this.setupWebSocketHandlers();
         return new Promise((resolve) => {
           if (this.ws) {
-            this.ws.onopen = () => {
+            this.ws.addEventListener('open', () => {
               this.startPingPong();
               resolve(true);
-            };
-            this.ws.onerror = () => {
+            });
+            this.ws.addEventListener('error', () => {
               this.setupClientDiscovery(address);
               resolve(true);
-            };
+            });
           }
         });
-      } catch (e: unknown) {
+      } catch (_e: unknown) {
         // Fallback to localStorage-based communication
         this.setupClientDiscovery(address);
         return true;
@@ -97,22 +97,22 @@ class WebSocketSyncService {
   private setupWebSocketHandlers(): void {
     if (!this.ws) return;
 
-    this.ws.onmessage = (event) => {
+    this.ws.addEventListener('message', (event) => {
       try {
         const message: WebSocketMessage = JSON.parse(event.data);
         this.handleMessage(message);
       } catch (e: unknown) {
         console.error('❌ Failed to parse WebSocket message:', e);
       }
-    };
+    });
 
-    this.ws.onclose = () => {
+    this.ws.addEventListener('close', () => {
       this.scheduleReconnect();
-    };
+    });
 
-    this.ws.onerror = (error) => {
+    this.ws.addEventListener('error', (error) => {
       console.error('❌ WebSocket error:', error);
-    };
+    });
   }
 
   // Setup discovery mechanism for host (using localStorage)

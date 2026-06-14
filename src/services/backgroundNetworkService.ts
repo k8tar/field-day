@@ -184,7 +184,7 @@ class BackgroundNetworkService {
         const stations = await response.json();
         this.updateKnownStations(stations);
       }
-    } catch (e: unknown) {
+    } catch (_e: unknown) {
       // Silently handle errors to avoid UI blocking
     }
   }
@@ -197,7 +197,7 @@ class BackgroundNetworkService {
       // For now, just poll the backend mesh stations to keep frontend updated
       // The backend should handle station-to-station QSO sync automatically
       await fetch('http://localhost:3030/api/mesh/stations');
-    } catch (e: unknown) {
+    } catch (_e: unknown) {
       // Silently handle errors to avoid UI blocking
     }
   }

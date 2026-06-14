@@ -302,7 +302,7 @@ class NetworkService {
           resolve('192.168.1.100');
         }, 1000);
       });
-    } catch (e: unknown) {
+    } catch (_e: unknown) {
       return '192.168.1.100'; // Fallback
     }
   }
