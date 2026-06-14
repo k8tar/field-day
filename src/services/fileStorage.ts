@@ -250,6 +250,7 @@ class FileStorageService {
           designator: config.designator || '',
           stationClass: config.stationClass || '',
           stationSection: config.stationSection || '',
+          networkId: config.networkId,
           port: config.port || this.getCurrentPort(),
           lastUpdated: config.lastUpdated || Date.now()
         };
