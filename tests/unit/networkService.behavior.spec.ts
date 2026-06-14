@@ -220,4 +220,125 @@ describe('NetworkService behavior', () => {
     await expect(networkService.refreshMeshDiscovery()).resolves.toBeUndefined();
     await expect(networkService.forceMeshSync()).resolves.toBeUndefined();
   });
+
+  it('covers event registration lifecycle and qso callback registration', async () => {
+    const { networkService } = await importService();
+    const cb = vi.fn();
+
+    const internal = networkService as {
+      eventCallbacks: Record<string, Array<(...args: unknown[]) => void>>;
+      syncCallbacks: Array<(update: Record<string, unknown>) => void>;
+    };
+
+    networkService.on('mesh:test', cb);
+    expect(internal.eventCallbacks['mesh:test']?.length).to.equal(1);
+
+    networkService.off('mesh:test', cb);
+    expect(internal.eventCallbacks['mesh:test']?.length ?? 0).to.equal(0);
+
+    networkService.onQsoUpdate((update) => {
+      void update;
+    });
+    expect(internal.syncCallbacks.length).to.be.greaterThan(0);
+  });
+
+  it('covers updateNetworkMode join/mesh/auto branches', async () => {
+    const { networkService } = await importService();
+
+    networkService.updateNetworkMode('join', { hostAddress: '192.168.1.10' });
+    expect(networkService.getNetworkSettings().lastHostAddress).to.equal('192.168.1.10');
+    expect(networkService.getNetworkSettings().isHost).to.equal(false);
+
+    networkService.updateNetworkMode('mesh');
+    expect(networkService.getNetworkSettings().lastHostAddress).to.equal('');
+
+    networkService.updateNetworkMode('auto');
+    expect(networkService.getNetworkSettings().lastHostAddress).to.equal('');
+    expect(networkService.getNetworkSettings().isHost).to.equal(false);
+  });
+
+  it('uses UNKNOWN station id fallback when station config cannot be read during broadcast', async () => {
+    fileStorageMock.getStationConfig.mockRejectedValueOnce(new Error('station config read failed'));
+
+    const { networkService } = await importService();
+    networkService.status.isConnected = true;
+
+    await expect(
+      networkService.broadcastQsoUpdate(
+        {
+          call: 'W1AW',
+          class: '1A',
+          section: 'CT',
+          datetime: '2024-06-14T12:00:00.000Z',
+          band: '20m',
+          mode: 'CW',
+          operator: 'K8TAR',
+          id: 'q-fallback'
+        },
+        'add'
+      )
+    ).resolves.toBeUndefined();
+  });
+
+  it('handles settings/storage diagnostic error branches', async () => {
+    fileStorageMock.getSettings.mockRejectedValueOnce(new Error('settings read failed'));
+    fileStorageMock.getQsoData.mockRejectedValueOnce(new Error('qso data read failed'));
+    fileStorageMock.getStorageInfo.mockRejectedValueOnce(new Error('storage info failed'));
+
+    const { networkService } = await importService();
+
+    const internal = networkService as {
+      loadNetworkSettings: () => Promise<void>;
+      saveNetworkSettings: () => Promise<void>;
+    };
+
+    await expect(internal.loadNetworkSettings()).resolves.toBeUndefined();
+    await expect(internal.saveNetworkSettings()).resolves.toBeUndefined();
+    await expect(networkService.checkStorage()).resolves.toBeUndefined();
+    await expect(networkService.checkFileStorage()).resolves.toBeUndefined();
+  });
+
+  it('handles discovery and endpoint error branches in debug helpers', async () => {
+    const abortError = Object.assign(new Error('aborted'), { name: 'AbortError' });
+    const fetchMock = vi.fn()
+      .mockRejectedValueOnce(new Error('local endpoint failed'))
+      .mockRejectedValueOnce(abortError)
+      .mockRejectedValueOnce(new Error('ipv4 failed'))
+      .mockRejectedValueOnce(abortError)
+      .mockRejectedValueOnce(new Error('set config endpoint failed'))
+      .mockRejectedValueOnce(new Error('setup endpoint failed'));
+    vi.stubGlobal('fetch', fetchMock);
+
+    const { networkService } = await importService();
+    const internal = networkService as {
+      getLocalIP: () => Promise<string>;
+      fetchWithProtocolFallback: (url: string, options?: RequestInit) => Promise<Response>;
+    };
+
+    vi.spyOn(internal, 'getLocalIP').mockRejectedValueOnce(new Error('local ip failed'));
+    vi.spyOn(internal, 'fetchWithProtocolFallback').mockRejectedValueOnce(abortError).mockRejectedValueOnce(new Error('field day fail'));
+
+    await expect(networkService.testDiscovery()).resolves.toBeUndefined();
+    await expect(networkService.testFieldDayPorts()).resolves.toBeUndefined();
+    await expect(networkService.testNetworkDiscovery()).resolves.toBeUndefined();
+    await expect(networkService.setConfiguration('K8TAR', '1A')).resolves.toBeUndefined();
+    await expect(networkService.setupTestStation('K8TAR', '1A', 1)).resolves.toBeUndefined();
+  });
+
+  it('marks stale connected stations offline during status updates', async () => {
+    vi.useFakeTimers();
+    const { networkService } = await importService();
+
+    const internal = networkService as {
+      connectedStations: Array<{ id: string; lastSeen: number; online: boolean }>;
+    };
+
+    internal.connectedStations.push({ id: 's1', lastSeen: Date.now() - 60_000, online: true });
+
+    networkService.startStatusUpdates();
+    await vi.advanceTimersByTimeAsync(10_100);
+
+    expect(internal.connectedStations[0]?.online).to.equal(false);
+    expect(networkService.getConnectedStations().length).to.equal(1);
+  });
 });
