@@ -112,4 +112,12 @@ describe('NodeStationInfoService', () => {
     expect(stationInfo.networkId).to.match(/^MESH-error-7000-/);
     expect(console.error).toHaveBeenCalled();
   });
+
+  it('constructs NodeStationInfoService privately at runtime for ctor coverage', async () => {
+    const { NodeStationInfoService } = await importService();
+
+    // @ts-expect-error Runtime allows construction; private is compile-time only.
+    const instance = new NodeStationInfoService();
+    expect(instance).to.be.instanceOf(NodeStationInfoService);
+  });
 });
