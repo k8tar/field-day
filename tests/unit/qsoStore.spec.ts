@@ -39,7 +39,8 @@ const mockAchievementService = {
 
 const mockNetworkService = {
   networkService: {
-    broadcastQsoUpdate: vi.fn().mockResolvedValue(undefined)
+    broadcastQsoUpdate: vi.fn().mockResolvedValue(undefined),
+    onQsoUpdate: vi.fn()
   }
 };
 
@@ -64,6 +65,7 @@ vi.mock('@/store/message', () => ({ clearAllMessages: clearAllMessagesMock }));
 
 describe('QSO store helpers', () => {
   let qsoStore: typeof import('@/store/qso');
+  let networkUpdateHandler: ((update: { action: 'add' | 'update' | 'delete'; qso: QSO; id?: string }) => void) | null = null;
 
   beforeAll(async () => {
     vi.stubGlobal('window', {
@@ -85,6 +87,10 @@ describe('QSO store helpers', () => {
     backendApiMock.connected.value = false;
     qsoStore.stopPeriodicQsoRefresh();
     vi.clearAllMocks();
+    networkUpdateHandler = null;
+    mockNetworkService.networkService.onQsoUpdate.mockImplementation((handler: (update: { action: 'add' | 'update' | 'delete'; qso: QSO; id?: string }) => void) => {
+      networkUpdateHandler = handler;
+    });
     clearAllMessagesMock.mockResolvedValue(undefined);
     mockBackgroundNetworkService.backgroundNetworkService.reSyncMeshState.mockResolvedValue(undefined);
   });
@@ -790,4 +796,62 @@ describe('QSO store helpers', () => {
 
     expect(backendApiMock.connected.value).to.equal(true);
   });
+
+  it('initializes with migration and default settings when storage reads fail', async () => {
+    vi.resetModules();
+    vi.useFakeTimers();
+
+    fileStorageMock.getQsoData.mockResolvedValueOnce([
+      {
+        call: 'W1AW',
+        class: '1A',
+        section: 'CT',
+        datetime: '2024-06-14T12:00:00.000Z',
+        band: '20m',
+        mode: 'CW',
+        operator: 'K8TAR'
+      }
+    ]);
+    fileStorageMock.getSettings.mockRejectedValueOnce(new Error('settings load failed'));
+    fileStorageMock.getStationConfig.mockResolvedValueOnce({ callsign: 'K8TAR', designator: '1A' });
+    crossOriginStorageMock.getJSON.mockReturnValue([]);
+
+    const reloadedStore = await import('@/store/qso');
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(reloadedStore.qsos.value[0].id?.startsWith('mig-')).to.equal(true);
+    expect(reloadedStore.qsos.value[0].timestamp).to.be.a('number');
+    expect(reloadedStore.qsos.value[0].lastModified).to.be.a('number');
+    expect(reloadedStore.band.value).to.equal('40m');
+    expect(reloadedStore.mode.value).to.equal('PH');
+  });
+
+  it('runs auto-upload timer when backend is connected with local qsos', async () => {
+    vi.resetModules();
+    vi.useFakeTimers();
+
+    backendApiMock.connected.value = true;
+    backendApiMock.addQso.mockResolvedValue(undefined);
+    fileStorageMock.getQsoData.mockResolvedValueOnce([
+      {
+        id: 'seed-1',
+        call: 'N1MM',
+        class: '1A',
+        section: 'NH',
+        datetime: '2024-06-14T12:01:00.000Z',
+        band: '20m',
+        mode: 'PH',
+        operator: 'K8TAR'
+      }
+    ]);
+    fileStorageMock.getStationConfig.mockResolvedValue({ callsign: 'K8TAR', designator: '1A' });
+
+    await import('@/store/qso');
+    vi.advanceTimersByTime(1100);
+    await Promise.resolve();
+
+    expect(backendApiMock.addQso).toHaveBeenCalled();
+  });
+
 });
