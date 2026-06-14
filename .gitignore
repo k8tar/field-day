@@ -98,7 +98,6 @@ coverage/
 
 # Rust backend build artifacts
 backend-service/target/
-backend-service/Cargo.lock
 backend-service/*.exe
 backend-service/*.pdb
 backend-service/*.so
