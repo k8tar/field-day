@@ -141,6 +141,6 @@ jobs:
           macos-release/*
           linux-release/*
         draft: false
-        prerelease: false
+        prerelease: ${{ contains(github.ref_name, '-beta') }}
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
