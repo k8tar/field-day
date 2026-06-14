@@ -197,10 +197,6 @@ describe('MeshNetworkService', () => {
   })
 
   it('skips station processing for self node and unreachable nodes', async () => {
-    const processStation = vi.spyOn(internalService as unknown as {
-      processDiscoveredStation: (station: Record<string, unknown>) => Promise<void>
-    }, 'processDiscoveredStation')
-
     vi.spyOn(internalService as unknown as {
       testStationConnection: (node: Record<string, unknown>) => Promise<boolean>
     }, 'testStationConnection').mockResolvedValue(false)
