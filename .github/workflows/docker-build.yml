@@ -45,7 +45,8 @@ jobs:
       with:
         context: .
         file: ./Dockerfile
-        push: true
+        # Push only on branch/tag pushes; PR runs should only validate build.
+        push: ${{ github.event_name != 'pull_request' }}
         tags: ${{ steps.meta.outputs.tags }}
         labels: ${{ steps.meta.outputs.labels }}
 
@@ -89,9 +90,9 @@ jobs:
 
     - name: Test Docker build
       run: |
-        docker-compose build
-        docker-compose up -d
+        docker compose build
+        docker compose up -d
         sleep 30
         curl -f http://localhost:8080 || exit 1
         curl -f http://localhost:3030/health || echo "Backend health check skipped"
-        docker-compose down
+        docker compose down
