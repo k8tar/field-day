@@ -68,6 +68,7 @@ The Field Day Logger provides a comprehensive logging experience with multiple f
 - **[Build Instructions](BUILD.md)** - Complete build and distribution guide
 - **[In-App Help](public/docs/README.md)** - User guide accessible via F1 or ? button
 - **[Release Notes](RELEASE-NOTES.md)** - Latest features, fixes, and version history
+- **[Contributing Guide](CONTRIBUTING.md)** - Commit conventions and release automation workflow
 
 ## Quick Start
 
