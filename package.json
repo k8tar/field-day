@@ -70,7 +70,7 @@
     "sass": "^1.101.0",
     "sass-loader": "^12.0.0",
     "@vitest/coverage-v8": "^4.0.7",
-    "typescript": "^5.8.3",
+    "typescript": "^6.0.3",
     "vite": "^8.0.16",
     "vitest": "^4.1.8",
     "vue-tsc": "^2.2.12"
