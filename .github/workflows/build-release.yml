@@ -146,9 +146,9 @@ jobs:
       with:
         tag_name: ${{ github.event.inputs.release_tag || github.ref_name }}
         files: |
-          windows-release/*
-          macos-release/*
-          linux-release/*
+          windows-release/**/*
+          macos-release/**/*
+          linux-release/**/*
         draft: false
         overwrite_files: true
         prerelease: ${{ contains(github.ref_name, '-beta') }}
