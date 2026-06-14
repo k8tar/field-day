@@ -42,7 +42,7 @@
     "release": "npm run build:pipeline"
   },
   "dependencies": {
-    "marked": "^16.0.0",
+    "marked": "^18.0.5",
     "node-fetch": "^3.3.2",
     "vue": "^3.5.38",
     "vue-router": "^4.0.3",
