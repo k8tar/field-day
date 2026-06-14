@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+const logQsoMock = vi.fn().mockResolvedValue(undefined)
+
 vi.mock('@/services/fileStorage', () => ({
   fileStorage: {
     getNetworkId: vi.fn().mockResolvedValue('MESH-TEST-1'),
@@ -9,6 +11,10 @@ vi.mock('@/services/fileStorage', () => ({
 
 vi.mock('@/utils/debug', () => ({
   debugLog: vi.fn()
+}))
+
+vi.mock('@/store/qso', () => ({
+  logQso: logQsoMock
 }))
 
 interface MeshServiceLike {
@@ -42,6 +48,11 @@ describe('MeshNetworkService', () => {
   beforeEach(async () => {
     vi.resetModules()
     vi.stubGlobal('WebSocket', class {})
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ success: true, data: [] })
+    })))
 
     const module = await import('@/services/meshNetworkService')
     meshService = module.meshNetworkService as unknown as MeshServiceLike
@@ -142,5 +153,165 @@ describe('MeshNetworkService', () => {
     expect(internalService.connections.has('node-1')).to.equal(false)
     expect(internalService.status.discoveredNodes).to.equal(0)
     expect(internalService.status.connectedNodes).to.equal(0)
+  })
+
+  it('returns false and emits mesh:error when start fails', async () => {
+    const failed = vi.fn()
+    meshService.on('mesh:error', failed)
+
+    vi.spyOn(internalService, 'initializeLocalNode').mockRejectedValue(new Error('init failed'))
+
+    const started = await meshService.startMesh()
+
+    expect(started).to.equal(false)
+    expect(failed).toHaveBeenCalledTimes(1)
+    expect(meshService.isMeshActive()).to.equal(false)
+  })
+
+  it('stops mesh and clears intervals, nodes, and websocket connections', async () => {
+    const close = vi.fn()
+    class FakeWebSocket {
+      close(): void {
+        close()
+      }
+    }
+    vi.stubGlobal('WebSocket', FakeWebSocket)
+
+    const wsLike = new FakeWebSocket()
+
+    internalService.discoveredNodes.set('node-a', { id: 'node-a' })
+    internalService.connections.set('node-a', wsLike)
+    internalService.meshActive = true
+
+    await meshService.stopMesh()
+
+    expect(meshService.isMeshActive()).to.equal(false)
+    expect(internalService.discoveredNodes.size).to.equal(0)
+    expect(internalService.connections.size).to.equal(0)
+    expect(close).toHaveBeenCalledTimes(1)
+  })
+
+  it('skips station processing for self node and unreachable nodes', async () => {
+    const processStation = vi.spyOn(internalService as unknown as {
+      processDiscoveredStation: (station: Record<string, unknown>) => Promise<void>
+    }, 'processDiscoveredStation')
+
+    vi.spyOn(internalService as unknown as {
+      testStationConnection: (node: Record<string, unknown>) => Promise<boolean>
+    }, 'testStationConnection').mockResolvedValue(false)
+
+    await (internalService as unknown as {
+      processDiscoveredStation: (station: {
+        id: string;
+        call_sign: string;
+        ip_address: string;
+        port: number;
+      }) => Promise<void>
+    }).processDiscoveredStation({
+      id: 'MESH-TEST-1',
+      call_sign: 'SELF',
+      ip_address: '192.168.1.1',
+      port: 3030
+    })
+
+    expect(internalService.discoveredNodes.size).to.equal(0)
+
+    await (internalService as unknown as {
+      processDiscoveredStation: (station: {
+        id: string;
+        call_sign: string;
+        ip_address: string;
+        port: number;
+      }) => Promise<void>
+    }).processDiscoveredStation({
+      id: 'NODE-2',
+      call_sign: 'N2',
+      ip_address: '192.168.1.2',
+      port: 3030
+    })
+
+    expect(internalService.discoveredNodes.size).to.equal(0)
+  })
+
+  it('removes stale nodes on timeout checks', () => {
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(1_000_000)
+    internalService.discoveredNodes.set('stale', {
+      id: 'stale',
+      callsign: 'S',
+      designator: '1A',
+      ip: '192.168.1.5',
+      port: 3030,
+      qsoCount: 0,
+      score: 0,
+      online: true,
+      lastSeen: 900_000,
+      version: '1.0.0',
+      capabilities: []
+    })
+
+    ;(internalService as unknown as { checkNodeTimeouts: () => void }).checkNodeTimeouts()
+
+    expect(internalService.discoveredNodes.has('stale')).to.equal(false)
+    nowSpy.mockRestore()
+  })
+
+  it('syncs new remote QSOs and emits sync completion details', async () => {
+    const syncEvent = vi.fn()
+    meshService.on('mesh:sync-completed', syncEvent)
+
+    vi.mocked(logQsoMock).mockResolvedValue(undefined)
+
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        qsos: [
+          {
+            id: 'remote-1',
+            call: 'W1AW',
+            class: '1A',
+            section: 'CT',
+            datetime: '2024-06-14T12:00:00.000Z',
+            band: '20m',
+            mode: 'CW',
+            operator: 'K8TAR',
+            timestamp: 1718366400000
+          }
+        ]
+      })
+    })))
+
+    await (internalService as unknown as {
+      syncWithNode: (node: {
+        id: string;
+        callsign: string;
+        ip: string;
+        port: number;
+        protocol: 'http';
+      }) => Promise<void>
+    }).syncWithNode({
+      id: 'node-1',
+      callsign: 'N1',
+      ip: '192.168.1.20',
+      port: 3030,
+      protocol: 'http'
+    })
+
+    expect(logQsoMock).toHaveBeenCalledTimes(1)
+    expect(syncEvent).toHaveBeenCalled()
+  })
+
+  it('handles non-ok backend response for station discovery', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: false,
+      status: 503,
+      json: async () => ({})
+    })))
+
+    const stations = await (internalService as unknown as {
+      getBackendDiscoveredStations: () => Promise<Array<Record<string, unknown>>>
+    }).getBackendDiscoveredStations()
+
+    expect(stations).to.deep.equal([])
   })
 })
