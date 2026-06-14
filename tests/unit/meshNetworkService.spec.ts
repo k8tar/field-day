@@ -314,4 +314,115 @@ describe('MeshNetworkService', () => {
 
     expect(stations).to.deep.equal([])
   })
+
+  it('accepts backend discovery success payloads and rejects malformed payloads', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        success: true,
+        data: [{ id: 'node-1', call_sign: 'W1AW', ip_address: '192.168.1.40', port: 3030 }]
+      })
+    })))
+
+    const okStations = await (internalService as unknown as {
+      getBackendDiscoveredStations: () => Promise<Array<Record<string, string | number>>>
+    }).getBackendDiscoveredStations()
+    expect(okStations).to.have.length(1)
+
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ success: true, data: null })
+    })))
+
+    const malformed = await (internalService as unknown as {
+      getBackendDiscoveredStations: () => Promise<Array<Record<string, string | number>>>
+    }).getBackendDiscoveredStations()
+    expect(malformed).to.deep.equal([])
+  })
+
+  it('processes reachable discovered station and emits node discovered', async () => {
+    const discovered = vi.fn()
+    meshService.on('node:discovered', discovered)
+
+    vi.spyOn(internalService as unknown as {
+      testStationConnection: (node: Record<string, string | number | boolean | string[]>) => Promise<boolean>
+    }, 'testStationConnection').mockResolvedValue(true)
+
+    vi.spyOn(internalService as unknown as {
+      connectToNode: (node: Record<string, string | number | boolean | string[]>) => Promise<boolean>
+    }, 'connectToNode').mockResolvedValue(true)
+
+    await (internalService as unknown as {
+      processDiscoveredStation: (station: {
+        id: string;
+        call_sign: string;
+        ip_address: string;
+        port: number;
+      }) => Promise<void>
+    }).processDiscoveredStation({
+      id: 'NODE-OK',
+      call_sign: 'W1AW',
+      ip_address: '192.168.1.40',
+      port: 3030
+    })
+
+    expect(internalService.discoveredNodes.has('NODE-OK')).to.equal(true)
+    expect(discovered).toHaveBeenCalledTimes(1)
+  })
+
+  it('returns true immediately when connectToNode is called for existing connection', async () => {
+    internalService.connections.set('node-1', 'http-api')
+
+    const connected = await (internalService as unknown as {
+      connectToNode: (node: { id: string; callsign: string; ip: string; port: number; protocol: 'http' }) => Promise<boolean>
+    }).connectToNode({
+      id: 'node-1',
+      callsign: 'W1AW',
+      ip: '192.168.1.10',
+      port: 3030,
+      protocol: 'http'
+    })
+
+    expect(connected).to.equal(true)
+  })
+
+  it('returns false when connectToNode receives a non-ok HTTP response', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: false,
+      status: 503,
+      json: async () => ({})
+    })))
+
+    const connected = await (internalService as unknown as {
+      connectToNode: (node: { id: string; callsign: string; ip: string; port: number; protocol: 'http' }) => Promise<boolean>
+    }).connectToNode({
+      id: 'node-2',
+      callsign: 'N2',
+      ip: '192.168.1.11',
+      port: 3030,
+      protocol: 'http'
+    })
+
+    expect(connected).to.equal(false)
+  })
+
+  it('validates private-ip and localhost helper predicates', () => {
+    const isValidPrivateIP = (internalService as unknown as {
+      isValidPrivateIP: (ip: string) => boolean
+    }).isValidPrivateIP
+
+    const isLocalhost = (internalService as unknown as {
+      isLocalhost: (ip: string) => boolean
+    }).isLocalhost
+
+    expect(isValidPrivateIP('192.168.1.55')).to.equal(true)
+    expect(isValidPrivateIP('192.168.56.1')).to.equal(false)
+    expect(isValidPrivateIP('8.8.8.8')).to.equal(false)
+
+    expect(isLocalhost('127.0.0.1')).to.equal(true)
+    expect(isLocalhost('localhost')).to.equal(true)
+    expect(isLocalhost('192.168.1.55')).to.equal(false)
+  })
 })
