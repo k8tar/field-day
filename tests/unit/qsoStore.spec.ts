@@ -43,20 +43,36 @@ const mockNetworkService = {
   }
 };
 
+const mockBackgroundNetworkService = {
+  backgroundNetworkService: {
+    reSyncMeshState: vi.fn().mockResolvedValue(undefined)
+  }
+};
+
+const clearAllMessagesMock = vi.fn().mockResolvedValue(undefined);
+
+const windowEventHandlers = new Map<string, () => void | Promise<void>>();
+
 vi.mock('@/services/backendApiService', () => ({ backendApi: backendApiMock }));
 vi.mock('@/services/fileStorage', () => ({ fileStorage: fileStorageMock }));
 vi.mock('@/services/crossOriginStorage', () => ({ CrossOriginStorage: crossOriginStorageMock }));
 vi.mock('@/utils/debug', () => ({ debugLog: vi.fn(), debugWarn: vi.fn(), debugError: vi.fn() }));
 vi.mock('@/services/achievementService', () => ({ achievementService: mockAchievementService }));
 vi.mock('@/services/networkService', () => mockNetworkService);
+vi.mock('@/services/backgroundNetworkService', () => mockBackgroundNetworkService);
+vi.mock('@/store/message', () => ({ clearAllMessages: clearAllMessagesMock }));
 
 describe('QSO store helpers', () => {
   let qsoStore: typeof import('@/store/qso');
 
   beforeAll(async () => {
     vi.stubGlobal('window', {
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
+      addEventListener: vi.fn((event: string, handler: () => void | Promise<void>) => {
+        windowEventHandlers.set(event, handler);
+      }),
+      removeEventListener: vi.fn((event: string) => {
+        windowEventHandlers.delete(event);
+      }),
       setInterval: vi.fn(() => 1),
       clearInterval: vi.fn()
     });
@@ -69,6 +85,8 @@ describe('QSO store helpers', () => {
     backendApiMock.connected.value = false;
     qsoStore.stopPeriodicQsoRefresh();
     vi.clearAllMocks();
+    clearAllMessagesMock.mockResolvedValue(undefined);
+    mockBackgroundNetworkService.backgroundNetworkService.reSyncMeshState.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -646,5 +664,130 @@ describe('QSO store helpers', () => {
 
     await expect(qsoStore.deleteQso('missing-id')).resolves.toBeUndefined();
     expect(backendApiMock.refreshConnectionStatus).toHaveBeenCalledTimes(1);
+  });
+
+  it('handles processLogReset message-clear and settings-save failures', async () => {
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    clearAllMessagesMock.mockRejectedValueOnce(new Error('message clear failed'));
+    fileStorageMock.saveSettings.mockRejectedValueOnce(new Error('settings save failed'));
+    backendApiMock.connected.value = false;
+
+    await expect(qsoStore.processLogReset('2024-06-14T12:00:00.000Z')).resolves.toBeUndefined();
+
+    expect(consoleErrorSpy).toHaveBeenCalled();
+    consoleErrorSpy.mockRestore();
+  });
+
+  it('processes reset when local settings read fails in checkForLogReset', async () => {
+    backendApiMock.connected.value = true;
+    backendApiMock.getLastLogResetTime.mockResolvedValue('2024-06-14T12:30:00.000Z');
+    fileStorageMock.getSettings.mockRejectedValueOnce(new Error('settings unavailable'));
+
+    await qsoStore.checkForLogReset();
+
+    expect(fileStorageMock.saveQsoData).toHaveBeenCalledWith([]);
+    expect(fileStorageMock.saveSettings).toHaveBeenCalledWith(
+      expect.objectContaining({ lastLogResetTimestamp: '2024-06-14T12:30:00.000Z' })
+    );
+  });
+
+  it('clears prior interval on repeated periodic-refresh start', () => {
+    vi.useFakeTimers();
+    const clearIntervalSpy = vi.spyOn(globalThis, 'clearInterval');
+
+    backendApiMock.connected.value = true;
+    qsoStore.startPeriodicQsoRefresh();
+    qsoStore.startPeriodicQsoRefresh();
+
+    expect(clearIntervalSpy).toHaveBeenCalledTimes(1);
+  });
+
+  it('runs periodic refresh callback only while backend remains connected', async () => {
+    vi.useFakeTimers();
+    backendApiMock.connected.value = true;
+    backendApiMock.getQsos.mockResolvedValue([]);
+
+    qsoStore.startPeriodicQsoRefresh();
+    vi.advanceTimersByTime(10000);
+    await vi.waitFor(() => expect(backendApiMock.getQsos).toHaveBeenCalledTimes(1));
+
+    backendApiMock.connected.value = false;
+    vi.advanceTimersByTime(10000);
+    await Promise.resolve();
+
+    expect(backendApiMock.getQsos).toHaveBeenCalledTimes(1);
+  });
+
+  it('handles backendConnected and backendDisconnected event listeners', async () => {
+    qsoStore.qsos.value = [
+      {
+        id: 'upload-1',
+        call: 'W1AW',
+        class: '1A',
+        section: 'CT',
+        datetime: '2024-06-14T11:00:00.000Z',
+        band: '20m',
+        mode: 'CW',
+        operator: 'K8TAR'
+      }
+    ];
+
+    backendApiMock.connected.value = true;
+    backendApiMock.deleteQso.mockResolvedValue(undefined);
+    backendApiMock.addQso.mockResolvedValue(undefined);
+
+    await qsoStore.deleteQso('upload-1');
+    qsoStore.qsos.value = [
+      {
+        id: 'upload-2',
+        call: 'K1ABC',
+        class: '1A',
+        section: 'EMA',
+        datetime: '2024-06-14T11:05:00.000Z',
+        band: '40m',
+        mode: 'PH',
+        operator: 'K8TAR'
+      }
+    ];
+
+    backendApiMock.connected.value = true;
+    backendApiMock.deleteQso.mockRejectedValueOnce(new Error('initial offline simulation')); // keep pending deletion from next step
+
+    await qsoStore.deleteQso('upload-2');
+
+    qsoStore.qsos.value = [
+      {
+        id: 'upload-3',
+        call: 'N1MM',
+        class: '1A',
+        section: 'NH',
+        datetime: '2024-06-14T11:10:00.000Z',
+        band: '15m',
+        mode: 'DIG',
+        operator: 'K8TAR'
+      }
+    ];
+
+    backendApiMock.connected.value = true;
+    backendApiMock.deleteQso.mockResolvedValue(undefined);
+
+    const backendConnected = windowEventHandlers.get('backendConnected');
+    const backendDisconnected = windowEventHandlers.get('backendDisconnected');
+
+    expect(backendConnected).to.not.equal(undefined);
+    expect(backendDisconnected).to.not.equal(undefined);
+
+    if (backendConnected) {
+      await backendConnected();
+    }
+
+    expect(mockBackgroundNetworkService.backgroundNetworkService.reSyncMeshState).toHaveBeenCalledTimes(1);
+    expect(backendApiMock.addQso).toHaveBeenCalled();
+
+    if (backendDisconnected) {
+      backendDisconnected();
+    }
+
+    expect(backendApiMock.connected.value).to.equal(true);
   });
 });
