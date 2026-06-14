@@ -454,7 +454,8 @@ class NetworkService {
 
   getConnectedStations() {
     // Access the trigger to ensure reactivity
-    this.stationUpdateTrigger.value;
+    const triggerRead = this.stationUpdateTrigger.value;
+    void triggerRead;
     return this.connectedStations; // Return reactive array directly
   }
 

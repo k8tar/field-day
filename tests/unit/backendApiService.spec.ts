@@ -25,6 +25,9 @@ interface BackendApiLike {
   error: { value: string | null }
   refreshConnectionStatus: () => Promise<void>
   getStationInfo: () => Promise<unknown | null>
+  getQsoCount: () => Promise<number>
+  exportAdif: () => Promise<string | null>
+  sendMessage: (content: string, target?: string, messageId?: string) => Promise<boolean>
   updateStationConfig: (callSign: string, name: string, section: string, stationClass: string) => Promise<boolean>
   triggerLogReset: () => Promise<{ success: boolean; reset_timestamp?: string; error?: string }>
   getLastLogResetTime: () => Promise<string | null>
@@ -209,5 +212,89 @@ describe('BackendApiService', () => {
     const lastResetTime = await backendApi.getLastLogResetTime()
 
     expect(lastResetTime).to.equal('2024-06-14T09:00:00.000Z')
+  })
+
+  it('returns qso count and falls back to zero on unsuccessful responses', async () => {
+    fetchMock.mockResolvedValue(makeJsonResponse({ success: true }))
+
+    const module = await import('@/services/backendApiService')
+    const backendApi: BackendApiLike = module.backendApi
+    await flushAsyncWork()
+
+    fetchMock.mockClear()
+    fetchMock
+      .mockResolvedValueOnce(makeJsonResponse({ success: true, data: { count: 42 } }))
+      .mockResolvedValueOnce(makeJsonResponse({ success: false, error: 'bad response' }))
+
+    const first = await backendApi.getQsoCount()
+    const second = await backendApi.getQsoCount()
+
+    expect(first).to.equal(42)
+    expect(second).to.equal(0)
+  })
+
+  it('exports adif text and records errors when export fails', async () => {
+    fetchMock.mockResolvedValue(makeJsonResponse({ success: true }))
+
+    const module = await import('@/services/backendApiService')
+    const backendApi: BackendApiLike = module.backendApi
+    await flushAsyncWork()
+
+    fetchMock.mockClear()
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        json: async () => ({}),
+        text: async () => 'ADIF-EXPORT-CONTENT'
+      })
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+        statusText: 'Internal Server Error',
+        json: async () => ({}),
+        text: async () => ''
+      })
+
+    const successExport = await backendApi.exportAdif()
+    const failedExport = await backendApi.exportAdif()
+
+    expect(successExport).to.equal('ADIF-EXPORT-CONTENT')
+    expect(failedExport).to.equal(null)
+    expect(backendApi.error.value).to.equal('HTTP 500: Internal Server Error')
+  })
+
+  it('shapes sendMessage payload for all-target and direct-target messages', async () => {
+    fetchMock.mockResolvedValue(makeJsonResponse({ success: true }))
+
+    const module = await import('@/services/backendApiService')
+    const backendApi: BackendApiLike = module.backendApi
+    await flushAsyncWork()
+
+    fetchMock.mockClear()
+    fetchMock
+      .mockResolvedValueOnce(makeJsonResponse({ success: true }))
+      .mockResolvedValueOnce(makeJsonResponse({ success: true }))
+
+    const sendAll = await backendApi.sendMessage('hello world')
+    const sendDirect = await backendApi.sendMessage('private hello', 'MESH-123', 'msg-fixed')
+
+    expect(sendAll).to.equal(true)
+    expect(sendDirect).to.equal(true)
+
+    const [, allOptions] = fetchMock.mock.calls[0] as [string, RequestInit]
+    const [, directOptions] = fetchMock.mock.calls[1] as [string, RequestInit]
+
+    const allBody = JSON.parse(String(allOptions.body)) as { target_station_id?: string; id: string; text: string }
+    const directBody = JSON.parse(String(directOptions.body)) as { target_station_id?: string; id: string; text: string }
+
+    expect(allBody.text).to.equal('hello world')
+    expect(allBody.id.startsWith('msg-')).to.equal(true)
+    expect(allBody.target_station_id).to.equal(undefined)
+
+    expect(directBody.id).to.equal('msg-fixed')
+    expect(directBody.text).to.equal('private hello')
+    expect(directBody.target_station_id).to.equal('MESH-123')
   })
 })
