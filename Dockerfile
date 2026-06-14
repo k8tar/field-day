@@ -15,7 +15,7 @@ COPY backend-service/src ./src
 RUN cargo build --release
 
 # Stage 2: Build Vue.js frontend
-FROM node:22-alpine AS frontend-builder
+FROM node:22.12-alpine AS frontend-builder
 
 WORKDIR /app
 
