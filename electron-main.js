@@ -1,4 +1,4 @@
-import { app, BrowserWindow, protocol, shell, ipcMain } from 'electron';
+import { app, BrowserWindow, protocol, shell, ipcMain, nativeImage } from 'electron';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import fs from 'node:fs';
@@ -63,6 +63,31 @@ let mainWindow;
 // Backend service management
 let backendProcess = null;
 let isBackendStarting = false;
+
+function resolveWindowIconPath() {
+  const iconFiles = process.platform === 'linux'
+    ? ['app-icon.png', 'app-icon.ico', 'icon.ico']
+    : ['app-icon.ico', 'icon.ico', 'app-icon.png'];
+
+  const devCandidates = iconFiles.map((iconFile) =>
+    path.join(__dirname, 'public', iconFile)
+  );
+  const packagedCandidates = [
+    ...iconFiles.map((iconFile) => path.join(process.resourcesPath, 'public', iconFile)),
+    ...iconFiles.map((iconFile) => path.join(process.resourcesPath, 'app.asar.unpacked', 'public', iconFile))
+  ];
+
+  const candidates = app.isPackaged ? packagedCandidates : devCandidates;
+  const foundPath = candidates.find((candidate) => fs.existsSync(candidate));
+
+  if (!foundPath) {
+    console.warn('⚠️ No window icon file found in expected locations');
+    return undefined;
+  }
+
+  console.log('🖼️ Using window icon:', foundPath);
+  return foundPath;
+}
 
 /**
  * Start the Rust backend service
@@ -198,6 +223,7 @@ function stopBackendService() {
 function createWindow() {
   // Create the browser window
   const preloadPath = path.join(__dirname, 'src', 'preload.js');
+  const windowIconPath = resolveWindowIconPath();
   console.log('Preload script path:', preloadPath);
   console.log('Preload script exists:', fs.existsSync(preloadPath));
   
@@ -206,9 +232,7 @@ function createWindow() {
     height: 900,
     show: false,
     autoHideMenuBar: true,
-    icon: app.isPackaged 
-      ? path.join(process.resourcesPath, 'app.asar.unpacked', 'public', 'icon.ico')
-      : path.join(__dirname, 'public', 'icon.ico'),
+    icon: windowIconPath,
     webPreferences: {
       preload: preloadPath,
       nodeIntegration: false,
@@ -220,6 +244,10 @@ function createWindow() {
   });
 
   mainWindow.on('ready-to-show', () => {
+    if (windowIconPath && process.platform === 'linux') {
+      // Some Linux desktop environments only update the taskbar icon via setIcon.
+      mainWindow.setIcon(nativeImage.createFromPath(windowIconPath));
+    }
     mainWindow.show();
   });
 

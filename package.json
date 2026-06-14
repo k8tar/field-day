@@ -35,6 +35,8 @@
     "dist:win": "npm run build && electron-builder --win",
     "dist:mac": "npm run build && electron-builder --mac",
     "dist:linux": "npm run build && electron-builder --linux",
+    "dist:deb": "npm run build && electron-builder --linux deb",
+    "dist:rpm": "npm run build && electron-builder --linux rpm",
     "build:pipeline": "node build-pipeline.js",
     "build:installer": "node build-pipeline.js",
     "start": "npm run build && electron .",
@@ -97,7 +99,8 @@
         "from": "backend-service/target/release",
         "to": "backend-service/target/release",
         "filter": [
-          "**/*"
+          "fieldday-backend",
+          "fieldday-backend.exe"
         ]
       }
     ],
@@ -136,6 +139,31 @@
     },
     "portable": {
       "artifactName": "${productName}-${version}-portable.exe"
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "deb",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "rpm",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "public/app-icon.png",
+      "category": "Utility",
+      "maintainer": "K8TAR <support@k8tar.com>"
     }
   }
 }

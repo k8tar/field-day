@@ -45,6 +45,8 @@ This directory contains the build pipeline and distribution files for the Field 
 - `npm run dist:win` - Windows build (NSIS installer, portable, zip)
 - `npm run dist:mac` - macOS build (DMG, zip)
 - `npm run dist:linux` - Linux build (AppImage, deb, rpm)
+- `npm run dist:deb` - Linux Debian package (.deb)
+- `npm run dist:rpm` - Linux RPM package (.rpm)
 
 ## Build Pipeline Overview
 
