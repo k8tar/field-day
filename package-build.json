@@ -14,7 +14,7 @@
     "dev": "vite",
     "build": "vite build",
     "serve": "vite preview",
-    "test:unit": "vitest run --globals tests/unit/**/*.spec.ts",
+    "test:unit": "vitest run --globals tests/unit",
     "lint": "eslint --max-warnings=0 --ext .ts,.vue ./src",
     "electron": "electron .",
     "electron:dev": "concurrently \"npm run dev\" \"wait-on https://localhost:8080 && electron .\"",

@@ -1,194 +1,173 @@
-import { expect } from 'chai';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { AsyncLock, SafeInterval, SafeTimeout, TTLCache, debounce, throttle } from '@/utils/performance';
 
-// Mock environment for browser
-(global as any).window = {
-  location: { protocol: 'https:' }
-};
-
-describe('FileStorageService', () => {
-  describe('Data Structure Validation', () => {
-    it('should define QSO data structure', () => {
-      const qsoData = {
-        qsos: [],
-        lastUpdated: Date.now()
-      };
-
-      expect(qsoData).to.have.property('qsos');
-      expect(qsoData).to.have.property('lastUpdated');
-      expect(qsoData.qsos).to.be.an('array');
-      expect(qsoData.lastUpdated).to.be.a('number');
-    });
-
-    it('should define station config structure', () => {
-      const stationConfig = {
-        callsign: 'W1AW',
-        designator: '2A',
-        port: 8080,
-        lastUpdated: Date.now(),
-        stationClass: 'PHONE',
-        stationSection: 'CT'
-      };
-
-      expect(stationConfig).to.have.property('callsign');
-      expect(stationConfig).to.have.property('designator');
-      expect(stationConfig).to.have.property('port');
-      expect(stationConfig.port).to.equal(8080);
-    });
-
-    it('should define settings data structure', () => {
-      const settingsData = {
-        band: '20M',
-        operator: 'W1AW',
-        mode: 'SSB',
-        theme: 'dark',
-        networkSettings: {},
-        qsosUploadedToServer: false,
-        lastSyncTimestamp: Date.now(),
-        lastUpdated: Date.now()
-      };
-
-      expect(settingsData).to.have.property('band');
-      expect(settingsData).to.have.property('operator');
-      expect(settingsData).to.have.property('mode');
-      expect(settingsData).to.have.property('theme');
-      expect(settingsData).to.have.property('lastUpdated');
-    });
+describe('Performance utilities', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
   });
 
-  describe('Port Management', () => {
-    it('should use port 8080 as standard', () => {
-      const standardPort = 8080;
-      expect(standardPort).to.equal(8080);
-      expect(standardPort).to.be.a('number');
-    });
+  it('debounces immediately when configured', async () => {
+    vi.useFakeTimers();
+    const handler = vi.fn();
+    const debounced = debounce(handler, 100, true);
 
-    it('should construct data directory paths', () => {
-      const dataDir = 'fieldday-data';
-      const port = 8080;
-      const configFile = `${dataDir}/port-${port}/station-config.json`;
-      
-      expect(configFile).to.equal('fieldday-data/port-8080/station-config.json');
-    });
+    debounced('first');
+    debounced('second');
+
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(handler).toHaveBeenCalledWith('first');
+
+    await vi.advanceTimersByTimeAsync(100);
+    expect(handler).toHaveBeenCalledTimes(1);
   });
 
-  describe('File Operations', () => {
-    it('should handle electron vs browser environment detection', () => {
-      const isElectron = typeof window !== 'undefined' && window.location.protocol === 'file:';
-      const isBrowser = typeof window !== 'undefined' && window.location.protocol.startsWith('http');
-      
-      // In test environment, we simulate browser
-      expect(isBrowser).to.be.true;
-      expect(isElectron).to.be.false;
-    });
+  it('debounces repeated invocations', async () => {
+    vi.useFakeTimers();
+    const handler = vi.fn();
+    const debounced = debounce(handler, 100);
 
-    it('should define file paths correctly', () => {
-      const filenames = [
-        'station-config.json',
-        'qso-data.json',
-        'operators.json',
-        'bonuses.json',
-        'settings.json'
-      ];
+    debounced('first');
+    debounced('second');
+    debounced('third');
 
-      filenames.forEach(filename => {
-        expect(filename).to.be.a('string');
-        expect(filename).to.match(/\.json$/);
-      });
-    });
+    await vi.advanceTimersByTimeAsync(99);
+    expect(handler).not.toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(1);
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(handler).toHaveBeenCalledWith('third');
   });
 
-  describe('Data Validation', () => {
-    it('should validate QSO structure', () => {
-      const qso = {
-        id: 'test-1',
-        callsign: 'W1AW',
-        band: '20M',
-        mode: 'SSB',
-        timestamp: new Date().toISOString(),
-        operator: 'TEST',
-        exchange: '2A',
-        section: 'CT',
-        power: 100,
-        antenna: 'Dipole'
-      };
+  it('throttles repeated invocations', async () => {
+    vi.useFakeTimers();
+    const handler = vi.fn();
+    const throttled = throttle(handler, 100);
 
-      expect(qso.callsign).to.be.a('string');
-      expect(qso.band).to.be.a('string');
-      expect(qso.mode).to.be.a('string');
-      expect(qso.power).to.be.a('number');
-      expect(qso.timestamp).to.be.a('string');
-    });
+    throttled('initial');
+    throttled('suppressed');
 
-    it('should validate operators array', () => {
-      const operators = ['W1AW', 'K1BBO', 'N1MM'];
-      
-      expect(operators).to.be.an('array');
-      operators.forEach(operator => {
-        expect(operator).to.be.a('string');
-        expect(operator.length).to.be.greaterThan(3);
-      });
-    });
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(handler).toHaveBeenCalledWith('initial');
 
-    it('should validate bonus structure', () => {
-      const bonus = {
-        id: 'bonus-1',
-        name: 'GOTA',
-        points: 100,
-        claimed: true
-      };
+    await vi.advanceTimersByTimeAsync(100);
+    throttled('allowed');
 
-      expect(bonus).to.have.property('id');
-      expect(bonus).to.have.property('name');
-      expect(bonus).to.have.property('points');
-      expect(bonus).to.have.property('claimed');
-      expect(bonus.points).to.be.a('number');
-      expect(bonus.claimed).to.be.a('boolean');
-    });
+    expect(handler).toHaveBeenCalledTimes(2);
+    expect(handler).toHaveBeenLastCalledWith('allowed');
   });
 
-  describe('Storage Information', () => {
-    it('should provide storage info structure', () => {
-      const storageInfo = {
-        port: 8080,
-        configExists: true,
-        qsoCount: 0
-      };
+  it('expires TTL cache entries', async () => {
+    vi.useFakeTimers();
+    const cache = new TTLCache<string, number>(1000);
 
-      expect(storageInfo).to.have.property('port');
-      expect(storageInfo).to.have.property('configExists');
-      expect(storageInfo).to.have.property('qsoCount');
-      expect(storageInfo.port).to.equal(8080);
-      expect(storageInfo.configExists).to.be.a('boolean');
-      expect(storageInfo.qsoCount).to.be.a('number');
-    });
+    cache.set('score', 42);
+    expect(cache.get('score')).to.equal(42);
+
+    expect(cache.has('score')).to.equal(true);
+
+    cache.set('short', 7, 500);
+
+    await vi.advanceTimersByTimeAsync(1001);
+    expect(cache.get('score')).to.equal(undefined);
+    expect(cache.get('short')).to.equal(undefined);
+
+    cache.set('keep', 11);
+    expect(cache.delete('keep')).to.equal(true);
+    expect(cache.has('keep')).to.equal(false);
+
+    cache.set('clear', 99);
+    cache.clear();
+    expect(cache.has('clear')).to.equal(false);
   });
 
-  describe('Error Handling', () => {
-    it('should handle JSON parsing errors', () => {
-      const invalidJson = 'invalid json';
-      let result = [];
-      
-      try {
-        result = JSON.parse(invalidJson);
-      } catch (error) {
-        result = [];
-      }
+  it('runs safe intervals until destroyed', async () => {
+    vi.useFakeTimers();
+    const callback = vi.fn();
+    const interval = new SafeInterval(callback, 100);
 
-      expect(result).to.be.an('array');
-      expect(result).to.have.lengthOf(0);
-    });
+    await vi.advanceTimersByTimeAsync(100);
+    expect(callback).toHaveBeenCalledTimes(1);
 
-    it('should handle missing files gracefully', () => {
-      const defaultQsoData: any[] = [];
-      const defaultConfig = {
-        callsign: '',
-        designator: '',
-        port: 8080,
-        lastUpdated: Date.now()
-      };
+    interval.destroy();
+    await vi.advanceTimersByTimeAsync(100);
+    expect(callback).toHaveBeenCalledTimes(1);
+  });
 
-      expect(defaultQsoData).to.be.an('array');
-      expect(defaultConfig.port).to.equal(8080);
-    });
+  it('logs and continues when a safe interval callback throws', async () => {
+    vi.useFakeTimers();
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const interval = new SafeInterval(() => {
+      throw new Error('boom');
+    }, 100);
+
+    await vi.advanceTimersByTimeAsync(100);
+    expect(errorSpy).toHaveBeenCalledWith('SafeInterval callback error:', expect.any(Error));
+
+    interval.destroy();
+  });
+
+  it('allows safe timeouts to be cancelled before firing', async () => {
+    vi.useFakeTimers();
+    const callback = vi.fn();
+    const timeout = new SafeTimeout(callback, 100);
+
+    timeout.cancel();
+    await vi.advanceTimersByTimeAsync(100);
+    expect(callback).not.toHaveBeenCalled();
+  });
+
+  it('invokes safe timeout callbacks and clears them afterward', async () => {
+    vi.useFakeTimers();
+    const callback = vi.fn();
+    const timeout = new SafeTimeout(callback, 100);
+
+    await vi.advanceTimersByTimeAsync(100);
+
+    expect(callback).toHaveBeenCalledTimes(1);
+    timeout.cancel();
+    timeout.destroy();
+  });
+
+  it('cleans up expired TTL cache entries', async () => {
+    vi.useFakeTimers();
+    const cache = new TTLCache<string, string>(1000);
+
+    cache.set('active', 'keep', 2000);
+    cache.set('expired', 'drop', 500);
+
+    await vi.advanceTimersByTimeAsync(750);
+    cache.cleanup();
+
+    expect(cache.get('active')).to.equal('keep');
+    expect(cache.get('expired')).to.equal(undefined);
+  });
+
+  it('handles async lock failures and releases the key', async () => {
+    const lock = new AsyncLock();
+    const error = new Error('failed');
+
+    await expect(
+      lock.execute('sync', () => Promise.reject(error))
+    ).rejects.to.equal(error);
+
+    expect(lock.isRunning('sync')).to.equal(false);
+  });
+
+  it('reuses the same pending lock promise', async () => {
+    const lock = new AsyncLock();
+    let resolveOperation: ((value: string) => void) | null = null;
+
+    const first = lock.execute('station-sync', () => new Promise<string>(resolve => {
+      resolveOperation = resolve;
+    }));
+    const second = lock.execute('station-sync', () => Promise.resolve('ignored'));
+
+    expect(lock.isRunning('station-sync')).to.equal(true);
+
+    resolveOperation?.('done');
+    await expect(first).resolves.to.equal('done');
+    await expect(second).resolves.to.equal('done');
+    expect(lock.isRunning('station-sync')).to.equal(false);
   });
 });

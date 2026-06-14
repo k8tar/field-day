@@ -1,249 +1,185 @@
-import { expect } from 'chai';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { fileStorage } from '@/services/fileStorage';
+import { StationInfoService } from '@/services/stationInfoService';
 
-describe('NetworkService', () => {
-  describe('URL Construction', () => {
-    it('should construct HTTPS URLs correctly', () => {
-      const baseUrl = 'https://192.168.1.100:8080';
-      const apiPath = '/api/qsos';
-      const fullUrl = `${baseUrl}${apiPath}`;
-      
-      expect(fullUrl).to.equal('https://192.168.1.100:8080/api/qsos');
-    });
+vi.mock('@/services/fileStorage', () => ({
+  fileStorage: {
+    getStationConfig: vi.fn(),
+    getNetworkId: vi.fn(),
+    getQsoData: vi.fn()
+  }
+}));
 
-    it('should handle port 8080 as standard', () => {
-      const port = 8080;
-      expect(port).to.equal(8080);
-      expect(port).to.be.a('number');
-    });
+describe('StationInfoService', () => {
+  const getStationConfig = vi.mocked(fileStorage.getStationConfig);
+  const getNetworkId = vi.mocked(fileStorage.getNetworkId);
+  const getQsoData = vi.mocked(fileStorage.getQsoData);
 
-    it('should validate IP address format', () => {
-      const validIPs = ['192.168.1.1', '10.0.0.1', '127.0.0.1'];
-      const ipRegex = /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
-      
-      validIPs.forEach(ip => {
-        expect(ipRegex.test(ip)).to.be.true;
-      });
+  beforeEach(() => {
+    StationInfoService.clearCache();
+    vi.stubGlobal('window', {
+      location: { port: '8080' }
     });
-
-    it('should reject invalid IP addresses', () => {
-      const invalidIPs = ['256.1.1.1', '192.168.1', 'not-an-ip', '192.168.1.1.1'];
-      const ipRegex = /^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$/;
-      
-      invalidIPs.forEach(ip => {
-        expect(ipRegex.test(ip)).to.be.false;
-      });
-    });
+    getStationConfig.mockReset();
+    getNetworkId.mockReset();
+    getQsoData.mockReset();
   });
 
-  describe('Connection Management', () => {
-    it('should define connection states', () => {
-      const states = ['disconnected', 'connecting', 'connected', 'reconnecting', 'error'];
-      
-      states.forEach(state => {
-        expect(state).to.be.a('string');
-        expect(state.length).to.be.greaterThan(0);
-      });
-    });
+  it('uses fallback station config values when saved config is partial', async () => {
+    getStationConfig.mockResolvedValue({ callsign: '', designator: '' });
+    getNetworkId.mockResolvedValue('MESH-12345');
+    getQsoData.mockResolvedValue([]);
 
-    it('should handle heartbeat intervals', () => {
-      const heartbeatInterval = 30000; // 30 seconds
-      expect(heartbeatInterval).to.be.a('number');
-      expect(heartbeatInterval).to.be.greaterThan(0);
-    });
+    const stationInfo = await StationInfoService.getStationInfo(false);
 
-    it('should manage retry attempts', () => {
-      const maxRetries = 5;
-      const retryDelay = 1000;
-      
-      expect(maxRetries).to.be.a('number');
-      expect(maxRetries).to.be.greaterThan(0);
-      expect(retryDelay).to.be.a('number');
-      expect(retryDelay).to.be.greaterThan(0);
-    });
+    expect(stationInfo.callsign).to.equal('K8TAR');
+    expect(stationInfo.designator).to.equal('1A');
+    expect(stationInfo.networkId).to.equal('MESH-12345');
+    expect(stationInfo.qsoCount).to.equal(0);
+    expect(stationInfo.score).to.equal(0);
   });
 
-  describe('API Endpoints', () => {
-    it('should define standard API paths', () => {
-      const endpoints = {
-        qsos: '/api/qsos',
-        messages: '/api/messages',
-        stationInfo: '/api/station-info',
-        heartbeat: '/api/heartbeat'
-      };
+  it('scores digital and invalid QSOs as expected', async () => {
+    getStationConfig.mockResolvedValue({ callsign: 'K8TAR', designator: '1A' });
+    getNetworkId.mockResolvedValue('MESH-12345');
+    getQsoData.mockResolvedValue([
+      {
+        call: 'W1AW',
+        class: '1A',
+        section: 'CT',
+        datetime: '2024-06-14T12:00:00.000Z',
+        band: '20m',
+        mode: 'DIGITAL',
+        operator: 'K8TAR'
+      },
+      {
+        call: 'K1ABC',
+        class: '1A',
+        section: 'MA',
+        datetime: '2024-06-14T12:05:00.000Z',
+        band: '20m',
+        mode: 'PH',
+        operator: 'K8TAR'
+      },
+      null
+    ]);
 
-      Object.values(endpoints).forEach(endpoint => {
-        expect(endpoint).to.be.a('string');
-        expect(endpoint).to.match(/^\/api\/.+/);
-      });
-    });
+    const stationInfo = await StationInfoService.getStationInfo(false);
 
-    it('should handle HTTP methods', () => {
-      const methods = ['GET', 'POST', 'PUT', 'DELETE'];
-      
-      methods.forEach(method => {
-        expect(method).to.be.a('string');
-        expect(['GET', 'POST', 'PUT', 'DELETE']).to.include(method);
-      });
-    });
+    expect(stationInfo.qsoCount).to.equal(3);
+    expect(stationInfo.score).to.equal(3);
   });
 
-  describe('Data Synchronization', () => {
-    it('should handle QSO sync payload structure', () => {
-      const qsoSyncPayload = {
-        qsos: [],
+  it('includes the active port when station info is requested with includePort enabled', async () => {
+    getStationConfig.mockResolvedValue({ callsign: 'K8TAR', designator: '1A' });
+    getNetworkId.mockResolvedValue('MESH-12345');
+    getQsoData.mockResolvedValue([]);
+
+    const stationInfo = await StationInfoService.getStationInfo(true);
+
+    expect(stationInfo.port).to.equal(8080);
+    expect(stationInfo.timestamp).to.be.a('number');
+  });
+
+  it('builds a complete station info response', async () => {
+    getStationConfig.mockResolvedValue({ callsign: 'K8TAR', designator: '1A' });
+    getNetworkId.mockResolvedValue('MESH-12345');
+    getQsoData.mockResolvedValue([
+      {
+        call: 'W1AW',
+        class: '1A',
+        section: 'CT',
+        datetime: '2024-06-14T12:00:00.000Z',
+        band: '20m',
+        mode: 'CW',
+        operator: 'K8TAR'
+      },
+      {
+        call: 'K1ABC',
+        class: '1A',
+        section: 'MA',
+        datetime: '2024-06-14T12:05:00.000Z',
+        band: '20m',
+        mode: 'PH',
+        operator: 'K8TAR'
+      }
+    ]);
+
+    const stationInfo = await StationInfoService.getStationInfo(true);
+
+    expect(stationInfo.callsign).to.equal('K8TAR');
+    expect(stationInfo.designator).to.equal('1A');
+    expect(stationInfo.networkId).to.equal('MESH-12345');
+    expect(stationInfo.qsoCount).to.equal(2);
+    expect(stationInfo.score).to.equal(3);
+    expect(stationInfo.port).to.equal(8080);
+    expect(StationInfoService.validateStationInfo(stationInfo)).to.equal(true);
+  });
+
+  it('falls back cleanly when storage lookup fails', async () => {
+    getStationConfig.mockRejectedValue(new Error('storage unavailable'));
+    getNetworkId.mockRejectedValue(new Error('storage unavailable'));
+    getQsoData.mockResolvedValue([]);
+
+    const stationInfo = await StationInfoService.getStationInfo(false);
+
+    expect(stationInfo.callsign).to.equal('K8TAR');
+    expect(stationInfo.designator).to.equal('1A');
+    expect(stationInfo.networkId).to.match(/^MESH-fallback-/);
+    expect(stationInfo.qsoCount).to.equal(0);
+    expect(stationInfo.score).to.equal(0);
+  });
+
+  it('caches network IDs until the cache is cleared', async () => {
+    getStationConfig.mockResolvedValue({ callsign: 'K8TAR', designator: '1A' });
+    getNetworkId.mockResolvedValue('MESH-12345');
+    getQsoData.mockResolvedValue([]);
+
+    const first = await StationInfoService.getStationInfo(false);
+    const second = await StationInfoService.getStationInfo(false);
+
+    expect(first.networkId).to.equal('MESH-12345');
+    expect(second.networkId).to.equal('MESH-12345');
+    expect(getNetworkId).toHaveBeenCalledTimes(1);
+
+    StationInfoService.clearCache();
+    getNetworkId.mockResolvedValueOnce('MESH-67890');
+
+    const refreshed = await StationInfoService.getStationInfo(false);
+
+    expect(refreshed.networkId).to.equal('MESH-67890');
+    expect(getNetworkId).toHaveBeenCalledTimes(2);
+  });
+
+  it('rejects station info responses missing required fields', () => {
+    expect(StationInfoService.validateStationInfo(null)).to.equal(false);
+    expect(
+      StationInfoService.validateStationInfo({
+        callsign: 'K8TAR',
+        designator: '1A',
+        networkId: 'MESH-12345',
+        qsoCount: 1,
+        software: 'K8TAR Field Day Logger',
         timestamp: Date.now(),
-        stationId: 'W1AW-1'
-      };
+        online: true
+      })
+    ).to.equal(false);
+  });
 
-      expect(qsoSyncPayload).to.have.property('qsos');
-      expect(qsoSyncPayload).to.have.property('timestamp');
-      expect(qsoSyncPayload).to.have.property('stationId');
-      expect(qsoSyncPayload.qsos).to.be.an('array');
-      expect(qsoSyncPayload.timestamp).to.be.a('number');
-      expect(qsoSyncPayload.stationId).to.be.a('string');
-    });
-
-    it('should handle message sync payload structure', () => {
-      const messageSyncPayload = {
-        messages: [],
+  it('accepts fully populated station info responses', () => {
+    expect(
+      StationInfoService.validateStationInfo({
+        callsign: 'K8TAR',
+        designator: '1A',
+        networkId: 'MESH-12345',
+        qsoCount: 3,
+        score: 5,
+        software: 'K8TAR Field Day Logger',
+        version: '2.0.0',
         timestamp: Date.now(),
-        stationId: 'W1AW-1'
-      };
-
-      expect(messageSyncPayload).to.have.property('messages');
-      expect(messageSyncPayload).to.have.property('timestamp');
-      expect(messageSyncPayload).to.have.property('stationId');
-      expect(messageSyncPayload.messages).to.be.an('array');
-    });
-  });
-
-  describe('Error Handling', () => {
-    it('should define error types', () => {
-      const errorTypes = [
-        'CONNECTION_FAILED',
-        'TIMEOUT',
-        'INVALID_RESPONSE',
-        'AUTHENTICATION_FAILED',
-        'NETWORK_ERROR'
-      ];
-
-      errorTypes.forEach(errorType => {
-        expect(errorType).to.be.a('string');
-        expect(errorType).to.match(/^[A-Z_]+$/);
-      });
-    });
-
-    it('should handle fetch timeout configuration', () => {
-      const timeoutMs = 10000; // 10 seconds
-      expect(timeoutMs).to.be.a('number');
-      expect(timeoutMs).to.be.greaterThan(0);
-      expect(timeoutMs).to.be.lessThan(60000); // Less than 1 minute
-    });
-  });
-
-  describe('Station Discovery', () => {
-    it('should handle local network ranges', () => {
-      const localRanges = [
-        '192.168.0.',
-        '192.168.1.',
-        '10.0.0.',
-        '127.0.0.'
-      ];
-
-      localRanges.forEach(range => {
-        expect(range).to.be.a('string');
-        expect(range).to.match(/^\d+\.\d+\.\d+\.$/);
-      });
-    });
-
-    it('should define scan parameters', () => {
-      const scanConfig = {
-        startIP: 1,
-        endIP: 254,
-        timeout: 2000,
-        concurrent: 10
-      };
-
-      expect(scanConfig.startIP).to.be.a('number');
-      expect(scanConfig.endIP).to.be.a('number');
-      expect(scanConfig.timeout).to.be.a('number');
-      expect(scanConfig.concurrent).to.be.a('number');
-      expect(scanConfig.startIP).to.be.lessThan(scanConfig.endIP);
-    });
-  });
-
-  describe('Message System', () => {
-    it('should handle message structure', () => {
-      const message = {
-        id: 'msg-123',
-        sender: 'W1AW',
-        target: 'ALL',
-        message: 'Test message',
-        type: 'message',
-        timestamp: new Date().toISOString()
-      };
-
-      expect(message).to.have.property('id');
-      expect(message).to.have.property('sender');
-      expect(message).to.have.property('target');
-      expect(message).to.have.property('message');
-      expect(message).to.have.property('type');
-      expect(message).to.have.property('timestamp');
-      expect(['message', 'announcement']).to.include(message.type);
-    });
-
-    it('should validate message types', () => {
-      const messageTypes = ['message', 'announcement'];
-      
-      messageTypes.forEach(type => {
-        expect(type).to.be.a('string');
-        expect(['message', 'announcement']).to.include(type);
-      });
-    });
-  });
-
-  describe('HTTPS Configuration', () => {
-    it('should handle self-signed certificate acceptance', () => {
-      const httpsOptions = {
-        rejectUnauthorized: false,
-        checkServerIdentity: () => undefined
-      };
-
-      expect(httpsOptions.rejectUnauthorized).to.be.false;
-      expect(httpsOptions.checkServerIdentity).to.be.a('function');
-    });
-
-    it('should use HTTPS protocol', () => {
-      const protocol = 'https:';
-      expect(protocol).to.equal('https:');
-    });
-  });
-
-  describe('Performance Monitoring', () => {
-    it('should track connection metrics', () => {
-      const metrics = {
-        connectionTime: 0,
-        lastSync: 0,
-        syncCount: 0,
-        errorCount: 0
-      };
-
-      Object.values(metrics).forEach(value => {
-        expect(value).to.be.a('number');
-        expect(value).to.be.at.least(0);
-      });
-    });
-
-    it('should monitor sync performance', () => {
-      const syncMetrics = {
-        averageLatency: 100,
-        successRate: 0.95,
-        lastError: null
-      };
-
-      expect(syncMetrics.averageLatency).to.be.a('number');
-      expect(syncMetrics.successRate).to.be.a('number');
-      expect(syncMetrics.successRate).to.be.at.most(1.0);
-    });
+        online: true,
+        port: 8080
+      })
+    ).to.equal(true);
   });
 });

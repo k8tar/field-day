@@ -1,73 +1,60 @@
-import { expect } from 'chai';
+import { describe, expect, it } from 'vitest';
+import {
+  ARRL_DIVISIONS,
+  ARRL_SECTIONS,
+  getLoggedCount,
+  isLogged,
+  getDivisionBySection,
+  getDivisionProgress,
+  getLoggedSectionsCount,
+  getTotalSections,
+  isDivisionComplete,
+  normalizeArrlClass,
+  normalizeArrlSection,
+  validateArrlClass,
+  validateArrlSection,
+} from '@/constants/arrl-sections';
 
-// Mock global dependencies
-(global as any).window = {
-  setInterval: () => 1,
-  clearInterval: () => { /* mock */ }
-};
-
-describe('AchievementService', () => {
-  describe('Achievement System Logic', () => {
-    it('should define achievement types', () => {
-      const achievementTypes = ['section', 'bonus', 'multiplier', 'milestone', 'announcement'];
-      
-      achievementTypes.forEach(type => {
-        expect(type).to.be.a('string');
-        expect(['section', 'bonus', 'multiplier', 'milestone', 'announcement']).to.include(type);
-      });
-    });
-
-    it('should handle achievement structure', () => {
-      const achievement = {
-        id: 'test-achievement',
-        type: 'milestone',
-        title: 'Test Achievement',
-        description: 'A test achievement',
-        achieved: false,
-        timestamp: Date.now()
-      };
-
-      expect(achievement).to.have.property('id');
-      expect(achievement).to.have.property('type');
-      expect(achievement).to.have.property('title');
-      expect(achievement).to.have.property('description');
-      expect(achievement).to.have.property('achieved');
-      expect(achievement.type).to.be.oneOf(['section', 'bonus', 'multiplier', 'milestone', 'announcement']);
-    });
+describe('ARRL helper coverage', () => {
+  it('validates and normalizes section identifiers', () => {
+    expect(validateArrlSection('ct')).to.equal(true);
+    expect(validateArrlSection('DX')).to.equal(true);
+    expect(validateArrlSection('invalid')).to.equal(false);
+    expect(normalizeArrlSection(' ema ')).to.equal('EMA');
+    expect(normalizeArrlSection('invalid')).to.equal(null);
   });
 
-  describe('Division Logic', () => {
-    it('should identify New England sections', () => {
-      const newEnglandSections = ['CT', 'ME', 'MA', 'NH', 'RI', 'VT', 'WMA', 'EMA'];
-      
-      expect(newEnglandSections).to.have.lengthOf(8);
-      newEnglandSections.forEach(section => {
-        expect(section).to.be.a('string');
-        expect(section.length).to.be.at.least(2);
-        expect(section.length).to.be.at.most(3);
-      });
-    });
-
-    it('should detect division completion', () => {
-      const newEnglandSections = ['CT', 'ME', 'MA', 'NH', 'RI', 'VT', 'WMA', 'EMA'];
-      const qsoSections = ['CT', 'ME', 'MA', 'NH', 'RI', 'VT', 'WMA', 'EMA'];
-      
-      const hasAllSections = newEnglandSections.every(section => 
-        qsoSections.includes(section)
-      );
-      
-      expect(hasAllSections).to.be.true;
-    });
+  it('finds the correct division for a section', () => {
+    expect(getDivisionBySection('CT')).to.equal('Section 1');
+    expect(getDivisionBySection('AL')).to.equal('Section 4');
+    expect(getDivisionBySection('ZZ')).to.equal(null);
   });
 
-  describe('Milestone Detection', () => {
-    it('should recognize standard milestones', () => {
-      const milestones = [25, 50, 75, 100, 200, 500, 1000];
-      
-      milestones.forEach(milestone => {
-        expect(milestone).to.be.a('number');
-        expect(milestone).to.be.greaterThan(0);
-      });
-    });
+  it('reports division completion progress', () => {
+    const workedSections = [...ARRL_DIVISIONS['Section 1'].sections];
+    const progress = getDivisionProgress(workedSections);
+
+    expect(progress['Section 1'].completed).to.equal(true);
+    expect(progress['Section 1'].worked).to.deep.equal(workedSections);
+    expect(progress['Section 1'].total).to.equal(ARRL_DIVISIONS['Section 1'].sections.length);
+    expect(progress['Section 2'].completed).to.equal(false);
+  });
+
+  it('counts only valid logged sections', () => {
+    expect(getLoggedSectionsCount(['CT', 'EMA', 'DX', 'MX', 'ZZ'])).to.equal(2);
+    expect(getLoggedCount(['CT', 'CT', 'MA', 'ZZ'], [{ section: 'CT' }, { section: 'MA' }])).to.equal(3);
+    expect(isLogged('CT', [{ section: 'CT' }, { section: 'MA' }])).to.equal(true);
+    expect(isLogged('EMA', [{ section: 'CT' }, { section: 'MA' }])).to.equal(false);
+    expect(getTotalSections()).to.equal(ARRL_SECTIONS.length - 2);
+  });
+
+  it('recognizes complete divisions and class formats', () => {
+    expect(isDivisionComplete('Section 1', ARRL_DIVISIONS['Section 1'].sections)).to.equal(true);
+    expect(isDivisionComplete('Section 1', ['CT', 'ME'])).to.equal(false);
+    expect(validateArrlClass('1A')).to.equal(true);
+    expect(validateArrlClass('12h')).to.equal(true);
+    expect(validateArrlClass('0A')).to.equal(false);
+    expect(normalizeArrlClass(' 12h ')).to.equal('12H');
+    expect(normalizeArrlClass('bad')).to.equal(null);
   });
 });
