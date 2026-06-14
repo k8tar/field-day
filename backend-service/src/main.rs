@@ -160,13 +160,23 @@ async fn main() -> anyhow::Result<()> {
     
     // Setup API routes
     let api_routes = api::create_routes(app_state);
+    let health_route = warp::path("health")
+        .and(warp::path::end())
+        .and(warp::get())
+        .map(|| {
+            warp::reply::with_status(
+                warp::reply::json(&serde_json::json!({ "status": "ok" })),
+                warp::http::StatusCode::OK,
+            )
+        });
     
     let cors = warp::cors()
         .allow_any_origin()
         .allow_headers(vec!["content-type", "authorization", "accept"])
         .allow_methods(vec!["GET", "POST", "PUT", "DELETE", "OPTIONS"]);
     
-    let routes = api_routes
+    let routes = health_route
+        .or(api_routes)
         .with(cors)
         .with(warp::log("fieldday_backend"));
     

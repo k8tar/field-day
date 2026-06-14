@@ -133,7 +133,10 @@ async fn handle_read(
     match fs::read_to_string(&path) {
         Ok(content) => {
             let resp = ReadResponse { content };
-            Ok(reply::json(&resp))
+            Ok(warp::reply::with_status(
+                reply::json(&resp),
+                warp::http::StatusCode::OK,
+            ))
         }
         Err(_) => Ok(warp::reply::with_status(
             warp::reply::json(&serde_json::json!({ "error": "Not found" })),
