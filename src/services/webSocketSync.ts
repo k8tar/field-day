@@ -10,7 +10,7 @@ import { SafeInterval, SafeTimeout } from '../utils/performance';
 
 export interface WebSocketMessage {
   type: 'qso-update' | 'station-info' | 'ping' | 'pong' | 'discovery';
-  data: any;
+  data: unknown;
   timestamp: number;
   stationId: string;
 }
@@ -19,8 +19,7 @@ class WebSocketSyncService {
   private ws: WebSocket | null = null;
   private isHost = false;
   private hostPort = 9001; // Different port from HTTP API
-  private connections: Set<WebSocket> = new Set();
-  private messageHandlers: Map<string, Function[]> = new Map();
+  private messageHandlers: Map<string, Array<(data: unknown, message?: WebSocketMessage) => void>> = new Map();
   private reconnectTimer: SafeTimeout | null = null;
   private pingInterval: SafeInterval | null = null;
 
@@ -29,16 +28,16 @@ class WebSocketSyncService {
   }
 
   private setupMessageHandlers(): void {
-    this.on('qso-update', (data: any) => {
+    this.on('qso-update', (data: unknown) => {
       // Forward to QSO store handlers
       this.emit('network-qso-update', data);
     });
 
-    this.on('station-info', (data: any) => {
+    this.on('station-info', (data: unknown) => {
       this.emit('station-discovered', data);
     });
 
-    this.on('ping', (data: any) => {
+    this.on('ping', (_data: unknown) => {
       // Respond to ping with pong
       this.sendMessage({ type: 'pong', data: { timestamp: Date.now() } });
     });
@@ -55,8 +54,8 @@ class WebSocketSyncService {
       this.setupHostDiscovery();
       
       return true;
-    } catch (error) {
-      console.error('❌ Failed to start WebSocket host:', error);
+    } catch (e: unknown) {
+      console.error('❌ Failed to start WebSocket host:', e);
       return false;
     }
   }
@@ -83,13 +82,13 @@ class WebSocketSyncService {
             };
           }
         });
-      } catch (error) {
+      } catch (e: unknown) {
         // Fallback to localStorage-based communication
         this.setupClientDiscovery(address);
         return true;
       }
-    } catch (error) {
-      console.error('❌ Failed to connect to WebSocket host:', error);
+    } catch (e: unknown) {
+      console.error('❌ Failed to connect to WebSocket host:', e);
       return false;
     }
   }
@@ -102,8 +101,8 @@ class WebSocketSyncService {
       try {
         const message: WebSocketMessage = JSON.parse(event.data);
         this.handleMessage(message);
-      } catch (error) {
-        console.error('❌ Failed to parse WebSocket message:', error);
+      } catch (e: unknown) {
+        console.error('❌ Failed to parse WebSocket message:', e);
       }
     };
 
@@ -162,8 +161,8 @@ class WebSocketSyncService {
           if (Date.now() - info.timestamp < 10000) { // Host seen in last 10 seconds
             this.emit('station-discovered', info);
           }
-        } catch (error) {
-          console.error('❌ Failed to parse host info:', error);
+        } catch (e: unknown) {
+          console.error('❌ Failed to parse host info:', e);
         }
       }
     };
@@ -209,21 +208,24 @@ class WebSocketSyncService {
     handlers.forEach(handler => {
       try {
         handler(message.data, message);
-      } catch (error) {
-        console.error('❌ Message handler error:', error);
+      } catch (e: unknown) {
+        console.error('❌ Message handler error:', e);
       }
     });
   }
 
   // Event system
-  on(eventType: string, handler: Function): void {
+  on(eventType: string, handler: (data: unknown, message?: WebSocketMessage) => void): void {
     if (!this.messageHandlers.has(eventType)) {
       this.messageHandlers.set(eventType, []);
     }
-    this.messageHandlers.get(eventType)!.push(handler);
+    const handlers = this.messageHandlers.get(eventType);
+    if (handlers) {
+      handlers.push(handler);
+    }
   }
 
-  off(eventType: string, handler: Function): void {
+  off(eventType: string, handler: (data: unknown, message?: WebSocketMessage) => void): void {
     const handlers = this.messageHandlers.get(eventType);
     if (handlers) {
       const index = handlers.indexOf(handler);
@@ -233,13 +235,13 @@ class WebSocketSyncService {
     }
   }
 
-  private emit(eventType: string, data: any): void {
+  private emit(eventType: string, data: unknown): void {
     const handlers = this.messageHandlers.get(eventType) || [];
     handlers.forEach(handler => handler(data));
   }
 
   // Broadcast QSO update
-  broadcastQsoUpdate(qso: any, action: string): void {
+  broadcastQsoUpdate(qso: import('@/store/qso').QSO, action: string): void {
     this.sendMessage({
       type: 'qso-update',
       data: { qso, action, stationId: this.getLocalStationId() }
@@ -323,7 +325,7 @@ class WebSocketSyncService {
   }
 
   // Get connection status
-  getStatus(): any {
+  getStatus(): Record<string, unknown> {
     return {
       connected: this.ws?.readyState === WebSocket.OPEN,
       isHost: this.isHost,

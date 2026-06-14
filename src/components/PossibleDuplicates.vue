@@ -13,11 +13,13 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 
+import type { QSO } from '@/store/qso';
+
 const props = defineProps<{
   call: string;
   band: string;
   mode: string;
-  qsos: any[];
+  qsos: QSO[];
 }>();
 
 const duplicates = computed(() => {

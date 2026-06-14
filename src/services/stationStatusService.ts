@@ -30,8 +30,8 @@ class StationStatusService {
       const discoveredIds = JSON.parse(stored) as string[];
       debugLog(`📊 [StationStatusService] Total discovered stations: ${discoveredIds.length}`, discoveredIds);
       return discoveredIds.length;
-    } catch (error) {
-      console.error('Failed to load discovered stations count:', error);
+    } catch (e: unknown) {
+      console.error('Failed to load discovered stations count:', e);
       return 0;
     }
   }
@@ -42,7 +42,7 @@ class StationStatusService {
   private addToDiscovered(stationId: string): void {
     try {
       const stored = localStorage.getItem(this.DISCOVERED_KEY);
-      let discoveredIds: string[] = stored ? JSON.parse(stored) : [];
+      const discoveredIds: string[] = stored ? JSON.parse(stored) : [];
       
       if (!discoveredIds.includes(stationId)) {
         discoveredIds.push(stationId);
@@ -51,8 +51,8 @@ class StationStatusService {
       } else {
         debugLog(`🔄 [StationStatusService] Station already in discovered list: ${stationId}`);
       }
-    } catch (error) {
-      console.error('Failed to update discovered stations:', error);
+    } catch (e: unknown) {
+      console.error('Failed to update discovered stations:', e);
     }
   }
 
@@ -62,8 +62,8 @@ class StationStatusService {
   clearDiscoveredCount(): void {
     try {
       localStorage.removeItem(this.DISCOVERED_KEY);
-    } catch (error) {
-      console.error('Failed to clear discovered stations:', error);
+    } catch (e: unknown) {
+      console.error('Failed to clear discovered stations:', e);
     }
   }
 
@@ -77,8 +77,8 @@ class StationStatusService {
       
       const data = JSON.parse(stored);
       return new Map(Object.entries(data));
-    } catch (error) {
-      console.error('Failed to load station statuses:', error);
+    } catch (e: unknown) {
+      console.error('Failed to load station statuses:', e);
       return new Map();
     }
   }
@@ -90,8 +90,8 @@ class StationStatusService {
     try {
       const data = Object.fromEntries(statuses);
       localStorage.setItem(this.STORAGE_KEY, JSON.stringify(data));
-    } catch (error) {
-      console.error('Failed to save station statuses:', error);
+    } catch (e: unknown) {
+      console.error('Failed to save station statuses:', e);
     }
   }
 
@@ -160,11 +160,9 @@ class StationStatusService {
   updateMissedStations(seenStationIds: string[]): void {
     const statuses = this.getStationStatuses();
     let hasChanges = false;
-    let statusChanges = 0;
     
     for (const [stationId, station] of statuses) {
       if (!seenStationIds.includes(stationId)) {
-        const oldStatus = station.status;
         station.requestCount++;
         hasChanges = true;
         
@@ -174,11 +172,6 @@ class StationStatusService {
           station.isOnline = false;
         } else if (station.requestCount >= this.MAX_WARNING_REQUESTS) {
           station.status = 'warning';
-        }
-        
-        // Count status changes for event details
-        if (oldStatus !== station.status) {
-          statusChanges++;
         }
       }
     }
@@ -297,7 +290,6 @@ class StationStatusService {
    * Format last seen time
    */
   formatLastSeen(timestamp: number): string {
-    const time = new Date(timestamp);
     const now = Date.now();
     const seconds = Math.floor((now - timestamp) / 1000);
     

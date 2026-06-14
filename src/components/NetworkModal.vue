@@ -252,10 +252,11 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
-import { backendApi, type BackendStation } from '@/services/backendApiService';
+import { backendApi } from '@/services/backendApiService';
+import type { BackendStation } from '@/models/api/station';
 import { fileStorage } from '@/services/fileStorage';
 import { stationStatusService as stationService, type StationStatus } from '@/services/stationStatusService';
-import { backgroundNetworkService, meshConnectionState } from '@/services/backgroundNetworkService';
+import { meshConnectionState } from '@/services/backgroundNetworkService';
 import { meshNetworkService } from '@/services/meshNetworkService';
 import { debugLog } from '@/utils/debug';
 
@@ -272,8 +273,8 @@ const isConnected = computed(() => backendApi.connected.value);
 const backendError = computed(() => backendApi.error.value);
 
 // Mesh network state - use shared state from background service with forced reactivity
-const meshConnectionStateReactive = ref(meshConnectionState.isConnected);
-const isMeshActive = computed(() => meshConnectionStateReactive.value);
+const meshConnectionStateReactive = ref<boolean>(meshConnectionState.isConnected);
+const isMeshActive = meshConnectionStateReactive;
 
 // Watch for changes to the singleton state and update our reactive ref
 const updateMeshState = () => {
@@ -282,8 +283,8 @@ const updateMeshState = () => {
 
 // Set up listener for mesh state changes
 meshConnectionState.onConnectionChange(updateMeshState);
-const isConnecting = ref(false);
-const isDisconnecting = ref(false);
+const isConnecting = ref<boolean>(false);
+const isDisconnecting = ref<boolean>(false);
 
 // Station information
 const localStationInfo = ref({
@@ -347,20 +348,21 @@ const stationsWithStatus = computed(() => {
 });
 
 // Status tracking
-const isRefreshing = ref(false);
-const isSyncing = ref(false);
+const isRefreshing = ref<boolean>(false);
+const isSyncing = ref<boolean>(false);
 const connectionStatus = ref<string>('');
-const isRestarting = ref(false);
-const isRetrying = ref(false);
+const isRestarting = ref<boolean>(false);
+const isRetrying = ref<boolean>(false);
 
 // Log reset state
-const showResetDialog = ref(false);
-const resetConfirmationText = ref('');
-const isResettingLog = ref(false);
+const showResetDialog = ref<boolean>(false);
+const resetConfirmationText = ref<string>('');
+const isResettingLog = ref<boolean>(false);
 
 // Environment detection
 const isElectron = computed(() => {
-  return typeof window !== 'undefined' && (window as any).Electron;
+  const electronWindow = window as Window & { Electron?: unknown };
+  return typeof window !== 'undefined' && !!electronWindow.Electron;
 });
 
 // Mesh status
@@ -384,11 +386,6 @@ const meshStatus = computed(() => {
   };
 });
 
-// Computed properties
-const canConnect = computed(() => {
-  return true; // Always can connect since we only support mesh
-});
-
 // Load station info on mount
 async function refreshStationInfo() {
   try {
@@ -398,8 +395,8 @@ async function refreshStationInfo() {
     
     // Sync with backend if connected
     await syncStationConfigWithBackend();
-  } catch (error) {
-    console.error('Error loading station config:', error);
+  } catch (e: unknown) {
+    console.error('Error loading station config:', e);
     localStationInfo.value.callsign = '';
     localStationInfo.value.designator = '1A';
   }
@@ -464,8 +461,8 @@ async function syncStationConfigWithBackend() {
     }
     
     debugLog('✅ Station configuration synchronized successfully');
-  } catch (error) {
-    console.error('❌ Failed to sync station configuration:', error);
+  } catch (e: unknown) {
+    console.error('❌ Failed to sync station configuration:', e);
   }
 }
 
@@ -497,8 +494,8 @@ watch(() => localStationInfo.value.callsign, async (newCallsign) => {
       
       window.dispatchEvent(new CustomEvent('stationInfoUpdate'));
     }
-  } catch (error) {
-    console.error('Failed to save callsign:', error);
+  } catch (e: unknown) {
+    console.error('Failed to save callsign:', e);
   }
 });
 
@@ -529,8 +526,8 @@ watch(() => localStationInfo.value.designator, async (newDesignator) => {
       
       window.dispatchEvent(new CustomEvent('stationInfoUpdate'));
     }
-  } catch (error) {
-    console.error('Failed to save designator:', error);
+  } catch (e: unknown) {
+    console.error('Failed to save designator:', e);
   }
 });
 
@@ -548,7 +545,9 @@ async function attemptRestart() {
     debugLog('🔄 Attempting to restart backend service...');
     
     if (isElectron.value) {
-      const restartFunction = (window as any).restartBackendService;
+      const restartFunction = (window as Window & {
+        restartBackendService?: () => Promise<boolean>;
+      }).restartBackendService;
       if (restartFunction) {
         const success = await restartFunction();
         if (success) {
@@ -560,8 +559,8 @@ async function attemptRestart() {
         console.error('❌ Restart function not available');
       }
     }
-  } catch (error) {
-    console.error('❌ Error restarting backend service:', error);
+  } catch (e: unknown) {
+    console.error('❌ Error restarting backend service:', e);
   } finally {
     isRestarting.value = false;
   }
@@ -594,20 +593,15 @@ async function retryConnection() {
         connectionStatus.value = '';
       }, 5000);
     }
-  } catch (error) {
-    console.error('❌ Error retrying connection:', error);
-    connectionStatus.value = `Connection failed: ${error instanceof Error ? error.message : 'Unknown error'}`;
+  } catch (e: unknown) {
+    console.error('❌ Error retrying connection:', e);
+    connectionStatus.value = `Connection failed: ${e instanceof Error ? (e instanceof Error ? e.message : String(e)) : 'Unknown error'}`;
     setTimeout(() => {
       connectionStatus.value = '';
     }, 5000);
   } finally {
     isRetrying.value = false;
   }
-}
-
-function onNetworkModeChange() {
-  // No longer needed - only mesh mode supported
-  discoveredStations.value = [];
 }
 
 /**
@@ -633,48 +627,6 @@ function updateStationStatuses(stations: BackendStation[]) {
   
   // Clean up old offline stations
   stationService.cleanupOldStations();
-}
-
-function connectToStation(station: BackendStation) {
-  debugLog('Connecting to station:', station.call_sign);
-  // Backend handles the connection logic
-}
-
-async function startConnection() {
-  if (isConnecting.value || !isConnected.value) return;
-  
-  isConnecting.value = true;
-  connectionStatus.value = 'Starting connection...';
-  
-  try {
-    // Start mesh network discovery (only mode supported)
-    connectionStatus.value = 'Starting mesh network discovery...';
-    
-    // Trigger mesh discovery via backend
-    await backendApi.discoverStations();
-    
-    // Get the current list of discovered stations
-    const stations = await backendApi.getDiscoveredStations();
-    discoveredStations.value = stations;
-    
-    debugLog(`🚀 Mesh network started: ${stations.length} stations discovered`);
-    connectionStatus.value = 'Mesh network started successfully!';
-    
-    // Clear status after 3 seconds
-    setTimeout(() => {
-      connectionStatus.value = '';
-    }, 3000);
-    
-  } catch (error) {
-    console.error('Connection failed:', error);
-    connectionStatus.value = `Connection failed: ${error instanceof Error ? error.message : 'Unknown error'}`;
-    
-    setTimeout(() => {
-      connectionStatus.value = '';
-    }, 10000);
-  } finally {
-    isConnecting.value = false;
-  }
 }
 
 async function disconnect() {
@@ -712,8 +664,8 @@ async function disconnect() {
       } else {
         console.error('❌ Backend mesh config disable failed:', response.status, response.statusText);
       }
-    } catch (error) {
-      console.error('❌ Backend mesh config error:', error);
+    } catch (e: unknown) {
+      console.error('❌ Backend mesh config error:', e);
     }
     
     // Clear discovered stations
@@ -730,8 +682,8 @@ async function disconnect() {
       connectionStatus.value = '';
     }, 3000);
     
-  } catch (error) {
-    console.error('❌ Error disconnecting from mesh network:', error);
+  } catch (e: unknown) {
+    console.error('❌ Error disconnecting from mesh network:', e);
   } finally {
     debugLog('🔍 [NetworkModal] Setting isDisconnecting to false');
     isDisconnecting.value = false;
@@ -762,9 +714,9 @@ async function connectToMesh() {
         console.error('❌ Backend mesh config failed:', response.status, response.statusText);
         throw new Error('Failed to enable backend mesh configuration');
       }
-    } catch (error) {
-      console.error('❌ Backend mesh config error:', error);
-      throw error;
+    } catch (e: unknown) {
+      console.error('❌ Backend mesh config error:', e);
+      throw e;
     }
     
     debugLog('🔍 [NetworkModal] Backend mesh enabled, setting frontend connection state...');
@@ -790,9 +742,9 @@ async function connectToMesh() {
     debugLog('🔍 [NetworkModal] Starting mesh discovery...');
     await refreshMeshDiscovery();
     
-  } catch (error) {
-    console.error('❌ Error connecting to mesh network:', error);
-    connectionStatus.value = `Failed to connect: ${error instanceof Error ? error.message : 'Unknown error'}`;
+  } catch (e: unknown) {
+    console.error('❌ Error connecting to mesh network:', e);
+    connectionStatus.value = `Failed to connect: ${e instanceof Error ? (e instanceof Error ? e.message : String(e)) : 'Unknown error'}`;
     setTimeout(() => {
       connectionStatus.value = '';
     }, 5000);
@@ -811,8 +763,8 @@ async function refreshMeshDiscovery() {
     const stations = await backendApi.getDiscoveredStations();
     discoveredStations.value = stations;
     updateStationStatuses(stations);
-  } catch (error) {
-    console.error('Failed to refresh mesh discovery:', error);
+  } catch (e: unknown) {
+    console.error('Failed to refresh mesh discovery:', e);
   } finally {
     isRefreshing.value = false;
   }
@@ -828,19 +780,11 @@ async function forceMeshSync() {
     const stations = await backendApi.getDiscoveredStations();
     discoveredStations.value = stations;
     updateStationStatuses(stations);
-  } catch (error) {
-    console.error('Failed to force mesh sync:', error);
+  } catch (e: unknown) {
+    console.error('Failed to force mesh sync:', e);
   } finally {
     isSyncing.value = false;
   }
-}
-
-function getNetworkModeIcon(): string {
-  return 'device_hub';
-}
-
-function getNetworkModeButtonText(): string {
-  return 'Start Mesh Network';
 }
 
 // Check and sync mesh connection state with backend
@@ -860,7 +804,7 @@ async function checkMeshConnectionState() {
         const statusResult = await statusResponse.json();
         meshEnabled = statusResult.success && statusResult.data?.enabled;
       }
-    } catch (error) {
+    } catch (e: unknown) {
       // Status check failed, fall back to station check
     }
     
@@ -878,8 +822,8 @@ async function checkMeshConnectionState() {
       discoveredStations.value = stations;
       updateStationStatuses(stations);
     }
-  } catch (error) {
-    console.warn('Failed to check mesh connection state:', error);
+  } catch (e: unknown) {
+    console.warn('Failed to check mesh connection state:', e);
   }
 }
 
@@ -912,7 +856,11 @@ async function confirmReset() {
       
       // Process the reset locally
       const { processLogReset } = await import('@/store/qso');
-      await processLogReset(result.reset_timestamp!);
+      const resetTimestamp = result.reset_timestamp;
+      if (!resetTimestamp) {
+        throw new Error('Missing reset timestamp from backend response');
+      }
+      await processLogReset(resetTimestamp);
       
       // Close the dialog
       showResetDialog.value = false;
@@ -932,9 +880,9 @@ async function confirmReset() {
       }, 10000);
     }
     
-  } catch (error) {
-    console.error('❌ Error during log reset:', error);
-    connectionStatus.value = `Error during reset: ${error instanceof Error ? error.message : 'Unknown error'}`;
+  } catch (e: unknown) {
+    console.error('❌ Error during log reset:', e);
+    connectionStatus.value = `Error during reset: ${e instanceof Error ? (e instanceof Error ? e.message : String(e)) : 'Unknown error'}`;
     setTimeout(() => {
       connectionStatus.value = '';
     }, 10000);
@@ -944,7 +892,8 @@ async function confirmReset() {
 }
 
 // Periodically check backend connection status
-let backendConnectionInterval: any = null;
+let backendConnectionInterval: ReturnType<typeof setInterval> | null = null;
+let modalRefreshInterval: ReturnType<typeof setInterval> | null = null;
 
 // Load initial data on mount
 onMounted(async () => {
@@ -973,8 +922,8 @@ onMounted(async () => {
       updateStationStatuses(stations);
       
       debugLog(`📡 Found ${stations.length} discovered stations on mount`);
-    } catch (error) {
-      console.error('Failed to fetch discovered stations on mount:', error);
+    } catch (e: unknown) {
+      console.error('Failed to fetch discovered stations on mount:', e);
     }
     
     // Auto-start mesh discovery (only mode supported)
@@ -982,20 +931,20 @@ onMounted(async () => {
   }
   
   // Set up real-time refresh for station status updates when modal is open
-  const modalRefreshInterval = setInterval(async () => {
+  modalRefreshInterval = setInterval(async () => {
     if (props.isOpen && isConnected.value && meshConnectionState.isConnected && !isRefreshing.value) {
       try {
         const stations = await backendApi.getDiscoveredStations();
         discoveredStations.value = stations;
         updateStationStatuses(stations);
-      } catch (error) {
+      } catch (e: unknown) {
         // Silently handle errors to avoid console spam
       }
     }
   }, 3000); // Refresh every 3 seconds when modal is open and mesh is connected
   
   // Store interval for cleanup
-  (window as any).networkModalRefreshInterval = modalRefreshInterval;
+  // (interval is cleaned up in onUnmounted via backendConnectionInterval)
   
   // Check mesh connection state on mount
   await checkMeshConnectionState();
@@ -1005,8 +954,8 @@ onMounted(async () => {
     try {
       const { checkForLogReset } = await import('@/store/qso');
       await checkForLogReset();
-    } catch (error) {
-      console.error('Failed to check for log reset on mount:', error);
+    } catch (e: unknown) {
+      console.error('Failed to check for log reset on mount:', e);
     }
   }
   
@@ -1033,14 +982,14 @@ onUnmounted(() => {
   meshConnectionState.removeConnectionListener(updateMeshState);
   
   // Clean up the refresh interval
-  const modalRefreshInterval = (window as any).networkModalRefreshInterval;
-  if (modalRefreshInterval) {
-    clearInterval(modalRefreshInterval);
-  }
-  
-  // Clean up backend connection polling
   if (backendConnectionInterval) {
     clearInterval(backendConnectionInterval);
+    backendConnectionInterval = null;
+  }
+
+  if (modalRefreshInterval) {
+    clearInterval(modalRefreshInterval);
+    modalRefreshInterval = null;
   }
 });
 
@@ -1092,12 +1041,12 @@ watch(() => props.isOpen, async (isOpen) => {
             updateStationStatuses(updatedStations);
             
             debugLog(`After discovery: ${updatedStations.length} stations found`);
-          } catch (error) {
-            console.error('Failed to get updated stations after discovery:', error);
+          } catch (e: unknown) {
+            console.error('Failed to get updated stations after discovery:', e);
           }
         }, 2000);
-      } catch (error) {
-        console.error('Failed to load discovered stations on modal open:', error);
+      } catch (e: unknown) {
+        console.error('Failed to load discovered stations on modal open:', e);
       }
     }
   }
@@ -1127,8 +1076,8 @@ function handleStationStatusUpdate(event: Event) {
       const { total, online, warning, offline } = customEvent.detail;
       debugLog(`📊 Station status updated: ${total} total (${online} online, ${warning} warning, ${offline} offline)`);
     }
-  } catch (error) {
-    console.error('Error handling station status update:', error);
+  } catch (e: unknown) {
+    console.error('Error handling station status update:', e);
   }
 }
 </script>

@@ -3,69 +3,27 @@
  * Stores data in files specific to each port to avoid conflicts between instances
  */
 
-import { logger, ErrorHandler } from '../utils/logger';
-import { backendApi, type BackendQso, type BackendMessage } from './backendApiService';
+import { ErrorHandler } from '../utils/logger';
+import { backendApi } from './backendApiService';
+import type { BackendQso } from '@/models/api/qso';
+import type { BackendMessage } from '@/models/api/message';
+import type { QSO } from '@/store/qso';
+import type { Bonus } from '@/store/bonus';
+import type { Message as StoreMessage } from '@/store/message';
 import { debugLog } from '@/utils/debug';
 
-// Import path utilities - handle both browser and Electron environments
-const isElectron = typeof window !== 'undefined' && (window as any).Electron;
-
-// Get Electron file system API if available
-const electronFS = isElectron ? (window as any).electronFS : null;
-
-// Fallback path join for browser environment
-function pathJoin(...segments: string[]): string {
-  // Simple path join implementation for browser/Electron renderer
-  return segments.filter(s => s).join('/').replace(/\/+/g, '/');
+interface ElectronFsApi {
+  readFile(path: string): Promise<string | null>;
+  writeFile(path: string, content: string): Promise<void>;
 }
 
-// Fallback file existence check for browser environment
-function fileExists(filePath: string): boolean {
-  // In browser, we'll assume files don't exist and rely on localStorage fallback
-  // Electron file operations are handled via IPC in the file operations below
-  return false;
-}
-
-// Async file read using Electron IPC or fallback
-async function readFileAsync(filePath: string): Promise<string> {
-  if (electronFS && electronFS.readFile) {
-    try {
-      const data = await electronFS.readFile(filePath);
-      return data || '';
-    } catch (error) {
-      console.warn('Failed to read file via Electron IPC:', error);
-      throw new Error('File system not available or file not found');
-    }
+function getElectronFS(): ElectronFsApi | null {
+  if (typeof window === 'undefined') {
+    return null;
   }
-  throw new Error('File system not available in browser environment');
-}
 
-// Async file write using Electron IPC or fallback
-async function writeFileAsync(filePath: string, data: string): Promise<void> {
-  if (electronFS && electronFS.writeFile) {
-    try {
-      await electronFS.writeFile(filePath, data);
-      return;
-    } catch (error) {
-      console.warn('Failed to write file via Electron IPC:', error);
-      throw new Error('File system write failed');
-    }
-  }
-  throw new Error('File system not available in browser environment');
-}
-
-// Legacy sync functions (deprecated in Electron renderer)
-function readFileSync(filePath: string): string {
-  throw new Error('Synchronous file operations not supported in Electron renderer - use async operations');
-}
-
-function writeFileSync(filePath: string, data: string): void {
-  throw new Error('Synchronous file operations not supported in Electron renderer - use async operations');
-}
-
-function mkdirSync(dirPath: string, options?: any): void {
-  // Directory creation is handled by the main process in our IPC handlers
-  debugLog('Directory creation handled by main process via IPC');
+  const candidate = (window as Window & { electronFS?: ElectronFsApi }).electronFS;
+  return candidate ?? null;
 }
 
 export interface StationConfig {
@@ -79,7 +37,7 @@ export interface StationConfig {
 }
 
 export interface QsoData {
-  qsos: any[];
+  qsos: import('@/store/qso').QSO[];
   lastUpdated: number;
 }
 
@@ -89,7 +47,7 @@ export interface OperatorData {
 }
 
 export interface BonusData {
-  bonuses: any[];
+  bonuses: import('@/store/bonus').Bonus[];
   lastUpdated: number;
 }
 
@@ -98,74 +56,75 @@ export interface SettingsData {
   operator?: string;
   mode?: string;
   theme?: string;
-  networkSettings?: any;
+  networkSettings?: Record<string, unknown>;
   qsosUploadedToServer?: boolean;
   lastSyncTimestamp?: number;
   lastLogResetTimestamp?: string;
   lastUpdated: number;
 }
 
+function stationDesignatorFromStationId(stationId: string): string {
+  if (!stationId) {
+    return 'UNKN';
+  }
+
+  const segments = stationId.split('-');
+  return segments.length > 1 ? segments[segments.length - 1] : stationId;
+}
+
 // Convert between backend QSO format and frontend QSO format
-async function backendQsoToFrontend(backendQso: BackendQso): Promise<any> {
-  // Get current station config to include in QSO
-  const stationConfig = new FileStorageService().getStationConfig().catch(() => ({ designator: 'UNKN' }));
-  const station = await stationConfig;
-  
+function backendQsoToFrontend(backendQso: BackendQso): QSO {
   return {
     id: backendQso.id,
     call: backendQso.call_sign,
-    name: backendQso.name,
     class: backendQso.class,
     section: backendQso.section,
     band: backendQso.frequency, // frequency from backend maps to band in frontend
     mode: backendQso.mode,
     datetime: backendQso.timestamp, // Already ISO string from backend
     operator: backendQso.operator,
-    power: backendQso.power,
-    station_id: backendQso.station_id,
-    notes: backendQso.notes,
     timestamp: new Date(backendQso.timestamp).getTime(),
-    stationDesignator: station.designator || 'UNKN',
+    stationDesignator: stationDesignatorFromStationId(backendQso.station_id),
   };
 }
 
-function frontendQsoToBackend(frontendQso: any): BackendQso {
+function frontendQsoToBackend(frontendQso: QSO): BackendQso {
   return {
     id: frontendQso.id || `qso-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
     call_sign: frontendQso.call,
-    name: frontendQso.name || '',
+    name: frontendQso.call,
     class: frontendQso.class || '',
     section: frontendQso.section || '',
     frequency: frontendQso.band || '40m', // band in frontend maps to frequency in backend
     mode: frontendQso.mode || 'PH',
     operator: frontendQso.operator || '',
-    station_id: frontendQso.station_id || '',
-    power: frontendQso.power,
-    notes: frontendQso.notes,
+    station_id: frontendQso.stationDesignator ? `UNKNOWN-${frontendQso.stationDesignator}` : '',
     timestamp: frontendQso.datetime || new Date().toISOString(),
   };
 }
 
 // Convert between backend message format and frontend message format
-function backendMessageToFrontend(backendMessage: BackendMessage): any {
+type FrontendMessage = StoreMessage;
+
+function backendMessageToFrontend(backendMessage: BackendMessage): FrontendMessage {
   return {
     id: backendMessage.id,
-    message_type: backendMessage.message_type,
+    type: backendMessage.message_type as StoreMessage['type'],
     text: backendMessage.text,
-    from_station_id: backendMessage.from_station_id,
-    target_station_id: backendMessage.target_station_id,
+    from: backendMessage.from_station_id,
+    target: backendMessage.target_station_id,
     timestamp: new Date(backendMessage.timestamp).getTime(),
   };
 }
 
-function frontendMessageToBackend(frontendMessage: any): BackendMessage {
+function frontendMessageToBackend(frontendMessage: FrontendMessage): BackendMessage {
   return {
-    id: frontendMessage.id || `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-    message_type: frontendMessage.message_type || 'chat',
-    text: frontendMessage.text || '',
-    from_station_id: frontendMessage.from_station_id || '',
-    target_station_id: frontendMessage.target_station_id,
-    timestamp: new Date(frontendMessage.timestamp || Date.now()).toISOString(),
+    id: frontendMessage.id,
+    message_type: frontendMessage.type,
+    text: frontendMessage.text,
+    from_station_id: frontendMessage.from || '',
+    target_station_id: frontendMessage.target,
+    timestamp: new Date(frontendMessage.timestamp).toISOString(),
   };
 }
 
@@ -176,7 +135,6 @@ class FileStorageService {
   
   constructor(port?: number) {
     this.port = port || this.getCurrentPort();
-    this.ensureDataDirectory();
   }
 
   private getCurrentPort(): number {
@@ -186,24 +144,23 @@ class FileStorageService {
     return 8080;
   }
 
-  private ensureDataDirectory(): void {
-    // Server-side directory creation is handled by the API endpoints
-    if (!this.isElectron()) {
-    }
-  }
-
   private isElectron(): boolean {
     const windowExists = typeof window !== 'undefined';
-    const electronFlag = windowExists && !!(window as any).Electron;
-    const electronFS = windowExists && !!(window as any).electronFS;
-    const electronTest = windowExists && !!(window as any).ElectronTest;
+    const candidateWindow = window as Window & {
+      Electron?: unknown;
+      electronFS?: ElectronFsApi;
+      ElectronTest?: () => unknown;
+    };
+    const electronFlag = windowExists && !!candidateWindow.Electron;
+    const electronFS = windowExists && !!candidateWindow.electronFS;
+    const electronTest = windowExists && !!candidateWindow.ElectronTest;
     
     // Test the ElectronTest function if available
     if (electronTest) {
       try {
-        const result = (window as any).ElectronTest();
-      } catch (error) {
-        console.error('❌ ElectronTest failed:', error);
+        candidateWindow.ElectronTest?.();
+      } catch (e: unknown) {
+        console.error('❌ ElectronTest failed:', e);
       }
     }
     
@@ -215,11 +172,6 @@ class FileStorageService {
     // For cross-origin compatibility, use a port-agnostic key for shared data
     // This ensures localhost:8080 and 127.0.0.1:8080 share the same data
     return `fieldday_shared_${this.port}_${type}`;
-  }
-
-  // Helper method to get a machine-specific storage key for truly local data
-  private getMachineStorageKey(type: string): string {
-    return `fieldday_machine_${this.port}_${type}`;
   }
 
   private getFilePath(filename: string): string {
@@ -251,8 +203,8 @@ class FileStorageService {
         if (config.stationClass) CrossOriginStorage.setItem('stationClass', config.stationClass);
         if (config.stationSection) CrossOriginStorage.setItem('stationSection', config.stationSection);
       });
-    } catch (error) {
-      console.warn('⚠️ Failed to sync to cross-origin storage:', error);
+    } catch (e: unknown) {
+      console.warn('⚠️ Failed to sync to cross-origin storage:', e);
     }
   }
 
@@ -312,14 +264,14 @@ class FileStorageService {
         port: this.getCurrentPort(),
         lastUpdated: Date.now()
       };
-    } catch (error) {
-      console.error('❌ Error reading station config:', error);
-      throw error;
+    } catch (e: unknown) {
+      console.error('❌ Error reading station config:', e);
+      throw e;
     }
   }
 
   // QSO data methods - use backend API if available
-  async saveQsoData(qsos: any[]): Promise<void> {
+  async saveQsoData(qsos: QSO[]): Promise<void> {
     // QSOs are managed by the backend; save individually via API
     for (const qso of qsos) {
       try {
@@ -332,8 +284,8 @@ class FileStorageService {
         } else {
           await backendApi.addQso(backendQso);
         }
-      } catch (error) {
-        debugLog(`Failed to save QSO via backend, falling back to file storage: ${error}`);
+      } catch (e: unknown) {
+        debugLog(`Failed to save QSO via backend, falling back to file storage: ${String(e)}`);
         // Fallback to file storage
         await this.saveDataWithTimestamp(qsos, 'qso-data.json', 'qsos');
         return;
@@ -341,30 +293,30 @@ class FileStorageService {
     }
   }
 
-  async getQsoData(): Promise<any[]> {
+  async getQsoData(): Promise<QSO[]> {
     // Try to get QSOs from backend API first
     try {
       const backendQsos = await backendApi.getQsos();
       // Convert backend QSOs to frontend format
-      return await Promise.all(backendQsos.map(bq => backendQsoToFrontend(bq)));
-    } catch (error) {
-      debugLog(`Failed to fetch QSOs from backend, falling back to file storage: ${error}`);
+      return backendQsos.map((bq) => backendQsoToFrontend(bq));
+    } catch (e: unknown) {
+      debugLog(`Failed to fetch QSOs from backend, falling back to file storage: ${String(e)}`);
       // Fallback to file storage
       return await this.getDataWithTimestamp('qso-data.json', 'qsos', 'qsos');
     }
   }
 
   // Add QSOs (append to existing data)
-  async addQsos(newQsos: any[]): Promise<void> {
+  async addQsos(newQsos: QSO[]): Promise<void> {
     // Add QSOs individually via backend API
     for (const qso of newQsos) {
       try {
         const backendQso = frontendQsoToBackend(qso);
         await backendApi.addQso(backendQso);
-      } catch (error) {
-        debugLog(`Failed to add QSO via backend: ${error}`);
+      } catch (e: unknown) {
+        debugLog(`Failed to add QSO via backend: ${String(e)}`);
         // Fallback: add to file storage
-        const existingQsos = await this.getDataWithTimestamp('qso-data.json', 'qsos', 'qsos');
+        const existingQsos = await this.getDataWithTimestamp<QSO>('qso-data.json', 'qsos', 'qsos');
         const allQsos = [...existingQsos, qso];
         await this.saveDataWithTimestamp(allQsos, 'qso-data.json', 'qsos');
       }
@@ -381,12 +333,12 @@ class FileStorageService {
   }
 
   // Bonus data methods
-  async saveBonuses(bonuses: any[]): Promise<void> {
+  async saveBonuses(bonuses: Bonus[]): Promise<void> {
     await this.saveDataWithTimestamp(bonuses, 'bonuses.json', 'bonuses');
   }
 
-  async getBonuses(): Promise<any[]> {
-    return await this.getDataWithTimestamp('bonuses.json', 'bonuses', 'bonuses');
+  async getBonuses(): Promise<Bonus[]> {
+    return await this.getDataWithTimestamp<Bonus>('bonuses.json', 'bonuses', 'bonuses');
   }
 
   // Settings data methods
@@ -420,7 +372,7 @@ class FileStorageService {
   }
 
   // Message methods - use backend API if available
-  async saveMessages(messages: any[]): Promise<void> {
+  async saveMessages(messages: FrontendMessage[]): Promise<void> {
     // Messages are managed by the backend; save individually via API
     for (const message of messages) {
       try {
@@ -432,8 +384,8 @@ class FileStorageService {
         } else {
           await backendApi.addMessage(backendMessage);
         }
-      } catch (error) {
-        debugLog(`Failed to save message via backend, falling back to file storage: ${error}`);
+      } catch (e: unknown) {
+        debugLog(`Failed to save message via backend, falling back to file storage: ${String(e)}`);
         // Fallback to file storage
         await this.writeData('messages.json', JSON.stringify(messages, null, 2));
         return;
@@ -441,14 +393,14 @@ class FileStorageService {
     }
   }
 
-  async getMessages(): Promise<any[]> {
+  async getMessages(): Promise<FrontendMessage[]> {
     // Try to get messages from backend API first
     try {
       const backendMessages = await backendApi.getMessages();
       // Convert backend messages to frontend format
       return backendMessages.map(bm => backendMessageToFrontend(bm));
-    } catch (error) {
-      debugLog(`Failed to fetch messages from backend, falling back to file storage: ${error}`);
+    } catch (e: unknown) {
+      debugLog(`Failed to fetch messages from backend, falling back to file storage: ${String(e)}`);
       // Fallback to file storage
       return await this.getDataWithTimestamp('messages.json', 'messages', 'messages', []);
     }
@@ -473,8 +425,8 @@ class FileStorageService {
       await this.saveStationConfig({ networkId });
       
       return networkId;
-    } catch (error) {
-      console.error('❌ Failed to get/generate network ID:', error);
+    } catch (e: unknown) {
+      console.error('❌ Failed to get/generate network ID:', e);
       // Fallback to a simple ID
       return `MESH-node-fallback-${Date.now().toString(36)}`;
     }
@@ -482,25 +434,27 @@ class FileStorageService {
 
   // File operations for Electron
   private async writeFileElectron(filename: string, content: string): Promise<void> {
-    if (!this.isElectron()) return;
+    const electronFS = getElectronFS();
+    if (!this.isElectron() || !electronFS) return;
     
     try {
       const filePath = this.getFilePath(filename);
-      await (window as any).electronFS.writeFile(filePath, content);
-    } catch (error) {
-      console.error(`❌ Failed to write file ${filename}:`, error);
-      throw error;
+      await electronFS.writeFile(filePath, content);
+    } catch (e: unknown) {
+      console.error(`❌ Failed to write file ${filename}:`, e);
+      throw e;
     }
   }
 
   private async readFileElectron(filename: string): Promise<string | null> {
-    if (!this.isElectron()) return null;
+    const electronFS = getElectronFS();
+    if (!this.isElectron() || !electronFS) return null;
     
     try {
       const filePath = this.getFilePath(filename);
-      return await (window as any).electronFS.readFile(filePath);
-    } catch (error) {
-      console.warn(`⚠️ Failed to read file ${filename}:`, error);
+      return await electronFS.readFile(filePath);
+    } catch (e: unknown) {
+      console.warn(`⚠️ Failed to read file ${filename}:`, e);
       return null;
     }
   }
@@ -520,7 +474,7 @@ class FileStorageService {
       try {
         await this.writeFileServer(filename, content);
         this.serverStorageAvailable = true;
-      } catch (error) {
+      } catch (e: unknown) {
         // Mark server storage as unavailable and use localStorage
         this.serverStorageAvailable = false;
         const storageKey = this.getStorageKey(filename.replace('.json', ''));
@@ -544,7 +498,7 @@ class FileStorageService {
           this.serverStorageAvailable = true;
           return serverData;
         }
-      } catch (error) {
+      } catch (e: unknown) {
         // Mark server storage as unavailable
         this.serverStorageAvailable = false;
       }
@@ -555,27 +509,21 @@ class FileStorageService {
 
   // Server-side file storage methods for browser environments
   private async writeFileServer(filename: string, content: string): Promise<void> {
-    try {
-      const baseUrl = backendApi.getBaseUrl();
-      const response = await fetch(`${baseUrl}/api/files/write`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          filename: filename, // Use just the filename, not the full path
-          content: content
-        })
-      });
+    const baseUrl = backendApi.getBaseUrl();
+    const response = await fetch(`${baseUrl}/api/files/write`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        filename: filename, // Use just the filename, not the full path
+        content: content
+      })
+    });
 
-      if (!response.ok) {
-        // Server endpoint not implemented, will fall back to localStorage
-        throw new Error(`Server storage not available (HTTP ${response.status})`);
-      }
-
-    } catch (error) {
-      // This is expected when the backend doesn't have file endpoints
-      throw error;
+    if (!response.ok) {
+      // Server endpoint not implemented, will fall back to localStorage
+      throw new Error(`Server storage not available (HTTP ${response.status})`);
     }
   }
 
@@ -599,13 +547,13 @@ class FileStorageService {
         return null;
       }
 
-      const result = await response.json();
+      const result = await response.json() as { content?: string };
       if (result.content !== undefined) {
         return result.content;
       } else {
         return null;
       }
-    } catch (error) {
+    } catch (e: unknown) {
       // Silently fall back to localStorage when server storage isn't available
       return null;
     }
@@ -649,8 +597,8 @@ class FileStorageService {
         if (Array.isArray(qsos) && qsos.length > 0) {
           await this.saveQsoData(qsos);
         }
-      } catch (error) {
-        console.warn('⚠️ Failed to migrate QSO data:', error);
+      } catch (e: unknown) {
+        console.warn('⚠️ Failed to migrate QSO data:', e);
       }
     }
 
@@ -662,8 +610,8 @@ class FileStorageService {
         if (Array.isArray(operators) && operators.length > 0) {
           await this.saveOperators(operators);
         }
-      } catch (error) {
-        console.warn('⚠️ Failed to migrate operator data:', error);
+      } catch (e: unknown) {
+        console.warn('⚠️ Failed to migrate operator data:', e);
       }
     }
 
@@ -675,8 +623,8 @@ class FileStorageService {
         if (Array.isArray(bonuses) && bonuses.length > 0) {
           await this.saveBonuses(bonuses);
         }
-      } catch (error) {
-        console.warn('⚠️ Failed to migrate bonus data:', error);
+      } catch (e: unknown) {
+        console.warn('⚠️ Failed to migrate bonus data:', e);
       }
     }
 
@@ -695,8 +643,8 @@ class FileStorageService {
         if (oldNetworkSettings) settings.networkSettings = JSON.parse(oldNetworkSettings);
         
         await this.saveSettings(settings);
-      } catch (error) {
-        console.warn('⚠️ Failed to migrate settings data:', error);
+      } catch (e: unknown) {
+        console.warn('⚠️ Failed to migrate settings data:', e);
       }
     }
 
@@ -710,17 +658,17 @@ class FileStorageService {
     
     // Create test QSOs if requested
     if (qsoCount > 0) {
-      const testQsos = [];
+      const testQsos: QSO[] = [];
       for (let i = 1; i <= qsoCount; i++) {
         testQsos.push({
           id: `test-qso-${i}`,
           call: `W${i.toString().padStart(3, '0')}ABC`,
+          class: '1A',
+          datetime: new Date(Date.now() - (qsoCount - i) * 60000).toISOString(),
           mode: i % 3 === 0 ? 'CW' : 'PH', // Mix for realistic scoring
-          band: '20M',
-          rst_sent: '59',
-          rst_rcvd: '59',
+          band: '20m',
           section: 'OH',
-          stationCallsign: callsign,
+          operator: callsign,
           stationDesignator: designator,
           timestamp: Date.now() - (qsoCount - i) * 60000 // Spread over time
         });

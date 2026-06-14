@@ -22,7 +22,7 @@ interface NetworkStation {
 // Shared mesh connection state
 class MeshConnectionState {
   private static instance: MeshConnectionState;
-  private _isConnected = false;
+  private connectionState = false;
   private listeners: Array<(connected: boolean) => void> = [];
 
   static getInstance(): MeshConnectionState {
@@ -33,13 +33,13 @@ class MeshConnectionState {
   }
 
   get isConnected(): boolean {
-    return this._isConnected;
+    return this.connectionState;
   }
 
   setConnected(connected: boolean): void {
-    if (this._isConnected !== connected) {
-      debugLog(`🔄 [MeshConnectionState] State changing from ${this._isConnected} to ${connected}`);
-      this._isConnected = connected;
+    if (this.connectionState !== connected) {
+      debugLog(`🔄 [MeshConnectionState] State changing from ${this.connectionState} to ${connected}`);
+      this.connectionState = connected;
       this.listeners.forEach(listener => listener(connected));
     }
   }
@@ -63,7 +63,7 @@ class BackgroundNetworkService {
   private discoveryInterval: number | null = null;
   private syncInterval: number | null = null;
   private knownStations = new Map<string, NetworkStation>();
-  private localNetworkId: string = '';
+  private localNetworkId = '';
 
   constructor() {
     this.initializeNetworkId();
@@ -74,8 +74,8 @@ class BackgroundNetworkService {
       this.localNetworkId = await fileStorage.getNetworkId();
       // Sync mesh state with backend on startup
       await this.syncMeshStateWithBackend();
-    } catch (error) {
-      console.error('Failed to get network ID:', error);
+    } catch (e: unknown) {
+      console.error('Failed to get network ID:', e);
     }
   }
 
@@ -107,8 +107,8 @@ class BackgroundNetworkService {
         // If we get here, the response wasn't ok or data was invalid
         throw new Error(`Invalid response: ${response.status}`);
         
-      } catch (error) {
-        console.warn(`🔄 [BackgroundNetworkService] Mesh sync attempt ${attempt} failed:`, error);
+      } catch (e: unknown) {
+        console.warn(`🔄 [BackgroundNetworkService] Mesh sync attempt ${attempt} failed:`, e);
         
         if (attempt < maxRetries) {
           debugLog(`⏳ [BackgroundNetworkService] Retrying mesh sync in ${retryDelay}ms...`);
@@ -184,7 +184,7 @@ class BackgroundNetworkService {
         const stations = await response.json();
         this.updateKnownStations(stations);
       }
-    } catch (error) {
+    } catch (e: unknown) {
       // Silently handle errors to avoid UI blocking
     }
   }
@@ -197,7 +197,7 @@ class BackgroundNetworkService {
       // For now, just poll the backend mesh stations to keep frontend updated
       // The backend should handle station-to-station QSO sync automatically
       await fetch('http://localhost:3030/api/mesh/stations');
-    } catch (error) {
+    } catch (e: unknown) {
       // Silently handle errors to avoid UI blocking
     }
   }
@@ -242,7 +242,7 @@ class BackgroundNetworkService {
   /**
    * Get network status (for UI display)
    */
-  getNetworkStatus(): any {
+  getNetworkStatus(): Record<string, unknown> {
     return {
       isRunning: this.isRunning,
       stationCount: this.knownStations.size,

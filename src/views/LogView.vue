@@ -29,7 +29,7 @@ export default defineComponent({
   name: 'LogView',
   components: { QsoEntryForm },
   methods: {
-    handleLogQso(qso: Qso) {
+    handleLogQso(_qso: Qso) {
       // Add logic to save QSO to your log
     }
   }

@@ -1,0 +1,51 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["eslint", "typescript", "unicorn", "oxc", "vue"],
+  "env": {
+    "browser": true
+  },
+  "categories": {
+    "correctness": "error",
+    "suspicious": "error",
+    "perf": "error"
+  },
+  "ignorePatterns": ["**/dist/**", "**/dist-ssr/**", "**/coverage/**"],
+  "rules": {
+    "eslint/no-unused-vars": [
+      "error",
+      {
+        "argsIgnorePattern": "^_",
+        "varsIgnorePattern": "^_",
+        "caughtErrorsIgnorePattern": "^_"
+      }
+    ]
+  },
+  "overrides": [
+    {
+      "files": ["**/*.ts", "**/*.tsx", "**/*.mts", "**/*.cts", "**/*.vue"],
+      "rules": {
+        "typescript/no-base-to-string": "off",
+        "vue/no-required-prop-with-default": "off",
+        "typescript/no-unnecessary-template-expression": "off",
+        "typescript/no-unsafe-type-assertion": "off",
+        "unicorn/no-array-reverse": "off",
+        "unicorn/no-array-sort": "off",
+        "unicorn/consistent-function-scoping": "off",
+        "oxc/approx-constant": "off",
+
+        "eslint/no-underscore-dangle": "error",
+        "eslint/no-await-in-loop": "off",
+        "unicorn/prefer-set-has": "off",
+        "unicorn/prefer-array-find": "off",
+        "oxc/no-map-spread": "off",
+
+        "eslint/eqeqeq": ["error", "smart", { "null": "never" }],
+
+        "eslint/no-console": ["error", { "allow": ["error", "warn", "assert"] }],
+        "typescript/strict-boolean-expressions": "error",
+
+        "eslint/no-duplicate-imports": "error"
+      }
+    }
+  ]
+}

@@ -43,8 +43,8 @@ const refreshData = async () => {
       class: stationClass.value,
       section: stationSection.value
     });
-  } catch (error) {
-    console.error('❌ Error loading station info:', error);
+  } catch (e: unknown) {
+    console.error('❌ Error loading station info:', e);
     // Set default values on error
     stationCallsign.value = '';
     stationClass.value = '';
@@ -53,13 +53,13 @@ const refreshData = async () => {
 };
 
 // Function to handle storage changes (for cross-tab updates)
-const handleStorageChange = (e: StorageEvent) => {
+const handleStorageChange = (_e: StorageEvent) => {
   // Refresh from file storage when localStorage changes are detected
   refreshData();
 };
 
 // Custom event handler for same-window updates
-const handleCustomUpdate = (e: CustomEvent) => {
+const handleCustomUpdate = (_e: CustomEvent) => {
   refreshData();
 };
 

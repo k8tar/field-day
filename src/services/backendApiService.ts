@@ -1,56 +1,26 @@
 import { ref, computed } from 'vue';
 import { debugLog } from '@/utils/debug';
+import type { ApiResponse } from '@/models/api/common';
+import type {
+  BackendStation,
+  StationInfoUpdateRequest,
+  StationStatusResponse,
+  StationConfigUpdateRequest,
+} from '@/models/api/station';
+import type { MeshStatusResponse, MeshConfigUpdateRequest } from '@/models/api/mesh';
+import type { BackendQso, QsoCountResponse, QsoConfigUpdateRequest } from '@/models/api/qso';
+import type { BackendMessage } from '@/models/api/message';
+import type { BackendServerConfig } from '@/models/api/config';
+import type { TriggerLogResetResponse, TriggerLogResetData, ResetStatusResponse } from '@/models/api/admin';
 
-export interface BackendConfig {
+interface BackendClientConfig {
   baseUrl: string;
   timeout: number;
   retries: number;
 }
 
-export interface BackendStation {
-  id: string;
-  call_sign: string;
-  name: string;
-  section: string;
-  class: string;
-  ip_address: string;
-  port: number;
-  last_seen: string;
-  is_self: boolean;
-}
-
-export interface BackendQso {
-  id: string;
-  timestamp: string;
-  frequency: string;
-  mode: string;
-  call_sign: string;
-  name: string;
-  section: string;
-  class: string;
-  power?: number;
-  station_id: string;
-  operator: string;
-  notes?: string;
-}
-
-export interface BackendMessage {
-  id: string;
-  message_type: string;
-  text: string;
-  from_station_id: string;
-  target_station_id?: string;
-  timestamp: string;
-}
-
-export interface ApiResponse<T> {
-  success: boolean;
-  data?: T;
-  error?: string;
-}
-
-class BackendApiService {
-  private config: BackendConfig = {
+export class BackendApiService {
+  private config: BackendClientConfig = {
     baseUrl: 'http://localhost:3030',
     timeout: 5000, // Reduced timeout for faster detection
     retries: 2, // Reduced retries to fail faster
@@ -115,13 +85,13 @@ class BackendApiService {
         window.dispatchEvent(new CustomEvent('backendDisconnected'));
       }
       
-    } catch (error) {
+    } catch (e: unknown) {
       const wasConnected = this.isConnected.value;
       this.isConnected.value = false;
       
       // Only log the first disconnection to avoid spam
       if (wasConnected) {
-        this.lastError.value = error instanceof Error ? error.message : 'Connection refused';
+        this.lastError.value = e instanceof Error ? (e instanceof Error ? e.message : String(e)) : 'Connection refused';
         debugLog('❌ Backend service disconnected:', this.lastError.value);
         window.dispatchEvent(new CustomEvent('backendDisconnected'));
       }
@@ -160,8 +130,8 @@ class BackendApiService {
         const result: ApiResponse<T> = await response.json();
         this.lastError.value = null;
         return result;
-      } catch (error) {
-        this.lastError.value = error instanceof Error ? error.message : 'Unknown error';
+      } catch (e: unknown) {
+        this.lastError.value = e instanceof Error ? (e instanceof Error ? e.message : String(e)) : 'Unknown error';
         
         // Check connection immediately when request fails on final attempt
         if (attempt === this.config.retries - 1) {
@@ -190,12 +160,7 @@ class BackendApiService {
     return response.success ? response.data || null : null;
   }
 
-  async updateStationInfo(stationInfo: {
-    call_sign: string;
-    name: string;
-    section: string;
-    class: string;
-  }): Promise<boolean> {
+  async updateStationInfo(stationInfo: StationInfoUpdateRequest): Promise<boolean> {
     const response = await this.makeRequest<string>('/station', {
       method: 'PUT',
       body: JSON.stringify(stationInfo),
@@ -203,16 +168,8 @@ class BackendApiService {
     return response.success;
   }
 
-  async getStationStatus(): Promise<{
-    configured: boolean;
-    station_id?: string;
-    call_sign?: string;
-  } | null> {
-    const response = await this.makeRequest<{
-      configured: boolean;
-      station_id?: string;
-      call_sign?: string;
-    }>('/station/status');
+  async getStationStatus(): Promise<StationStatusResponse | null> {
+    const response = await this.makeRequest<StationStatusResponse>('/station/status');
     return response.success ? response.data || null : null;
   }
 
@@ -229,16 +186,8 @@ class BackendApiService {
     return response.success ? response.data || [] : [];
   }
 
-  async getMeshStatus(): Promise<{
-    enabled: boolean;
-    station_count: number;
-    discovery_active: boolean;
-  } | null> {
-    const response = await this.makeRequest<{
-      enabled: boolean;
-      station_count: number;
-      discovery_active: boolean;
-    }>('/mesh/status');
+  async getMeshStatus(): Promise<MeshStatusResponse | null> {
+    const response = await this.makeRequest<MeshStatusResponse>('/mesh/status');
     return response.success ? response.data || null : null;
   }
 
@@ -272,7 +221,7 @@ class BackendApiService {
   }
 
   async getQsoCount(): Promise<number> {
-    const response = await this.makeRequest<{ count: number }>('/qso/count');
+    const response = await this.makeRequest<QsoCountResponse>('/qso/count');
     return response.success ? response.data?.count || 0 : 0;
   }
 
@@ -292,24 +241,19 @@ class BackendApiService {
       }
       
       return await response.text();
-    } catch (error) {
-      this.lastError.value = error instanceof Error ? error.message : 'Export failed';
+    } catch (e: unknown) {
+      this.lastError.value = e instanceof Error ? (e instanceof Error ? e.message : String(e)) : 'Export failed';
       return null;
     }
   }
 
   // Configuration API
-  async getConfig(): Promise<any> {
-    const response = await this.makeRequest<any>('/config');
-    return response.success ? response.data : null;
+  async getConfig(): Promise<BackendServerConfig | null> {
+    const response = await this.makeRequest<BackendServerConfig>('/config');
+    return response.success ? response.data ?? null : null;
   }
 
-  async updateMeshConfig(config: {
-    enabled: boolean;
-    discovery_interval_secs: number;
-    max_discovery_attempts: number;
-    timeout_secs: number;
-  }): Promise<boolean> {
+  async updateMeshConfig(config: MeshConfigUpdateRequest): Promise<boolean> {
     const response = await this.makeRequest<string>('/config/mesh', {
       method: 'PUT',
       body: JSON.stringify(config),
@@ -317,11 +261,7 @@ class BackendApiService {
     return response.success;
   }
 
-  async updateQsoConfig(config: {
-    sync_interval_secs: number;
-    max_retries: number;
-    batch_size: number;
-  }): Promise<boolean> {
+  async updateQsoConfig(config: QsoConfigUpdateRequest): Promise<boolean> {
     const response = await this.makeRequest<string>('/config/qso', {
       method: 'PUT',
       body: JSON.stringify(config),
@@ -331,17 +271,19 @@ class BackendApiService {
 
   // Station configuration API
   async updateStationConfig(callSign: string, name: string, section: string, stationClass: string): Promise<boolean> {
+    const stationConfig: StationConfigUpdateRequest = {
+      call_sign: callSign,
+      name,
+      section,
+      class: stationClass,
+    };
+
     const response = await this.makeRequest('/station', {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        call_sign: callSign,
-        name: name,
-        section: section,
-        class: stationClass,
-      }),
+      body: JSON.stringify(stationConfig),
     });
     return response.success;
   }
@@ -375,7 +317,7 @@ class BackendApiService {
     return response.success;
   }
 
-  async sendMessage(content: string, target: string = 'all', messageId?: string): Promise<boolean> {
+  async sendMessage(content: string, target = 'all', messageId?: string): Promise<boolean> {
     const messageData: BackendMessage = {
       id: messageId || `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       message_type: 'chat',
@@ -389,14 +331,8 @@ class BackendApiService {
   }
 
   // Admin API
-  async triggerLogReset(): Promise<{
-    success: boolean;
-    reset_timestamp?: string;
-    error?: string;
-  }> {
-    const response = await this.makeRequest<{
-      reset_timestamp: string;
-    }>('/admin/reset-log', {
+  async triggerLogReset(): Promise<TriggerLogResetResponse> {
+    const response = await this.makeRequest<TriggerLogResetData>('/admin/reset-log', {
       method: 'POST',
     });
     
@@ -414,12 +350,7 @@ class BackendApiService {
   }
 
   async getLastLogResetTime(): Promise<string | null> {
-    const response = await this.makeRequest<{
-      command_id?: string;
-      timestamp?: number;
-      issued_by?: string;
-      reason?: string;
-    }>('/admin/reset-status');
+    const response = await this.makeRequest<ResetStatusResponse>('/admin/reset-status');
     
     if (response && response.success && response.data?.timestamp) {
       // Convert timestamp (milliseconds since epoch) to ISO string

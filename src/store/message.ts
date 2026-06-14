@@ -1,8 +1,9 @@
 import { ref, computed, watch } from 'vue';
-import { backendApi, type BackendMessage } from '@/services/backendApiService';
+import { backendApi } from '@/services/backendApiService';
+import type { BackendMessage } from '@/models/api/message';
 import { fileStorage } from '@/services/fileStorage';
 import { CrossOriginStorage } from '@/services/crossOriginStorage';
-import { logger, ErrorHandler } from '@/utils/logger';
+import { ErrorHandler } from '@/utils/logger';
 import { debugLog } from '@/utils/debug';
 
 export interface Message {
@@ -14,11 +15,9 @@ export interface Message {
   target?: string;
 }
 
-const MESSAGE_STORAGE_KEY = 'messages';
-
 // Initialize messages reactive state
 export const messages = ref<Message[]>([]);
-export const isRefreshing = ref(false);
+export const isRefreshing = ref<boolean>(false);
 
 // Cross-origin storage for dismissed message IDs
 export const dismissedMessageIds = ref<Set<string>>(new Set());
@@ -76,8 +75,8 @@ async function initializeMessages() {
       await refreshMessagesFromBackend();
       debugLog(`📨 Loaded ${messages.value.length} messages from backend`);
       return;
-    } catch (error) {
-      console.warn('⚠️ Failed to load from backend, trying file storage:', error);
+    } catch (e: unknown) {
+      console.warn('⚠️ Failed to load from backend, trying file storage:', e);
     }
   }
   
@@ -98,11 +97,11 @@ async function initializeMessages() {
               const backendMessage = await convertToBackendMessage(message);
               await backendApi.addMessage(backendMessage);
               migratedCount++;
-            } catch (error) {
+            } catch (e: unknown) {
               // Ignore errors for duplicate messages
-              const errorStr = error instanceof Error ? error.message : String(error);
+              const errorStr = e instanceof Error ? e.message : String(e);
               if (!errorStr.includes('duplicate')) {
-                console.warn('⚠️ Failed to migrate message:', error);
+                console.warn('⚠️ Failed to migrate message:', e);
               }
             }
           }
@@ -116,8 +115,8 @@ async function initializeMessages() {
     } else {
       messages.value = [];
     }
-  } catch (error) {
-    console.error('❌ Failed to load messages from file storage:', error);
+  } catch (e: unknown) {
+    console.error('❌ Failed to load messages from file storage:', e);
     messages.value = [];
   }
 }
@@ -126,8 +125,8 @@ async function initializeMessages() {
 async function saveMessages() {
   try {
     await fileStorage.saveMessages(messages.value);
-  } catch (error) {
-    console.error('❌ Failed to save messages to file storage:', error);
+  } catch (e: unknown) {
+    console.error('❌ Failed to save messages to file storage:', e);
   }
 }
 
@@ -161,8 +160,8 @@ async function convertToBackendMessage(message: Message): Promise<BackendMessage
   try {
     const stationConfig = await fileStorage.getStationConfig();
     fromStationId = `${stationConfig.callsign}-${stationConfig.designator}`;
-  } catch (error) {
-    console.error('Failed to get station config:', error);
+  } catch (e: unknown) {
+    console.error('Failed to get station config:', e);
     fromStationId = 'UNKNOWN-1A';
   }
 
@@ -217,15 +216,15 @@ export async function addMessage(
       
       // Trigger a refresh to get any new messages from other stations
       setTimeout(() => refreshMessagesFromBackend(), 1000);
-    } catch (error) {
-      console.error('❌ Failed to send message to backend:', error);
+    } catch (e: unknown) {
+      console.error('❌ Failed to send message to backend:', e);
       addMessage('info', 'Failed to send message to network');
     }
   }
 }
 
 // Send a chat message
-export async function sendMessage(text: string, target: string = 'all'): Promise<void> {
+export async function sendMessage(text: string, target = 'all'): Promise<void> {
   if (!text.trim()) return;
   
   try {
@@ -239,8 +238,8 @@ export async function sendMessage(text: string, target: string = 'all'): Promise
     await addMessage('chat', text.trim(), stationId, target, messageId);
     
     debugLog('📨 Message sent:', text);
-  } catch (error) {
-    console.error('❌ Failed to send message:', error);
+  } catch (e: unknown) {
+    console.error('❌ Failed to send message:', e);
     addMessage('info', 'Failed to send message');
   }
 }
@@ -272,8 +271,8 @@ export async function editMessage(messageId: string, newText: string): Promise<v
       const backendMessage = await convertToBackendMessage(messages.value[messageIndex]);
       await backendApi.updateMessage(backendMessage);
       debugLog('📨 Message edited:', newText);
-    } catch (error) {
-      console.error('❌ Failed to update message in backend:', error);
+    } catch (e: unknown) {
+      console.error('❌ Failed to update message in backend:', e);
       addMessage('info', 'Failed to update message on network');
     }
   }
@@ -299,8 +298,8 @@ export async function deleteMessage(messageId: string): Promise<void> {
     try {
       await backendApi.deleteMessage(messageId);
       debugLog('📨 Message deleted:', messageId);
-    } catch (error) {
-      console.error('❌ Failed to delete message from backend:', error);
+    } catch (e: unknown) {
+      console.error('❌ Failed to delete message from backend:', e);
       addMessage('info', 'Failed to delete message from network');
     }
   }
@@ -336,8 +335,8 @@ export async function refreshMessagesFromBackend(): Promise<void> {
           const backendMessage = await convertToBackendMessage(localMessage);
           await backendApi.addMessage(backendMessage);
           newMessagesSentToBackend++;
-        } catch (error) {
-          console.warn('⚠️ Failed to send local message to backend:', error);
+        } catch (e: unknown) {
+          console.warn('⚠️ Failed to send local message to backend:', e);
         }
       }
     }
@@ -371,8 +370,8 @@ export async function refreshMessagesFromBackend(): Promise<void> {
       
       debugLog(`📨 Message sync: +${newMessagesAdded} from backend, ${newMessagesSentToBackend} sent to backend`);
     }
-  } catch (error) {
-    console.error('❌ Failed to refresh messages from backend:', error);
+  } catch (e: unknown) {
+    console.error('❌ Failed to refresh messages from backend:', e);
   } finally {
     isRefreshing.value = false;
   }

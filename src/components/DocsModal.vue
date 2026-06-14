@@ -13,9 +13,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue';
+import { ref, computed, onMounted, toRefs, watch } from 'vue';
 import { marked } from 'marked';
-import { isDark } from '@/store/theme';
 
 const props = defineProps<{
   isOpen: boolean;
@@ -25,8 +24,8 @@ const emit = defineEmits<{
   close: [];
 }>();
 
-const markdownContent = ref('');
-const isLoading = ref(true);
+const markdownContent = ref<string>('');
+const isLoading = ref<boolean>(true);
 
 // Configure marked options for better rendering
 marked.setOptions({
@@ -41,7 +40,7 @@ const renderedMarkdown = computed(() => {
   let html = marked(markdownContent.value) as string;
   
   // Post-process to add IDs to headings
-  html = html.replace(/<h([1-6])([^>]*)>([^<]+)<\/h[1-6]>/g, (match, level, attrs, text) => {
+  html = html.replace(/<h([1-6])([^>]*)>([^<]+)<\/h[1-6]>/g, (_match, level, attrs, text) => {
     // Create a slug from the heading text, removing emojis and special chars
     const id = text
       .replace(/[\u{1F300}-\u{1F9FF}]/gu, '') // Remove emojis
@@ -83,8 +82,8 @@ const loadDocumentation = async () => {
       isLoading.value = false;
       return;
     }
-  } catch (error) {
-    console.warn('Could not load external documentation, using built-in version:', error);
+  } catch (e: unknown) {
+    console.warn('Could not load external documentation, using built-in version:', e);
   }
   
   // Fallback to built-in documentation
@@ -320,10 +319,6 @@ watch(isOpen, async (newValue) => {
     });
   }
 });
-</script>
-
-<script lang="ts">
-import { toRefs, watch } from 'vue';
 </script>
 
 <style lang="scss" scoped>

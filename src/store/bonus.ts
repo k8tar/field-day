@@ -9,8 +9,6 @@ export interface Bonus {
   completed: boolean;
 }
 
-const BONUS_STORAGE_KEY = 'field_day_bonuses';
-
 // Default Field Day bonuses based on ARRL rules
 const defaultBonuses: Bonus[] = [
   {
@@ -97,8 +95,8 @@ const loadBonuses = async (): Promise<Bonus[]> => {
       });
       return mergedBonuses;
     }
-  } catch (error) {
-    console.error('Failed to load bonuses from file storage:', error);
+  } catch (e: unknown) {
+    console.error('Failed to load bonuses from file storage:', e);
   }
   
   return defaultBonuses;
@@ -136,7 +134,7 @@ export function resetAllBonuses() {
 function triggerAchievementCheck(): void {
   // Use dynamic import to avoid circular dependencies
   import('@/services/achievementService').then(({ achievementService }) => {
-    achievementService.checkNow().catch(error => {
+    achievementService.checkNow().catch((error) => {
       console.error('Error checking achievements:', error);
     });
   });
@@ -145,8 +143,8 @@ function triggerAchievementCheck(): void {
 async function saveBonuses() {
   try {
     await fileStorage.saveBonuses(bonuses.value);
-  } catch (error) {
-    console.error('Failed to save bonuses to file storage:', error);
+  } catch (e: unknown) {
+    console.error('Failed to save bonuses to file storage:', e);
   }
 }
 

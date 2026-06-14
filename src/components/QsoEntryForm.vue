@@ -24,7 +24,7 @@
             <label>Class:</label>
             <input 
               v-model="qsoClass" 
-              @input="qsoClass = ($event.target as HTMLInputElement).value.toUpperCase()"
+              @input="handleClassInput"
               required 
               class="class-input"
               :class="{'validation-error': qsoClass && !isClassValid}"
@@ -39,7 +39,7 @@
             <label>Section:</label>
             <input 
               v-model="section" 
-              @input="section = ($event.target as HTMLInputElement).value.toUpperCase()"
+              @input="handleSectionInput"
               required 
               class="section-input"
               :class="{'validation-error': section && !isSectionValid}"
@@ -66,30 +66,38 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, inject, nextTick } from 'vue';
-import { logQso, band, operator, qsos } from '@/store/qso';
+import { ref, computed, nextTick } from 'vue';
+import { logQso, band, qsos } from '@/store/qso';
 import { validateArrlSection, normalizeArrlSection, validateArrlClass, normalizeArrlClass } from '@/constants/arrl-sections';
 
-const call = ref('');
-const qsoClass = ref('');
-const section = ref('');
+const props = defineProps({
+  mode: {
+    type: String,
+    default: 'PH'
+  }
+});
+
+const emit = defineEmits(['update:call', 'update:band', 'update:mode']);
+
+const call = ref<string>('');
+const qsoClass = ref<string>('');
+const section = ref<string>('');
 const callInput = ref<HTMLInputElement | null>(null);
-const currentMode = ref('PH'); // Default mode
 
 // Section validation
-const isSectionValid = computed(() => {
+const isSectionValid = computed<boolean>(() => {
   if (!section.value) return true; // Empty is valid (will be caught by required)
   return validateArrlSection(section.value);
 });
 
 // Class validation
-const isClassValid = computed(() => {
+const isClassValid = computed<boolean>(() => {
   if (!qsoClass.value) return true; // Empty is valid (will be caught by required)
   return validateArrlClass(qsoClass.value);
 });
 
 // Check if all required fields are filled and valid
-const isFormValid = computed(() => {
+const isFormValid = computed<boolean>(() => {
   return call.value.trim() !== '' && 
          qsoClass.value.trim() !== '' && 
          section.value.trim() !== '' &&
@@ -99,7 +107,7 @@ const isFormValid = computed(() => {
 });
 
 // Check if this callsign is an exact duplicate with the same band and mode
-const isExactDuplicate = computed(() => {
+const isExactDuplicate = computed<boolean>(() => {
   if (!call.value) return false;
   
   // Get the current mode from the parent component
@@ -112,15 +120,16 @@ const isExactDuplicate = computed(() => {
   );
 });
 
-const props = defineProps({
-  mode: {
-    type: String,
-    default: 'PH'
-  }
-});
-
-function emitUpdate() {
+function emitUpdate(): void {
   emit('update:call', call.value);
+}
+
+function handleClassInput(e: Event): void {
+  qsoClass.value = (e.target as HTMLInputElement).value.toUpperCase();
+}
+
+function handleSectionInput(e: Event): void {
+  section.value = (e.target as HTMLInputElement).value.toUpperCase();
 }
 
 // Auto-fill class and section if callsign exists in log
@@ -166,8 +175,7 @@ function onLogQso() {
     call: call.value.toUpperCase(),
     class: normalizedClass,
     section: normalizedSection,
-    datetime: new Date().toISOString(), // Generate timestamp at moment of logging
-    mode: props.mode
+    datetime: new Date().toISOString() // Generate timestamp at moment of logging
   });
   
   // Reset form fields
@@ -185,8 +193,6 @@ function onLogQso() {
     }
   });
 }
-
-const emit = defineEmits(['update:call', 'update:band', 'update:mode']);
 </script>
 
 <style lang="scss" scoped>

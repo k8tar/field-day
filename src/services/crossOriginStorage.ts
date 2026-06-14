@@ -3,7 +3,7 @@
  * Provides consistent data access across localhost, 127.0.0.1, and other origins
  */
 
-import { logger, ErrorHandler } from '../utils/logger';
+import { ErrorHandler } from '../utils/logger';
 
 // Cross-origin compatible storage keys
 const CROSS_ORIGIN_KEYS = {
@@ -48,7 +48,7 @@ export class CrossOriginStorage {
     return ErrorHandler.parseJSON<T>(value, `cross-origin ${key}`) || null;
   }
 
-  static setJSON(key: keyof typeof CROSS_ORIGIN_KEYS, value: any): void {
+  static setJSON(key: keyof typeof CROSS_ORIGIN_KEYS, value: unknown): void {
     ErrorHandler.handleSync(
       () => this.setItem(key, JSON.stringify(value)),
       `set cross-origin JSON ${key}`

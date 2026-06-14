@@ -21,7 +21,7 @@
                 type="text" 
                 id="designator" 
                 v-model="stationDesignator" 
-                @input="stationDesignator = ($event.target as HTMLInputElement).value.toUpperCase()"
+                @input="handleDesignatorInput"
                 placeholder="PHONE 1, PHONE 2, DIGI 1, GOTA, etc."
               />
             </div>
@@ -31,7 +31,7 @@
                 type="text" 
                 id="callsign" 
                 v-model="stationCallsign" 
-                @input="stationCallsign = ($event.target as HTMLInputElement).value.toUpperCase()"
+                @input="handleCallsignInput"
               />
             </div>
             <div class="config-option">
@@ -40,7 +40,7 @@
                 type="text" 
                 id="class" 
                 v-model="stationClass" 
-                @input="stationClass = ($event.target as HTMLInputElement).value.toUpperCase()"
+                @input="handleClassInput"
                 :class="{'validation-error': stationClass && !isStationClassValid}"
                 placeholder="1A"
               />
@@ -53,7 +53,7 @@
               <input 
                 id="section" 
                 v-model="stationSection"
-                @input="stationSection = ($event.target as HTMLInputElement).value.toUpperCase()"
+                @input="handleSectionInput"
                 :class="{'validation-error': stationSection && !isStationSectionValid}"
                 placeholder="e.g., WPA, OH, DX"
                 autocomplete="off"
@@ -88,11 +88,11 @@
           <div class="config-section">
             <h3>Operators</h3>
             <div class="operators-list">
-              <div v-for="(op, index) in operators" :key="index" class="operator-item">
+              <div v-for="(_op, index) in operators" :key="index" class="operator-item">
                 <input 
                   type="text" 
                   v-model="operators[index]" 
-                  @input="operators[index] = ($event.target as HTMLInputElement).value.toUpperCase()" 
+                  @input="handleOperatorItemInput($event, index)" 
                 />
                 <button @click="removeOperator(index)">Remove</button>
               </div>
@@ -102,7 +102,7 @@
                   type="text" 
                   v-model="newOperator" 
                   placeholder="Add new operator" 
-                  @input="newOperator = ($event.target as HTMLInputElement).value.toUpperCase()"
+                  @input="handleNewOperatorInput"
                   @keydown.enter="handleAddOperatorEnter"
                 />
                 <button @click="addOperator" :disabled="!newOperator">Add</button>
@@ -199,9 +199,9 @@
               <div class="preview-details">
                 <p><strong>Station:</strong> {{ importPreview.stationCallsign || 'Not specified' }} - {{ importPreview.stationDesignator || 'No designator' }}</p>
                 <p><strong>Class:</strong> {{ importPreview.stationClass || 'Not specified' }} | <strong>Section:</strong> {{ importPreview.stationSection || 'Not specified' }}</p>
-                <p><strong>Operators:</strong> {{ importPreview.operators?.join(', ') || 'None' }}</p>
-                <p><strong>Contacts:</strong> {{ importPreview.qsos?.length || 0 }} QSOs</p>
-                <div v-if="importPreview.qsos?.length > 0" class="preview-list">
+                <p><strong>Operators:</strong> {{ importPreview.operators.join(', ') || 'None' }}</p>
+                <p><strong>Contacts:</strong> {{ importPreview.qsos.length }} QSOs</p>
+                <div v-if="importPreview.qsos.length > 0" class="preview-list">
                   <div v-for="(contact, index) in importPreview.qsos.slice(0, 5)" :key="index" class="preview-item">
                     {{ contact.call }} - {{ contact.datetime }} - {{ contact.band }} {{ contact.mode }}
                   </div>
@@ -332,22 +332,33 @@ function updateDebugMode() {
 }
 
 // Station section validation
-const isStationSectionValid = computed(() => {
+const isStationSectionValid = computed<boolean>(() => {
   if (!stationSection.value) return true; // Empty is valid
   return validateArrlSection(stationSection.value);
 });
 
 // Station class validation
-const isStationClassValid = computed(() => {
+const isStationClassValid = computed<boolean>(() => {
   if (!stationClass.value) return true; // Empty is valid
   return validateArrlClass(stationClass.value);
 });
 
 // ADIF import/export functionality
 const fileInput = ref<HTMLInputElement | null>(null);
-const selectedFileName = ref('');
-const importPreview = ref<any>(null);
-const replaceExistingData = ref(false);
+const selectedFileName = ref<string>('');
+
+interface ImportPreview {
+  stationCallsign: string;
+  stationDesignator: string;
+  stationClass: string;
+  stationSection: string;
+  operators: string[];
+  qsos: QSO[];
+  exportDate?: string;
+}
+
+const importPreview = ref<ImportPreview | null>(null);
+const replaceExistingData = ref<boolean>(false);
 
 // Load settings on component mount
 onMounted(async () => {
@@ -362,8 +373,8 @@ onMounted(async () => {
     // Load operators from file storage
     const savedOperators = await fileStorage.getOperators();
     operators.value = savedOperators.length > 0 ? savedOperators : [];
-  } catch (error) {
-    console.error('Failed to load configuration from file storage:', error);
+  } catch (e: unknown) {
+    console.error('Failed to load configuration from file storage:', e);
     // Initialize with defaults instead of localStorage fallback
     stationCallsign.value = '';
     stationDesignator.value = '';
@@ -373,7 +384,31 @@ onMounted(async () => {
   }
 });
 
-function addOperator() {
+function handleDesignatorInput(e: Event): void {
+  stationDesignator.value = (e.target as HTMLInputElement).value.toUpperCase();
+}
+
+function handleCallsignInput(e: Event): void {
+  stationCallsign.value = (e.target as HTMLInputElement).value.toUpperCase();
+}
+
+function handleClassInput(e: Event): void {
+  stationClass.value = (e.target as HTMLInputElement).value.toUpperCase();
+}
+
+function handleSectionInput(e: Event): void {
+  stationSection.value = (e.target as HTMLInputElement).value.toUpperCase();
+}
+
+function handleOperatorItemInput(e: Event, index: number): void {
+  operators.value[index] = (e.target as HTMLInputElement).value.toUpperCase();
+}
+
+function handleNewOperatorInput(e: Event): void {
+  newOperator.value = (e.target as HTMLInputElement).value.toUpperCase();
+}
+
+function addOperator(): void {
   if (newOperator.value && !operators.value.includes(newOperator.value)) {
     operators.value.push(newOperator.value);
     newOperator.value = '';
@@ -437,9 +472,9 @@ async function saveConfig() {
     // Save operators to file storage
     await fileStorage.saveOperators(operators.value);
 
-  } catch (error) {
-    console.error('Failed to save configuration to file storage:', error);
-    throw error; // Re-throw to handle in UI
+  } catch (e: unknown) {
+    console.error('Failed to save configuration to file storage:', e);
+    throw e;
   }
   
   // Trigger custom event to update StationInfo and other components
@@ -477,9 +512,9 @@ async function confirmResetLog() {
     });
     await fileStorage.saveOperators([]);
     
-  } catch (error) {
-    console.error('Failed to clear file storage:', error);
-    throw error; // Re-throw to handle in UI
+  } catch (e: unknown) {
+    console.error('Failed to clear file storage:', e);
+    throw e;
   }
   
   // Hide the modal
@@ -503,9 +538,9 @@ async function confirmWipeQsos() {
   try {
     // Clear QSOs in file storage
     await fileStorage.saveQsoData([]);
-  } catch (error) {
-    console.error('Failed to clear QSOs in file storage:', error);
-    throw error; // Re-throw to handle in UI
+  } catch (e: unknown) {
+    console.error('Failed to clear QSOs in file storage:', e);
+    throw e;
   }
   
   // Hide the modal
@@ -548,8 +583,8 @@ watch(() => props.isOpen, async (newValue) => {
       operators.value = savedOperators;
       
       debugLog('ConfigModal: Configuration loaded successfully');
-    } catch (error) {
-      console.error('ConfigModal: Failed to reload configuration from file storage:', error);
+    } catch (e: unknown) {
+      console.error('ConfigModal: Failed to reload configuration from file storage:', e);
       // Initialize with defaults instead of localStorage fallback
       stationCallsign.value = '';
       stationDesignator.value = '';
@@ -734,7 +769,7 @@ function getBandFrequency(band: string): string {
 
 // Helper function to calculate score
 function calculateScore(): number {
-  return qsos.value.reduce((sum: number, qso: any) => {
+  return qsos.value.reduce((sum: number, qso: QSO) => {
     return sum + ((qso.mode === 'CW' || qso.mode === 'DIG') ? 2 : 1);
   }, 0);
 }
@@ -780,8 +815,8 @@ function parseJsonFile(content: string) {
       alert('Invalid JSON file format');
       cancelImport();
     }
-  } catch (error) {
-    alert('Error parsing JSON file: ' + error);
+  } catch (e: unknown) {
+    alert('Error parsing JSON file: ' + String(e));
     cancelImport();
   }
 }
@@ -823,13 +858,11 @@ async function confirmJsonImport() {
     
     // Merge QSOs with new IDs
     if (Array.isArray(importPreview.value.qsos)) {
-      const lastId = qsos.value.length > 0 ? 
-        Math.max(...qsos.value.map(q => q.id || 0)) : 0;
-      
-      importPreview.value.qsos.forEach((contact: any, index: number) => {
+      importPreview.value.qsos.forEach((contact: QSO, index: number) => {
+        const importedId = contact.id || `imp-${Date.now().toString(36)}-${index.toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
         qsos.value.push({
           ...contact,
-          id: lastId + index + 1
+          id: importedId
         });
       });
     }
@@ -855,9 +888,9 @@ async function confirmJsonImport() {
     // Emit a custom event to notify other components that station config has been updated
     window.dispatchEvent(new CustomEvent('stationInfoUpdate'));
 
-  } catch (error) {
-    console.error('Failed to save imported data to file storage:', error);
-    throw error; // Re-throw to handle in UI
+  } catch (e: unknown) {
+    console.error('Failed to save imported data to file storage:', e);
+    throw e;
   }
   
   // Reset import state

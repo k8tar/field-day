@@ -5,7 +5,7 @@
 /**
  * Debounce function to limit how often a function can fire
  */
-export function debounce<T extends (...args: any[]) => any>(
+export function debounce<T extends (...args: unknown[]) => unknown>(
   func: T,
   wait: number,
   immediate = false
@@ -30,7 +30,7 @@ export function debounce<T extends (...args: any[]) => any>(
 /**
  * Throttle function to limit execution rate
  */
-export function throttle<T extends (...args: any[]) => any>(
+export function throttle<T extends (...args: unknown[]) => unknown>(
   func: T,
   limit: number
 ): (...args: Parameters<T>) => void {
@@ -55,7 +55,7 @@ export class SafeInterval {
   constructor(
     private callback: () => void | Promise<void>,
     private delay: number,
-    private immediate = false
+    immediate = false
   ) {
     if (immediate) {
       this.executeCallback();
@@ -68,8 +68,8 @@ export class SafeInterval {
     
     try {
       await this.callback();
-    } catch (error) {
-      console.error('SafeInterval callback error:', error);
+    } catch (e: unknown) {
+      console.error('SafeInterval callback error:', e);
     }
   }
 
@@ -113,8 +113,8 @@ export class SafeTimeout {
     
     try {
       await this.callback();
-    } catch (error) {
-      console.error('SafeTimeout callback error:', error);
+    } catch (e: unknown) {
+      console.error('SafeTimeout callback error:', e);
     }
   }
 
@@ -194,7 +194,7 @@ export class TTLCache<K, V> {
  * Async operation manager to prevent multiple simultaneous calls
  */
 export class AsyncLock {
-  private pending = new Map<string, Promise<any>>();
+  private pending = new Map<string, Promise<unknown>>();
 
   async execute<T>(key: string, operation: () => Promise<T>): Promise<T> {
     // If operation is already running, return the existing promise

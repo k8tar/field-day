@@ -1,7 +1,8 @@
 module.exports = {
   root: true,
   env: {
-    node: true
+    node: true,
+    'vue/setup-compiler-macros': true
   },
   'extends': [
     'plugin:vue/vue3-essential',
@@ -9,11 +10,26 @@ module.exports = {
     '@vue/typescript/recommended'
   ],
   parserOptions: {
-    ecmaVersion: 2020
+    ecmaVersion: 2020,
+    project: ['./tsconfig.eslint.json'],
+    tsconfigRootDir: __dirname,
+    extraFileExtensions: ['.vue']
   },
   rules: {
-    'no-console': process.env.NODE_ENV === 'production' ? 'warn' : 'off',
-    'no-debugger': process.env.NODE_ENV === 'production' ? 'warn' : 'off'
+    'no-console': ['error', { allow: ['error', 'warn', 'assert'] }],
+    'no-debugger': 'error',
+    'no-duplicate-imports': 'error',
+    'eqeqeq': ['error', 'smart'],
+    'no-underscore-dangle': 'error',
+    'vue/multi-word-component-names': ['error', {
+      ignores: ['Header', 'Messages']
+    }],
+    '@typescript-eslint/no-explicit-any': 'error',
+    '@typescript-eslint/no-unused-vars': ['error', {
+      argsIgnorePattern: '^_',
+      varsIgnorePattern: '^_',
+      caughtErrorsIgnorePattern: '^_'
+    }]
   },
   overrides: [
     {

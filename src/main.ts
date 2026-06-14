@@ -1,7 +1,6 @@
 import { createApp } from 'vue'
 import App from './App.vue'
 import router from './router'
-import store from './store'
 import { debugLog } from '@/utils/debug'
 import { backendApi } from './services/backendApiService'
 import { startPeriodicQsoRefresh } from './store/qso'
@@ -9,7 +8,7 @@ import { CrossOriginStorage } from './services/crossOriginStorage'
 
 // Initialize the backend service and handle connection
 async function initializeBackend() {
-  debugLog('� Checking for Rust backend service...');
+  debugLog('🔍 Checking for Rust backend service...');
   
   // Wait up to 10 seconds for backend connection
   let backendConnected = false;
@@ -18,7 +17,7 @@ async function initializeBackend() {
       backendConnected = true;
       break;
     }
-    await new Promise(resolve => setTimeout(resolve, 500));
+    await new Promise<void>(resolve => setTimeout(resolve, 500));
   }
   
   if (backendConnected) {
@@ -45,21 +44,22 @@ async function initializeBackend() {
 
 // Function to attempt restarting the backend service
 async function restartBackendService(): Promise<boolean> {
-  debugLog('� Attempting to restart backend service...');
+  debugLog('🔄 Attempting to restart backend service...');
   
   // In an Electron environment, we could potentially start the backend service
-  if (typeof window !== 'undefined' && (window as any).Electron) {
-    const ipcRenderer = (window as any).Electron.ipcRenderer;
+  if (typeof window !== 'undefined' && window.Electron) {
+    const ipcRenderer = window.Electron.ipcRenderer;
     try {
-      const result = await ipcRenderer.invoke('restart-backend-service');
+      const result = await ipcRenderer.invoke('restart-backend-service') as { success: boolean };
       if (result.success) {
         debugLog('✅ Backend service restart initiated');
         // Wait a moment and then re-check connection
-        await new Promise(resolve => setTimeout(resolve, 3000));
+        await new Promise<void>(resolve => setTimeout(resolve, 3000));
         return backendApi.connected.value;
       }
-    } catch (error) {
-      console.error('❌ Failed to restart backend service:', error);
+    } catch (e: unknown) {
+      const err = e instanceof Error ? e : new Error(String(e));
+      console.error('❌ Failed to restart backend service:', err.message);
     }
   }
   
@@ -71,25 +71,9 @@ setTimeout(initializeBackend, 1000);
 
 // Expose backend service and restart function for debugging
 if (typeof window !== 'undefined') {
-  (window as any).backendApi = backendApi;
-  (window as any).restartBackendService = restartBackendService;
+  window.backendApi = backendApi;
+  window.restartBackendService = restartBackendService;
 }
-
-// If you need to access Electron's ipcRenderer, do so via preload.js and window.electron
-const ipcRenderer = window?.Electron?.ipcRenderer;
-
-function logQso(qso: any) {
-  ipcRenderer?.send?.('log-qso', qso);
-}
-
-async function getQsoLog() {
-  return await ipcRenderer?.invoke?.('get-qso-log');
-}
-
-// Listen for updates from background sync
-ipcRenderer?.on?.('QSO_UPDATE', (event: any, { qsos }: { qsos: any[] }) => {
-  // Update your Vue state/store with new qsos
-});
 
 // Initialize application
 async function initializeApp() {
@@ -98,7 +82,6 @@ async function initializeApp() {
   
   // Create and mount the Vue app
   createApp(App)
-      .use(store)
       .use(router)
       .mount('#app')
 }

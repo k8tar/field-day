@@ -1,8 +1,6 @@
-import { ref, reactive, nextTick } from 'vue';
+import { ref, reactive } from 'vue';
 import { fileStorage } from './fileStorage';
-import { startPeriodicQsoRefresh, stopPeriodicQsoRefresh } from '@/store/qso';
 import { backendApi } from './backendApiService';
-import { SafeInterval, SafeTimeout } from '../utils/performance';
 import { debugLog } from '@/utils/debug';
 
 export interface NetworkStation {
@@ -20,7 +18,7 @@ export interface NetworkStation {
 export interface QsoUpdate {
   id: string;
   action: 'add' | 'update' | 'delete';
-  qso: any;
+  qso: import('@/store/qso').QSO;
   timestamp: number;
   stationId: string;
 }
@@ -34,16 +32,8 @@ export interface SyncStatus {
 }
 
 class NetworkService {
-  private ws: WebSocket | null = null;
-  private isHost = false;
-  private hostPort = 8080; // Hardcoded to 8080 for all instances
   private connectedStations = reactive<NetworkStation[]>([]);
   private syncCallbacks: Array<(update: QsoUpdate) => void> = [];
-  private syncInterval: SafeInterval | null = null;
-  private reconnectTimer: SafeTimeout | null = null;
-  private reconnectAttempts: number = 0; // Optional: used in scheduleReconnect
-  private maxReconnectAttempts: number = 5; // Optional: used in scheduleReconnect
-  private reconnectDelay: number = 2000; // Optional: used in scheduleReconnect
   
   // Reactive trigger for UI updates
   private stationUpdateTrigger = ref(0);
@@ -58,23 +48,29 @@ class NetworkService {
 
   // Helper function to detect if running in Electron
   private isElectron(): boolean {
-    return typeof window !== 'undefined' && !!(window as any).Electron;
+    const candidateWindow = window as Window & { Electron?: unknown };
+    return typeof window !== 'undefined' && !!candidateWindow.Electron;
   }
 
-  // Network settings storage keys
-  private readonly NETWORK_SETTINGS_KEY = 'fieldday_network_settings';
-  
   // Persistent network identifier for this instance
-  private networkInstanceId: string = '';
+  private networkInstanceId = '';
   
   // Network settings object
-  private networkSettings = {
+  private networkSettings: {
+    autoReconnect: boolean;
+    lastNetworkMode: 'host' | 'join' | 'auto' | 'mesh';
+    isHost: boolean;
+    hostPort: number;
+    lastHostAddress: string;
+    lastConnectedStations: unknown[];
+    networkInstanceId: string;
+  } = {
     autoReconnect: true,
     lastNetworkMode: 'mesh',
     isHost: false,
     hostPort: 8080,
     lastHostAddress: '',
-    lastConnectedStations: [] as any[],
+    lastConnectedStations: [],
     networkInstanceId: ''
   };
 
@@ -106,8 +102,8 @@ class NetworkService {
       // Update the status with the persistent ID
       this.status.networkId = this.networkInstanceId;
       
-    } catch (error) {
-      console.error('❌ Failed to initialize network ID:', error);
+    } catch (e: unknown) {
+      console.error('❌ Failed to initialize network ID:', e);
       // Fallback to a simple ID
       this.networkInstanceId = `FD-UNKNOWN-${Date.now()}`;
       this.status.networkId = this.networkInstanceId;
@@ -135,8 +131,8 @@ class NetworkService {
       setTimeout(() => {
         this.attemptAutoReconnect();
       }, 2000);
-    } catch (error) {
-      console.error('Failed to initialize network on startup:', error);
+    } catch (e: unknown) {
+      console.error('Failed to initialize network on startup:', e);
     }
   }
 
@@ -154,8 +150,8 @@ class NetworkService {
       const stationConfig = await fileStorage.getStationConfig();
       localCallsign = stationConfig.callsign.toUpperCase();
       localDesignator = stationConfig.designator;
-    } catch (error) {
-      console.error('Failed to get station config from file storage:', error);
+    } catch (e: unknown) {
+      console.error('Failed to get station config from file storage:', e);
       localCallsign = 'UNKNOWN';
       localDesignator = '1A';
     }
@@ -165,18 +161,13 @@ class NetworkService {
     const discoveredStations: NetworkStation[] = [];
     const fieldDayPort = 8080; // All Field Day instances use port 8080
     
-    
     // Since all instances use port 8080, we scan different IP addresses on port 8080 only
     const scanPromises: Promise<NetworkStation | null>[] = [];
-    
-    // Try IPv4 localhost (since multiple instances on same machine will use different processes)
-    // Note: Multiple instances on the same machine is not typical - usually different machines
     
     // Get the current machine's IP addresses to scan the local network
     try {
       const localIP = await this.getLocalIP();
       if (localIP && localIP !== '127.0.0.1') {
-        
         // For mesh network discovery, we only check a few specific addresses
         // to avoid overwhelming the network and finding false positives
         const specificIPs = [
@@ -191,7 +182,8 @@ class NetworkService {
           }
         }
       }
-    } catch (error) {
+    } catch (e: unknown) {
+      debugLog('Failed to scan local IP ranges:', e);
     }
     
     // Always check localhost in case there are multiple instances on same machine
@@ -217,17 +209,12 @@ class NetworkService {
         if (stationId !== localStationId && 
             station.callsign !== localCallsign &&
             station.callsign !== 'W3AO') { // Filter out mock stations
-          
-          // Avoid duplicates
           const existing = discoveredStations.find(s => s.ip === station.ip && s.port === station.port);
           if (!existing) {
             discoveredStations.push(station);
           }
         }
       }
-    });
-    
-    discoveredStations.forEach(station => {
     });
     
     return discoveredStations;
@@ -271,13 +258,13 @@ class NetworkService {
             online: true,
             lastSeen: Date.now()
           };
-        } else {
         }
-      } else {
       }
-    } catch (error) {
-      if (error instanceof Error && error.name !== 'AbortError') {
+    } catch (e: unknown) {
+      if (e instanceof Error && e.name !== 'AbortError') {
+        debugLog(`Station check failed for ${ip}:${port}: ${e.message}`);
       } else {
+        debugLog(`Station check timed out for ${ip}:${port}`);
       }
     }
     
@@ -315,7 +302,7 @@ class NetworkService {
           resolve('192.168.1.100');
         }, 1000);
       });
-    } catch (error) {
+    } catch (e: unknown) {
       return '192.168.1.100'; // Fallback
     }
   }
@@ -336,17 +323,18 @@ class NetworkService {
     let lastError;
     
     for (const protocol of protocols) {
+      const protocolUrl = url.replace(/^https?:/, `${protocol}:`);
       try {
-        const protocolUrl = url.replace(/^https?:/, `${protocol}:`);
-        
         const response = await fetch(protocolUrl, options);
         return response;
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        lastError = error;
+      } catch (e: unknown) {
+        const errorMessage = e instanceof Error ? e.message : String(e);
+        lastError = e;
         
         if (errorMessage.includes('certificate') || errorMessage.includes('SSL') || errorMessage.includes('TLS')) {
+          debugLog(`Protocol ${protocol} certificate issue for ${protocolUrl}`);
         } else {
+          debugLog(`Protocol ${protocol} request failed for ${protocolUrl}: ${errorMessage}`);
         }
         
         // Continue to next protocol
@@ -359,27 +347,21 @@ class NetworkService {
   }
 
   // Event emitters for network events
-  private eventCallbacks: { [event: string]: Array<(...args: any[]) => void> } = {};
+  private eventCallbacks: Record<string, Array<(...args: unknown[]) => void>> = {};
 
-  on(event: string, callback: (...args: any[]) => void) {
+  on(event: string, callback: (...args: unknown[]) => void) {
     if (!this.eventCallbacks[event]) {
       this.eventCallbacks[event] = [];
     }
     this.eventCallbacks[event].push(callback);
   }
 
-  off(event: string, callback: (...args: any[]) => void) {
+  off(event: string, callback: (...args: unknown[]) => void) {
     if (this.eventCallbacks[event]) {
       const index = this.eventCallbacks[event].indexOf(callback);
       if (index >= 0) {
         this.eventCallbacks[event].splice(index, 1);
       }
-    }
-  }
-
-  private emit(event: string, ...args: any[]) {
-    if (this.eventCallbacks[event]) {
-      this.eventCallbacks[event].forEach(callback => callback(...args));
     }
   }
 
@@ -389,196 +371,10 @@ class NetworkService {
     return false;
   }
 
-  // Legacy station monitoring method - no longer used (mesh only)
-  private startStationMonitoring(): void {
-    debugLog('⚠️ [NetworkService] startStationMonitoring() is deprecated - backend handles station monitoring');
-  }
-
-  // Legacy heartbeat method - no longer used (mesh only)
-  private startHeartbeat(hostAddress: string): void {
-    debugLog('⚠️ [NetworkService] startHeartbeat() is deprecated - backend handles heartbeat');
-  }
-
-  // Legacy client monitoring method - no longer used (mesh only)
-  private startClientMonitoring(hostAddress: string): void {
-    debugLog('⚠️ [NetworkService] startClientMonitoring() is deprecated - backend handles monitoring');
-  }
-
   // Legacy join network method - no longer used (mesh only)
-  async connectToHost(address: string): Promise<boolean> {
+  async connectToHost(_address: string): Promise<boolean> {
     debugLog('⚠️ [NetworkService] connectToHost() is deprecated - use mesh networking instead');
     return false;
-  }
-
-  private disconnect(): void {
-    debugLog('🔌 [NetworkService] Disconnecting from network');
-    
-    // Legacy mesh network stop - now handled by backend
-    debugLog('⚠️ [NetworkService] Frontend mesh network stop is deprecated');
-    
-    // Clear connection state
-    this.status.isConnected = false;
-    this.isHost = false;
-    this.connectedStations.splice(0);
-    
-    // Stop periodic operations
-    if (this.syncInterval) {
-      this.syncInterval.stop();
-      this.syncInterval = null;
-    }
-    
-    // Cancel any reconnection attempts
-    this.cancelReconnect();
-    
-    // Stop QSO refresh
-    stopPeriodicQsoRefresh();
-    
-    debugLog('🔌 [NetworkService] Disconnected from network');
-  }
-
-  // Sync QSOs from connected stations (polling)
-  private async syncQsosFromStations(): Promise<void> {
-    if (!this.status.isConnected) return;
-    
-    let anyStationReachable = false;
-    
-    for (const station of this.connectedStations) {
-      try {
-        const response = await this.fetchWithProtocolFallback(`https://${station.ip}:${station.port}/api/qsos?since=${this.status.lastSync}`, {
-          timeout: 5000
-        } as any);
-        
-        if (response.ok) {
-          const data = await response.json();
-          
-          // Station is reachable
-          anyStationReachable = true;
-          station.online = true;
-          station.lastSeen = Date.now();
-          
-          // Process received QSOs
-          if (data.qsos && data.qsos.length > 0) {
-            data.qsos.forEach((qso: any) => {
-              // Emit to QSO store handlers
-              this.syncCallbacks.forEach(callback => callback({
-                id: `sync-${Date.now()}-${Math.random()}`,
-                action: 'add',
-                qso, // Use the QSO as-is, preserving original timestamp and details
-                timestamp: qso.timestamp || Date.now(), // Use original timestamp if available
-                stationId: `${station.callsign}-${station.designator}`
-              }));
-            });
-            
-            this.status.lastSync = data.timestamp || Date.now();
-            this.status.syncedQsos += data.qsos.length;
-          }
-        } else {
-          station.online = false;
-        }
-      } catch (error) {
-        console.error(`Failed to sync QSOs from ${station.callsign}:`, error);
-        station.online = false;
-        
-        // If this is a connection error and we should auto-reconnect
-        if (this.networkSettings.autoReconnect) {
-        }
-      }
-    }
-    
-    // If no stations are reachable and we should auto-reconnect
-    if (!anyStationReachable && this.networkSettings.autoReconnect && this.connectedStations.length > 0) {
-      this.status.isConnected = false;
-      this.emit('network:connection-lost');
-      this.scheduleReconnect();
-    }
-  }
-
-  // Start periodic sync
-  private startPeriodicSync(): void {
-    // Clear any existing sync interval
-    if (this.syncInterval) {
-      this.syncInterval.stop();
-    }
-
-    
-    // Sync every 10 seconds
-    this.syncInterval = new SafeInterval(async () => {
-      if (this.status.isConnected) {
-        await this.performSync();
-      }
-    }, 10000);
-    this.syncInterval.start();
-
-    // Perform initial sync
-    setTimeout(() => this.performSync(), 2000);
-  }
-
-  private async performSync(): Promise<void> {
-    try {
-      // Get QSOs that have been added/updated since last sync
-      const lastSync = this.status.lastSync;
-      
-      // Sync with connected stations
-      for (const station of this.connectedStations) {
-        if (!station.online) continue;
-        
-        try {
-          // Get QSOs from this station since last sync
-          const response = await this.fetchWithProtocolFallback(`https://${station.ip}:${station.port}/api/qsos?since=${lastSync}`, {
-            method: 'GET',
-            headers: {
-              'Accept': 'application/json'
-            }
-          });
-
-          if (response.ok) {
-            const data = await response.json();
-            if (data.qsos && data.qsos.length > 0) {
-              
-              // Emit sync update event for QSO store to handle
-              this.syncCallbacks.forEach(callback => {
-                data.qsos.forEach((qso: any) => {
-                  callback({
-                    id: `${station.id}-${qso.id}`,
-                    action: 'add',
-                    qso: qso,
-                    timestamp: qso.timestamp || Date.now(),
-                    stationId: `${station.callsign}-${station.designator}`
-                  });
-                });
-              });
-              
-              this.status.syncedQsos += data.qsos.length;
-            }
-            
-            // Update station info
-            station.lastSeen = Date.now();
-            station.online = true;
-          }
-        } catch (error) {
-          station.online = false;
-        }
-      }
-
-      // Update last sync timestamp
-      this.status.lastSync = Date.now();
-      
-    } catch (error) {
-      console.error('❌ Sync error:', error);
-    }
-  }
-
-  private async performInitialSync(): Promise<void> {
-    
-    // Set last sync to 0 to get all QSOs
-    const originalLastSync = this.status.lastSync;
-    this.status.lastSync = 0;
-    
-    await this.performSync();
-    
-    // Restore last sync timestamp
-    this.status.lastSync = originalLastSync;
-    
   }
 
   // Missing utility methods
@@ -588,8 +384,8 @@ class NetworkService {
       if (settings.networkSettings) {
         this.networkSettings = { ...this.networkSettings, ...settings.networkSettings };
       }
-    } catch (error) {
-      console.error('Failed to load network settings from file storage:', error);
+    } catch (e: unknown) {
+      console.error('Failed to load network settings from file storage:', e);
       // Use defaults if file storage fails
     }
   }
@@ -602,8 +398,8 @@ class NetworkService {
         ...currentSettings,
         networkSettings: this.networkSettings
       });
-    } catch (error) {
-      console.error('❌ Failed to save network settings to file storage:', error);
+    } catch (e: unknown) {
+      console.error('❌ Failed to save network settings to file storage:', e);
     }
   }
 
@@ -623,35 +419,12 @@ class NetworkService {
     debugLog('ℹ️ [NetworkService] Frontend mesh network service disabled to prevent connection conflicts');
   }
 
-  private cancelReconnect(): void {
-    if (this.reconnectTimer) {
-      this.reconnectTimer.cancel();
-      this.reconnectTimer = null;
-      this.reconnectAttempts = 0;
-    }
-  }
-
-  private scheduleReconnect(): void {
-    if (!this.networkSettings.autoReconnect || this.reconnectAttempts >= this.maxReconnectAttempts) {
-      return;
-    }
-
-    this.reconnectAttempts++;
-    const delay = this.reconnectDelay * Math.pow(2, this.reconnectAttempts - 1); // Exponential backoff
-    
-    
-    this.reconnectTimer = new SafeTimeout(() => {
-      this.attemptAutoReconnect();
-    }, delay);
-    this.reconnectTimer.start();
-  }
-
   private async getLocalStationId(): Promise<string> {
     try {
       const stationConfig = await fileStorage.getStationConfig();
       return `${stationConfig.callsign}-${stationConfig.designator}`;
-    } catch (error) {
-      console.error('Failed to get station config from file storage:', error);
+    } catch (e: unknown) {
+      console.error('Failed to get station config from file storage:', e);
       return 'UNKNOWN-1A';
     }
   }
@@ -686,17 +459,13 @@ class NetworkService {
   }
 
   // Trigger UI updates
-  private triggerStationUpdate() {
-    this.stationUpdateTrigger.value++;
-  }
-
   getNetworkSettings() {
     return { ...this.networkSettings };
   }
 
   setAutoReconnect(enabled: boolean): void {
     this.networkSettings.autoReconnect = enabled;
-    this.saveNetworkSettings().catch(error => {
+    this.saveNetworkSettings().catch((error) => {
       console.error('Failed to save network settings:', error);
     });
   }
@@ -734,7 +503,7 @@ class NetworkService {
   }
 
   // Broadcast QSO update to network
-  async broadcastQsoUpdate(qso: any, action: 'add' | 'update' | 'delete'): Promise<void> {
+  async broadcastQsoUpdate(qso: import('@/store/qso').QSO, action: 'add' | 'update' | 'delete'): Promise<void> {
     if (!this.status.isConnected) {
       debugLog('🔇 [NetworkService] Not connected to network, skipping QSO broadcast');
       return;
@@ -748,6 +517,7 @@ class NetworkService {
       timestamp: Date.now(),
       stationId: localStationId
     };
+    void update;
 
     debugLog(`📡 [NetworkService] Broadcasting QSO ${action} to mesh network:`, {
       qsoId: qso.id,
@@ -761,16 +531,6 @@ class NetworkService {
     return;
   }
 
-  // Send a chat message across the network
-  // Generate a GUID for message IDs
-  private generateMessageId(): string {
-    return 'msg-' + 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-      const r = Math.random() * 16 | 0;
-      const v = c === 'x' ? r : (r & 0x3 | 0x8);
-      return v.toString(16);
-    });
-  }
-
   async sendMessage(text: string, target = 'all', messageId?: string): Promise<void> {
     try {
       // Use backend API to send message - backend handles mesh distribution
@@ -782,9 +542,9 @@ class NetworkService {
       }
       
       debugLog(`📨 Message sent via backend API: "${text}" to ${target}`);
-    } catch (error) {
-      console.error('❌ Error sending message:', error);
-      throw error;
+    } catch (e: unknown) {
+      console.error('❌ Error sending message:', e);
+      throw e;
     }
   }
 
@@ -793,8 +553,8 @@ class NetworkService {
     
     try {
       await fileStorage.saveStationConfig({ callsign, designator });
-    } catch (error) {
-      console.error('Failed to save configuration to file storage:', error);
+    } catch (e: unknown) {
+      console.error('Failed to save configuration to file storage:', e);
     }
     
     // Test the endpoint immediately
@@ -811,15 +571,20 @@ class NetworkService {
       const operators = await fileStorage.getOperators();
       const bonuses = await fileStorage.getBonuses();
       const settings = await fileStorage.getSettings();
+      void stationConfig;
+      void qsos;
+      void operators;
+      void bonuses;
+      void settings;
       
-    } catch (error) {
-      console.error(error);
+    } catch (e: unknown) {
+      console.error(e);
     }
   }
 
   // Legacy method for backward compatibility
   checkLocalStorage(): void {
-    this.checkStorage().catch(error => {
+    this.checkStorage().catch((error) => {
       console.error('Failed to check storage:', error);
     });
   }
@@ -832,20 +597,17 @@ class NetworkService {
     
     // Test localhost
     const localStation = await this.checkStationAt('127.0.0.1', fieldDayPort);
-    if (localStation) {
-    } else {
-    }
+    debugLog('Local station discovery result:', localStation);
     
     // Test current network if available
     try {
       const localIP = await this.getLocalIP();
       if (localIP && localIP !== '127.0.0.1') {
         const networkStation = await this.checkStationAt(localIP, fieldDayPort);
-        if (networkStation) {
-        } else {
-        }
+        debugLog('Network station discovery result:', networkStation);
       }
-    } catch (error) {
+    } catch (e: unknown) {
+      debugLog('testDiscovery local network probe failed:', e);
     }
     
   }
@@ -882,13 +644,15 @@ class NetworkService {
         
         if (response.ok) {
           const data = await response.json();
-        } else {
+          void data;
         }
         
-      } catch (error) {
-        if (error instanceof Error) {
-          if (error.name === 'AbortError') {
+      } catch (e: unknown) {
+        if (e instanceof Error) {
+          if (e.name === 'AbortError') {
+            debugLog(`testFieldDayPorts timeout for ${address}`);
           } else {
+            debugLog(`testFieldDayPorts error for ${address}:`, e);
           }
         }
       }
@@ -905,9 +669,10 @@ class NetworkService {
       const localResponse = await fetch(localUrl);
       if (localResponse.ok) {
         const localData = await localResponse.json();
-      } else {
+        void localData;
       }
-    } catch (error) {
+    } catch (e: unknown) {
+      debugLog('testNetworkDiscovery local station check failed:', e);
     }
     
     // Test 2: Check Field Day port 8080 on different addresses
@@ -939,13 +704,15 @@ class NetworkService {
         
         if (response.ok) {
           const data = await response.json();
-        } else {
+          void data;
         }
         
-      } catch (error) {
-        if (error instanceof Error) {
-          if (error.name === 'AbortError') {
+      } catch (e: unknown) {
+        if (e instanceof Error) {
+          if (e.name === 'AbortError') {
+            debugLog(`testNetworkDiscovery timeout for ${url}`);
           } else {
+            debugLog(`testNetworkDiscovery error for ${url}:`, e);
           }
         }
       }
@@ -953,8 +720,7 @@ class NetworkService {
     
     // Test 3: Run actual discovery
     const stations = await this.discoverStations();
-    stations.forEach(station => {
-    });
+    void stations;
     
   }
 
@@ -969,7 +735,9 @@ class NetworkService {
     try {
       const response = await fetch('/api/station-info');
       const data = await response.json();
+      void data;
     } catch (err) {
+      debugLog('setConfiguration endpoint check failed:', err);
     }
   }
 
@@ -979,9 +747,12 @@ class NetworkService {
       const storageInfo = await fileStorage.getStorageInfo();
       const stationConfig = await fileStorage.getStationConfig();
       const qsos = await fileStorage.getQsoData();
+      void storageInfo;
+      void stationConfig;
+      void qsos;
       
-    } catch (error) {
-      console.error('❌ Error checking file storage:', error);
+    } catch (e: unknown) {
+      console.error('❌ Error checking file storage:', e);
     }
   }
 
@@ -995,7 +766,9 @@ class NetworkService {
     try {
       const response = await fetch('/api/station-info');
       const data = await response.json();
+      void data;
     } catch (err) {
+      debugLog('setupTestStation endpoint check failed:', err);
     }
   }
 
@@ -1032,49 +805,8 @@ class NetworkService {
     debugLog('ℹ️ [NetworkService] Mesh stop called - no action needed (backend handles mesh)');
   }
 
-  private setupMeshEventHandlers(): void {
-    // Legacy mesh event handlers - no longer used
-    debugLog('⚠️ [NetworkService] setupMeshEventHandlers() is deprecated - backend handles mesh events');
-  }
-
-  // Remove duplicate stations from the connected stations list
-  private removeDuplicateStations(): void {
-    const uniqueStations = new Map<string, NetworkStation>();
-    
-    // Use multiple keys to detect duplicates
-    for (const station of this.connectedStations) {
-      const keys = [
-        station.id,
-        `${station.ip}:${station.port}`,
-        `${station.callsign}-${station.designator}`
-      ];
-      
-      let isDuplicate = false;
-      for (const key of keys) {
-        if (uniqueStations.has(key)) {
-          isDuplicate = true;
-          break;
-        }
-      }
-      
-      if (!isDuplicate) {
-        for (const key of keys) {
-          uniqueStations.set(key, station);
-        }
-      }
-    }
-    
-    // Get unique stations
-    const stations = Array.from(new Set(uniqueStations.values()));
-    const removedCount = this.connectedStations.length - stations.length;
-    
-    if (removedCount > 0) {
-      this.connectedStations.splice(0, this.connectedStations.length, ...stations);
-    }
-  }
-
   // Legacy mesh methods - no longer used (backend handles mesh discovery)
-  getMeshNodes(): any[] {
+  getMeshNodes(): unknown[] {
     debugLog('⚠️ [NetworkService] getMeshNodes() is deprecated - use backend API');
     return [];
   }

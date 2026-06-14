@@ -77,14 +77,14 @@
             <label>Callsign:</label>
             <input 
               v-model="editingQso.call" 
-              @input="editingQso.call = ($event.target as HTMLInputElement).value.toUpperCase()"
+              @input="handleEditCallInput"
             />
           </div>
           <div class="form-group">
             <label>Class:</label>
             <input 
               v-model="editingQso.class" 
-              @input="editingQso.class = ($event.target as HTMLInputElement).value.toUpperCase()"
+              @input="handleEditClassInput"
               :class="{'validation-error': editingQso.class && !isEditClassValid}"
               placeholder="1A"
               autocomplete="off"
@@ -97,7 +97,7 @@
             <label>Section:</label>
             <input 
               v-model="editingQso.section"
-              @input="editingQso.section = ($event.target as HTMLInputElement).value.toUpperCase()"
+              @input="handleEditSectionInput"
               :class="{'validation-error': editingQso.section && !isEditSectionValid}"
               placeholder="e.g., WPA, OH, DX"
               autocomplete="off"
@@ -318,18 +318,18 @@
 
 <script setup lang="ts">
 import { computed, ref, onMounted, nextTick, watch } from 'vue';
-import { qsos, deleteQso, updateQso, QSO } from '@/store/qso';
+import { qsos, deleteQso, updateQso, type QSO } from '@/store/qso';
 import { validateArrlSection, normalizeArrlSection, validateArrlClass, normalizeArrlClass, FIELD_DAY_BANDS } from '@/constants/arrl-sections';
 import { fileStorage } from '@/services/fileStorage';
 
 // ARRL sections validation
-const isEditSectionValid = computed(() => {
+const isEditSectionValid = computed<boolean>(() => {
   if (!editingQso.value.section) return true; // Empty is valid
   return validateArrlSection(editingQso.value.section);
 });
 
 // ARRL class validation
-const isEditClassValid = computed(() => {
+const isEditClassValid = computed<boolean>(() => {
   if (!editingQso.value.class) return true; // Empty is valid
   return validateArrlClass(editingQso.value.class);
 });
@@ -345,7 +345,7 @@ const emptyQso: QSO = {
   operator: ''
 };
 
-const sortedQsos = computed(() => {
+const sortedQsos = computed<QSO[]>(() => {
   return [...qsos.value].sort((a, b) => 
     new Date(b.datetime).getTime() - new Date(a.datetime).getTime()
   );
@@ -437,32 +437,32 @@ watch(qsos, (newQsosList, oldQsosList) => {
   
   // Update our tracking set
   existingQsoIds.value = new Set(newIds);
-}, { deep: true });
+});
 const bufferSize = 5; // Extra rows to render above and below visible area
 
 const scrollTop = ref(0);
 const containerHeight = ref(0);
 
 // Computed properties for virtual scrolling
-const startIndex = computed(() => {
+const startIndex = computed<number>(() => {
   const index = Math.floor(scrollTop.value / rowHeight) - bufferSize;
   return Math.max(0, index);
 });
 
-const endIndex = computed(() => {
+const endIndex = computed<number>(() => {
   const index = startIndex.value + visibleCount + (bufferSize * 2);
   return Math.min(sortedQsos.value.length, index);
 });
 
-const visibleQsos = computed(() => {
+const visibleQsos = computed<QSO[]>(() => {
   return sortedQsos.value.slice(startIndex.value, endIndex.value);
 });
 
-const offsetTop = computed(() => {
+const offsetTop = computed<number>(() => {
   return startIndex.value * rowHeight;
 });
 
-const offsetBottom = computed(() => {
+const offsetBottom = computed<number>(() => {
   const totalHeight = sortedQsos.value.length * rowHeight;
   const visibleHeight = endIndex.value * rowHeight;
   return totalHeight - visibleHeight;
@@ -511,14 +511,25 @@ async function loadOperators() {
   try {
     const savedOperators = await fileStorage.getOperators();
     operators.value = savedOperators.length > 0 ? savedOperators : ['K8TAR'];
-  } catch (error) {
-    console.error('Failed to load operators from file storage:', error);
+  } catch (e: unknown) {
+    console.error('Failed to load operators from file storage:', e);
     operators.value = ['K8TAR']; // Use default if file storage fails
   }
 }
 
-function formatDateTime(datetime: string | number | Date) {
-  const date = new Date(datetime);
+function handleEditCallInput(e: Event): void {
+  editingQso.value.call = (e.target as HTMLInputElement).value.toUpperCase();
+}
+
+function handleEditClassInput(e: Event): void {
+  editingQso.value.class = (e.target as HTMLInputElement).value.toUpperCase();
+}
+
+function handleEditSectionInput(e: Event): void {
+  editingQso.value.section = (e.target as HTMLInputElement).value.toUpperCase();
+}
+
+function formatDateTime(datetime: string | number | Date) {  const date = new Date(datetime);
   const months = ['January', 'February', 'March', 'April', 'May', 'June', 
                   'July', 'August', 'September', 'October', 'November', 'December'];
   
@@ -584,7 +595,9 @@ async function saveQsoEdit() {
       updatedQsos.value.add(updatedQso.id);
       // Remove from updated set after animation
       setTimeout(() => {
-        updatedQsos.value.delete(updatedQso.id!);
+        if (updatedQso.id) {
+          updatedQsos.value.delete(updatedQso.id);
+        }
       }, 1000);
     }
     
@@ -627,23 +640,23 @@ const currentPage = ref(1);
 const itemsPerPage = 50;
 
 // Available filter options
-const availableBands = computed(() => {
+const availableBands = computed<string[]>(() => {
   const bandSet = new Set(qsos.value.map(qso => qso.band).filter(Boolean));
   return Array.from(bandSet).sort();
 });
 
-const availableModes = computed(() => {
+const availableModes = computed<string[]>(() => {
   const modeSet = new Set(qsos.value.map(qso => qso.mode).filter(Boolean));
   return Array.from(modeSet).sort();
 });
 
-const availableOperators = computed(() => {
+const availableOperators = computed<string[]>(() => {
   const operatorSet = new Set(qsos.value.map(qso => qso.operator).filter(Boolean));
   return Array.from(operatorSet).sort();
 });
 
 // Filtered and sorted QSOs
-const filteredQsos = computed(() => {
+const filteredQsos = computed<QSO[]>(() => {
   let filtered = [...qsos.value];
   
   // Apply search filter
@@ -719,9 +732,9 @@ const filteredQsos = computed(() => {
 });
 
 // Pagination
-const totalPages = computed(() => Math.ceil(filteredQsos.value.length / itemsPerPage));
+const totalPages = computed<number>(() => Math.ceil(filteredQsos.value.length / itemsPerPage));
 
-const paginatedQsos = computed(() => {
+const paginatedQsos = computed<QSO[]>(() => {
   const start = (currentPage.value - 1) * itemsPerPage;
   const end = start + itemsPerPage;
   return filteredQsos.value.slice(start, end);

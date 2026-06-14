@@ -161,7 +161,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, onMounted, onUnmounted } from 'vue';
+import { ref, onMounted, onUnmounted } from 'vue';
 import { 
   visibleMessages as storeMessages,
   recentMessages as storeRecentMessages,
@@ -184,37 +184,19 @@ interface Message {
 }
 
 // UI state
-const showAllMessages = ref(false);
-const newMessage = ref('');
-const modalNewMessage = ref('');
+const showAllMessages = ref<boolean>(false);
+const newMessage = ref<string>('');
+const modalNewMessage = ref<string>('');
 const editingMessageId = ref<string | null>(null);
-const editingMessageText = ref('');
-const showDeleteConfirm = ref(false);
+const editingMessageText = ref<string>('');
+const showDeleteConfirm = ref<boolean>(false);
 const deletingMessageId = ref<string | null>(null);
 
-// Use store messages
-const messages = computed(() => storeMessages.value);
-const recentMessages = computed(() => storeRecentMessages.value);
-const allMessagesReversed = computed(() => storeAllMessages.value);
-const messageCount = computed(() => storeMessageCount.value);
-
-// Get the latest message
-const latestMessage = computed(() => {
-  if (messages.value.length === 0) return null;
-  return messages.value[messages.value.length - 1];
-});
-
-// Compute CSS class for message type
-const messageTypeClass = computed(() => {
-  if (!latestMessage.value) return '';
-  return `message-${latestMessage.value.type}`;
-});
-
-// Compute icon for message type
-const messageIcon = computed(() => {
-  if (!latestMessage.value) return '';
-  return getIconForType(latestMessage.value.type);
-});
+// Use store messages directly
+const messages = storeMessages;
+const recentMessages = storeRecentMessages;
+const allMessagesReversed = storeAllMessages;
+const messageCount = storeMessageCount;
 
 // Get icon for a specific message type
 function getIconForType(type: Message['type']): string {
@@ -269,8 +251,8 @@ async function sendMessage() {
   try {
     await sendMessageStore(newMessage.value.trim());
     newMessage.value = '';
-  } catch (error) {
-    console.error('Failed to send message:', error);
+  } catch (e: unknown) {
+    console.error('Failed to send message:', e);
     addMessageStore('info', 'Failed to send message');
   }
 }
@@ -282,8 +264,8 @@ async function sendModalMessage() {
   try {
     await sendMessageStore(modalNewMessage.value.trim());
     modalNewMessage.value = '';
-  } catch (error) {
-    console.error('Failed to send message:', error);
+  } catch (e: unknown) {
+    console.error('Failed to send message:', e);
     addMessageStore('info', 'Failed to send message');
   }
 }
@@ -307,8 +289,8 @@ async function saveEdit() {
   try {
     await editMessage(editingMessageId.value, editingMessageText.value.trim());
     cancelEdit();
-  } catch (error) {
-    console.error('Failed to edit message:', error);
+  } catch (e: unknown) {
+    console.error('Failed to edit message:', e);
     addMessageStore('info', 'Failed to edit message');
   }
 }
@@ -332,8 +314,8 @@ async function confirmDismiss() {
   try {
     await dismissMessage(deletingMessageId.value);
     cancelDismiss();
-  } catch (error) {
-    console.error('Failed to dismiss message:', error);
+  } catch (e: unknown) {
+    console.error('Failed to dismiss message:', e);
     addMessageStore('info', 'Failed to dismiss message');
   }
 }
@@ -342,7 +324,7 @@ async function confirmDismiss() {
 const currentStationId = ref('');
 
 // Check if a message can be edited/dismissed (only from current station or any for dismiss)
-function canDismissMessage(message: any): boolean {
+function canDismissMessage(_message: Message): boolean {
   // Any message can be dismissed locally
   return true;
 }
@@ -354,24 +336,32 @@ function canEditMessage(message: Message): boolean {
 }
 
 // Handle network events
-function handleStationJoin(stationInfo: any) {
-  addMessageStore('network', `Station ${getStationDesignator(stationInfo.call_sign)} joined the network`);
+interface StationEventDetail { call_sign: string; }
+interface QsoEventDetail { stationCallsign: string; call: string; band: string; }
+interface BonusEventDetail { name: string; points: number; }
+
+function handleStationJoin(event: Event): void {
+  const e = event as CustomEvent<StationEventDetail>;
+  addMessageStore('network', `Station ${getStationDesignator(e.detail.call_sign)} joined the network`);
 }
 
-function handleStationLeave(stationInfo: any) {
-  addMessageStore('network', `Station ${getStationDesignator(stationInfo.call_sign)} left the network`);
+function handleStationLeave(event: Event): void {
+  const e = event as CustomEvent<StationEventDetail>;
+  addMessageStore('network', `Station ${getStationDesignator(e.detail.call_sign)} left the network`);
 }
 
-function handleQsoReceived(qso: any) {
-  addMessageStore('network', `New QSO from ${getStationDesignator(qso.stationCallsign)}: ${qso.call} on ${qso.band}`);
+function handleQsoReceived(event: Event): void {
+  const e = event as CustomEvent<QsoEventDetail>;
+  addMessageStore('network', `New QSO from ${getStationDesignator(e.detail.stationCallsign)}: ${e.detail.call} on ${e.detail.band}`);
 }
 
-function handleBonusEarned(bonus: any) {
-  addMessageStore('bonus', `Bonus earned: ${bonus.name} (+${bonus.points} points)`);
+function handleBonusEarned(event: Event): void {
+  const e = event as CustomEvent<BonusEventDetail>;
+  addMessageStore('bonus', `Bonus earned: ${e.detail.name} (+${e.detail.points} points)`);
 }
 
-function handleNewSection(event: any) {
-  const section = typeof event === 'string' ? event : (event.detail || 'Unknown');
+function handleNewSection(event: Event): void {
+  const section = (event as CustomEvent<string>).detail || 'Unknown';
   addMessageStore('section', `New section worked: ${section}`);
 }
 
@@ -390,8 +380,8 @@ onMounted(async () => {
   try {
     const stationConfig = await fileStorage.getStationConfig();
     currentStationId.value = `${stationConfig.callsign}-${stationConfig.designator}`;
-  } catch (error) {
-    console.error('Failed to load station config:', error);
+  } catch (e: unknown) {
+    console.error('Failed to load station config:', e);
   }
   
   // Listen for network events
@@ -403,8 +393,11 @@ onMounted(async () => {
   window.addEventListener('newMultiplier', handleNewMultiplier);
   
   // Set up achievement system callback (if available)
-  if (typeof window !== 'undefined' && (window as any).achievementService) {
-    (window as any).achievementService.setMessageCallback(handleAchievementMessage);
+  const achievementWindow = window as Window & {
+    achievementService?: { setMessageCallback: (cb: ((type: string, message: string) => void) | null) => void };
+  };
+  if (typeof window !== 'undefined' && achievementWindow.achievementService) {
+    achievementWindow.achievementService.setMessageCallback(handleAchievementMessage);
   }
 });
 
@@ -418,8 +411,11 @@ onUnmounted(() => {
   window.removeEventListener('newMultiplier', handleNewMultiplier);
   
   // Clean up achievement system callback
-  if (typeof window !== 'undefined' && (window as any).achievementService) {
-    (window as any).achievementService.setMessageCallback(null);
+  const achievementWindow = window as Window & {
+    achievementService?: { setMessageCallback: (cb: ((type: string, message: string) => void) | null) => void };
+  };
+  if (typeof window !== 'undefined' && achievementWindow.achievementService) {
+    achievementWindow.achievementService.setMessageCallback(null);
   }
 });
 

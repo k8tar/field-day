@@ -149,7 +149,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch, nextTick, onMounted } from 'vue';
-import { QSO } from '@/store/qso';
+import type { QSO } from '@/store/qso';
 
 interface Props {
   isOpen: boolean;
@@ -448,7 +448,6 @@ function drawHourlyChart() {
     if (props.qsos.length === 0) return;
     
     // Group QSOs by hour for the last 24 hours or available data
-    const now = new Date();
     const hourlyData = new Array(24).fill(0);
     
     props.qsos.forEach(qso => {

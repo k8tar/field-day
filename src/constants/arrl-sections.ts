@@ -99,12 +99,12 @@ export function getLoggedSectionsCount(workedSections: string[]): number {
 }
 
 // Utility function for checking which sections are logged from a list
-export function getLoggedCount(sections: string[], qsos: any[]): number {
+export function getLoggedCount(sections: string[], qsos: { section: string }[]): number {
   return sections.filter(section => qsos.some(qso => qso.section === section)).length;
 }
 
 // Utility function for checking if a section is logged
-export function isLogged(section: string, qsos: any[]): boolean {
+export function isLogged(section: string, qsos: { section: string }[]): boolean {
   return qsos.some(qso => qso.section === section);
 }
 

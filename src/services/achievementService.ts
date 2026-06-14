@@ -141,8 +141,6 @@ class AchievementService {
     const currentBonusCount = completedBonuses.length;
 
     if (currentBonusCount > this.lastBonusCount) {
-      const newBonuses = currentBonusCount - this.lastBonusCount;
-      
       // Find newly completed bonuses
       const recentBonus = completedBonuses[completedBonuses.length - 1];
       if (recentBonus) {
@@ -213,7 +211,7 @@ class AchievementService {
     try {
       const config = await fileStorage.getStationConfig();
       return config.designator || 'STATION';
-    } catch (error) {
+    } catch (e: unknown) {
       return 'STATION';
     }
   }

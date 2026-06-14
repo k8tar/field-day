@@ -1,14 +1,16 @@
 import { ref, watch } from 'vue';
 
 // Check if fileStorage is available (only in browser with app loaded)
-declare global {
-  interface Window {
-    fileStorage?: any;
-  }
+interface FileStorageApi {
+  getSettings(): Promise<{ theme?: string; band?: string; operator?: string; mode?: string }>;
+  saveSettings(settings: Record<string, unknown>): Promise<void>;
 }
 
-// Initialize theme preference
-const darkModePreference = false;
+declare global {
+  interface Window {
+    fileStorage?: FileStorageApi;
+  }
+}
 
 // Function to safely check theme storage
 async function getInitialTheme(): Promise<boolean> {
@@ -22,8 +24,8 @@ async function getInitialTheme(): Promise<boolean> {
         return settings.theme === 'dark';
       }
     }
-  } catch (error) {
-    console.warn('Failed to load theme from file storage:', error);
+  } catch (e: unknown) {
+    console.warn('Failed to load theme from file storage:', e);
   }
   
   // Fall back to system preference if no stored preference
@@ -44,8 +46,8 @@ async function saveTheme(isDarkMode: boolean): Promise<void> {
         theme: isDarkMode ? 'dark' : 'light'
       });
     }
-  } catch (error) {
-    console.error('Failed to save theme to file storage:', error);
+  } catch (e: unknown) {
+    console.error('Failed to save theme to file storage:', e);
   }
 }
 

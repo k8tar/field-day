@@ -25,7 +25,7 @@ export class NodeStationInfoService {
   /**
    * Get station info for Node.js environments (like Vite config)
    */
-  static async getStationInfo(port: number, dataDir: string, qsoData: any[] = []): Promise<StationInfoResponse> {
+  static async getStationInfo(port: number, dataDir: string, qsoData: import('@/store/qso').QSO[] = []): Promise<StationInfoResponse> {
     try {
       // Read station config
       let stationConfig = { callsign: 'K8TAR', designator: '1A' };
@@ -35,8 +35,8 @@ export class NodeStationInfoService {
           const configData = readFileSync(configPath, 'utf8');
           stationConfig = JSON.parse(configData);
         }
-      } catch (error) {
-        console.warn(`⚠️ NodeStationInfoService: Failed to read station config for port ${port}:`, error);
+      } catch (e: unknown) {
+        console.warn(`⚠️ NodeStationInfoService: Failed to read station config for port ${port}:`, e);
       }
 
       // Get or generate network ID
@@ -58,13 +58,13 @@ export class NodeStationInfoService {
           
           writeFileSync(networkIdPath, networkId);
         }
-      } catch (error) {
-        console.warn(`⚠️ NodeStationInfoService: Failed to get network ID for port ${port}:`, error);
+      } catch (e: unknown) {
+        console.warn(`⚠️ NodeStationInfoService: Failed to get network ID for port ${port}:`, e);
       }
 
       // Calculate score
-      const score = Array.isArray(qsoData) ? qsoData.reduce((sum: number, qso: any) => {
-        const mode = qso?.mode || qso?.MODE || '';
+      const score = Array.isArray(qsoData) ? qsoData.reduce((sum: number, qso: import('@/store/qso').QSO) => {
+        const mode = qso?.mode || '';
         return sum + ((mode === 'CW' || mode === 'DIG' || mode === 'DIGITAL') ? 2 : 1);
       }, 0) : 0;
 
@@ -82,8 +82,8 @@ export class NodeStationInfoService {
       };
 
       return stationInfo;
-    } catch (error) {
-      console.error(`❌ NodeStationInfoService: Error getting station info for port ${port}:`, error);
+    } catch (e: unknown) {
+      console.error(`❌ NodeStationInfoService: Error getting station info for port ${port}:`, e);
       
       return {
         callsign: 'ERROR',

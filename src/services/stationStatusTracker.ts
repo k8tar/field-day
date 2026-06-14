@@ -102,10 +102,10 @@ class StationStatusTracker {
         }
       }));
 
-    } catch (error) {
+    } catch (e: unknown) {
       // Only log errors occasionally to avoid spam
       if (Math.random() < 0.05) { // 5% chance
-        console.error('⚠️ Station status update failed:', error);
+        console.error('⚠️ Station status update failed:', e);
       }
     }
   }

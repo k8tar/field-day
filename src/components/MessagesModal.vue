@@ -48,15 +48,13 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch, onMounted, onUnmounted } from 'vue';
+import { ref, watch } from 'vue';
 import { 
   messages as storeMessages,
   allMessages as storeAllMessages,
   sendMessage as sendMessageStore,
-  addMessage as addMessageStore,
   refreshMessagesFromBackend
 } from '@/store/message';
-import { fileStorage } from '@/services/fileStorage';
 
 interface Message {
   id: string;
@@ -76,11 +74,11 @@ defineEmits<{
 }>();
 
 // Use global message store instead of local state
-const messages = computed(() => storeMessages.value);
-const newMessage = ref('');
+const messages = storeMessages;
+const newMessage = ref<string>('');
 
 // Get all messages in reverse chronological order (newest first)
-const allMessagesReversed = computed(() => storeAllMessages.value);
+const allMessagesReversed = storeAllMessages;
 
 // Get icon for a specific message type
 function getIconForType(type: Message['type']): string {
@@ -129,19 +127,10 @@ async function sendMessage() {
   try {
     await sendMessageStore(newMessage.value.trim());
     newMessage.value = '';
-  } catch (error) {
-    console.error('Failed to send message:', error);
+  } catch (e: unknown) {
+    console.error('Failed to send message:', e);
   }
 }
-
-onMounted(async () => {
-  // The global message store handles loading and refreshing automatically
-  // No need for local message management
-});
-
-onUnmounted(() => {
-  // Global store handles cleanup
-});
 
 // Refresh messages when modal opens
 watch(() => props.isOpen, async (isOpen) => {

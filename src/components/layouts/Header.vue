@@ -18,7 +18,7 @@
         <!-- Mode Selection -->
         <div class="control-group">
           <label>Mode:</label>
-          <select v-model="currentMode" @change="updateMode">
+          <select v-model="storeMode" @change="updateMode">
             <option value="PH">PH</option>
             <option value="CW">CW</option>
             <option value="DIG">DIG</option>
@@ -28,7 +28,7 @@
         <!-- Band Selection -->
         <div class="control-group">
           <label>Band:</label>
-          <select v-model="selectedBand" @change="updateBand">
+          <select v-model="storeBand" @change="updateBand">
             <option value="">Select Band</option>
             <option v-for="band in bands" :key="band" :value="band">{{ band }}</option>
           </select>
@@ -37,7 +37,7 @@
         <!-- Operator Selection -->
         <div class="control-group">
           <label>Operator:</label>
-          <select v-model="selectedOperator" @change="updateOperator">
+          <select v-model="storeOperator" @change="updateOperator">
             <option v-for="operator in operators" :key="operator" :value="operator">{{ operator }}</option>
           </select>
         </div>
@@ -87,79 +87,61 @@ import { ref, onMounted, onBeforeUnmount, watch, computed } from 'vue';
 import { band as storeBand, operator as storeOperator, mode as storeMode } from '@/store/qso';
 import { debugLog } from '@/utils/debug';
 import { isDark, toggleTheme } from '@/store/theme';
-import { FIELD_DAY_BANDS, FIELD_DAY_MODES } from '@/constants/arrl-sections';
+import { FIELD_DAY_BANDS } from '@/constants/arrl-sections';
 import ConfigModal from '@/components/ConfigModal.vue';
 import NetworkModal from '@/components/NetworkModal.vue';
 import DocsModal from '@/components/DocsModal.vue';
 import { fileStorage } from '@/services/fileStorage';
-import { backendApi, type BackendStation } from '@/services/backendApiService';
+import { backendApi } from '@/services/backendApiService';
+import type { BackendStation } from '@/models/api/station';
 import { stationStatusService } from '@/services/stationStatusService';
-import { backgroundNetworkService, meshConnectionState } from '@/services/backgroundNetworkService';
+import { meshConnectionState } from '@/services/backgroundNetworkService';
 
 // Station designator
-const stationDesignator = ref('');
+const stationDesignator = ref<string>('');
 
 // Logo source based on theme - use relative paths for Electron compatibility
-const logoSrc = computed(() => {
+const logoSrc = computed<string>(() => {
   return isDark.value 
     ? 'k8tar-header-logo-dark.svg' 
     : 'k8tar-header-logo.svg';
 });
 
 // Mode selection
-const currentMode = ref(storeMode.value || 'PH');
-const emit = defineEmits(['update:mode']);
+const emit = defineEmits<{ 'update:mode': [value: string] }>();
 
-function updateMode() {
-  storeMode.value = currentMode.value;
-  emit('update:mode', currentMode.value);
+function updateMode(): void {
+  emit('update:mode', storeMode.value);
 }
-
-// Watch for changes to the mode store
-watch(storeMode, (val) => {
-  currentMode.value = val;
-});
 
 // Band selection
 const bands = FIELD_DAY_BANDS;
-const selectedBand = ref(storeBand.value || '40m');
 
-function updateBand() {
-  storeBand.value = selectedBand.value;
+function updateBand(): void {
+  // storeMode already updated via v-model; hook for future side effects
 }
-
-// Watch for changes to the band store
-watch(storeBand, (val) => {
-  selectedBand.value = val;
-});
 
 // Operator selection
 const operators = ref<string[]>(['K8TAR']);
-const selectedOperator = ref(storeOperator.value || operators.value[0] || '');
 
-function updateOperator() {
-  storeOperator.value = selectedOperator.value;
+function updateOperator(): void {
+  // storeOperator already updated via v-model; hook for future side effects
 }
 
-// Watch for changes to the operator store
-watch(storeOperator, (val) => {
-  selectedOperator.value = val;
-});
-
 // Load operators from file storage
-async function loadOperators() {
+async function loadOperators(): Promise<void> {
   try {
     const savedOperators = await fileStorage.getOperators();
     if (savedOperators && savedOperators.length > 0) {
       operators.value = savedOperators;
       // Update selected operator if it's not in the new list
-      if (!operators.value.includes(selectedOperator.value)) {
-        selectedOperator.value = operators.value[0];
-        updateOperator();
+      if (!operators.value.includes(storeOperator.value)) {
+        storeOperator.value = operators.value[0];
       }
     }
-  } catch (error) {
-    console.error('Error loading operators:', error);
+  } catch (e: unknown) {
+    const err = e instanceof Error ? e : new Error(String(e));
+    console.error('Error loading operators:', err.message);
   }
 }
 
@@ -168,8 +150,8 @@ async function loadStationInfo() {
   try {
     const config = await fileStorage.getStationConfig();
     stationDesignator.value = config.designator || '';
-  } catch (error) {
-    console.error('Error loading station info:', error);
+  } catch (e: unknown) {
+    console.error('Error loading station info:', e);
   }
 }
 
@@ -179,8 +161,8 @@ function handleThemeToggle() {
 }
 
 // Configuration modal
-const configOpen = ref(false);
-const isFirstTime = ref(false);
+const configOpen = ref<boolean>(false);
+const isFirstTime = ref<boolean>(false);
 
 function openConfigModal() {
   configOpen.value = true;
@@ -195,12 +177,11 @@ function handleConfigClose() {
 }
 
 // Network modal and status
-const networkModalOpen = ref(false);
-const networkConnected = computed(() => backendApi.connected.value);
+const networkModalOpen = ref<boolean>(false);
 
 // Mesh connection state with forced reactivity
-const meshConnectionStateReactive = ref(meshConnectionState.isConnected);
-const isMeshConnected = computed(() => meshConnectionStateReactive.value);
+const meshConnectionStateReactive = ref<boolean>(meshConnectionState.isConnected);
+const isMeshConnected = meshConnectionStateReactive;
 
 // Watch for changes to the singleton state and update our reactive ref
 const updateMeshState = () => {
@@ -213,16 +194,16 @@ meshConnectionState.onConnectionChange(updateMeshState);
 const discoveredStations = ref<BackendStation[]>([]);
 
 // Enhanced station status using the station status service
-const connectedStationCount = computed(() => {
+const connectedStationCount = computed<number>(() => {
   return stationStatusService.getConnectedCount();
 });
 
-const totalDiscoveredCount = computed(() => {
+const totalDiscoveredCount = computed<number>(() => {
   return stationStatusService.getTotalDiscoveredCount();
 });
 
 // Network status for icon coloring: red if backend disconnected, gray if mesh disabled, green if connected to stations
-const networkStatus = computed(() => {
+const networkStatus = computed<string>(() => {
   // Backend connection is required for any network functionality
   if (!backendApi.connected.value) {
     return 'disconnected'; // Red - backend not available
@@ -270,8 +251,8 @@ async function loadDiscoveredStations() {
       stationStatusService.updateMissedStations(seenStationIds);
       
       debugLog(`📡 Header updated station status: ${stationStatusService.getConnectedCount()} connected, ${stationStatusService.getTotalDiscoveredCount()} total discovered`);
-    } catch (error) {
-      console.error('Error loading discovered stations:', error);
+    } catch (e: unknown) {
+      console.error('Error loading discovered stations:', e);
       discoveredStations.value = [];
     }
   } else {
@@ -319,7 +300,7 @@ function getNetworkStatusTitle(): string {
 }
 
 // Documentation modal
-const docsModalOpen = ref(false);
+const docsModalOpen = ref<boolean>(false);
 
 function openDocsModal() {
   docsModalOpen.value = true;
@@ -358,8 +339,8 @@ async function checkFirstTimeSetup() {
       isFirstTime.value = true;
       configOpen.value = true;
     }
-  } catch (error) {
-    console.error('Failed to check first-time setup:', error);
+  } catch (e: unknown) {
+    console.error('Failed to check first-time setup:', e);
     // If we can't check, assume first-time setup
     isFirstTime.value = true;
     configOpen.value = true;
@@ -375,7 +356,7 @@ function handleKeydown(event: KeyboardEvent) {
 }
 
 // Store interval reference at top level for cleanup
-let stationRefreshInterval: any = null;
+let stationRefreshInterval: ReturnType<typeof setInterval> | null = null;
 
 onMounted(async () => {
   // Load operators and station info
@@ -392,9 +373,6 @@ onMounted(async () => {
       await loadDiscoveredStations();
     }
   }, 5000); // Refresh every 5 seconds for real-time status updates
-  
-  // Store interval for cleanup
-  (window as any).headerStationRefreshInterval = stationRefreshInterval;
 });
 
 // Clean up interval and listeners on unmount

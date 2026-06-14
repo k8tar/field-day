@@ -4,7 +4,7 @@
 
 export type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
-import { debugLog, debugWarn } from '@/utils/debug';
+import { debugError, debugLog, debugWarn } from '@/utils/debug';
 
 export class Logger {
   private static instance: Logger;
@@ -26,31 +26,31 @@ export class Logger {
     return levels.indexOf(level) >= levels.indexOf(this.logLevel);
   }
 
-  debug(message: string, ...args: any[]): void {
+  debug(message: string, ...args: unknown[]): void {
     if (this.shouldLog('debug')) {
       debugLog(`🔍 ${message}`, ...args);
     }
   }
 
-  info(message: string, ...args: any[]): void {
+  info(message: string, ...args: unknown[]): void {
     if (this.shouldLog('info')) {
       debugLog(`ℹ️ ${message}`, ...args);
     }
   }
 
-  warn(message: string, ...args: any[]): void {
+  warn(message: string, ...args: unknown[]): void {
     if (this.shouldLog('warn')) {
       debugWarn(`⚠️ ${message}`, ...args);
     }
   }
 
-  error(message: string, error?: any, ...args: any[]): void {
+  error(message: string, error?: unknown, ...args: unknown[]): void {
     if (this.shouldLog('error')) {
-      console.error(`❌ ${message}`, error, ...args);
+      debugError(`❌ ${message}`, error, ...args);
     }
   }
 
-  success(message: string, ...args: any[]): void {
+  success(message: string, ...args: unknown[]): void {
     if (this.shouldLog('info')) {
       debugLog(`✅ ${message}`, ...args);
     }
@@ -74,8 +74,8 @@ export class ErrorHandler {
   ): Promise<T | undefined> {
     try {
       return await operation();
-    } catch (error) {
-      logger.error(`Failed to ${context}`, error);
+    } catch (e: unknown) {
+      logger.error(`Failed to ${context}`, e);
       return fallback;
     }
   }
@@ -90,8 +90,8 @@ export class ErrorHandler {
   ): T | undefined {
     try {
       return operation();
-    } catch (error) {
-      logger.error(`Failed to ${context}`, error);
+    } catch (e: unknown) {
+      logger.error(`Failed to ${context}`, e);
       return fallback;
     }
   }

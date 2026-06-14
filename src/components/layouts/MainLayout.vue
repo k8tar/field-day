@@ -52,17 +52,16 @@ import QsoEntryForm from '@/components/QsoEntryForm.vue';
 import PossibleDuplicates from '@/components/PossibleDuplicates.vue';
 import Messages from '@/components/Messages.vue';
 import StationInfo from '@/components/StationInfo.vue';
-import ConfigModal from '@/components/ConfigModal.vue';
 import SectionProgress from '@/components/SectionProgress.vue';
 import SectionMapModal from '@/components/SectionMapModal.vue';
 
 import { ref, watch } from 'vue';
 import { qsos, band as storeBand, mode as storeMode } from '@/store/qso';
 
-const call = ref('');
+const call = ref<string>('');
 const bandVal = ref(storeBand.value || '');
 const modeVal = ref(storeMode.value || 'PH');
-const showSectionMap = ref(false);
+const showSectionMap = ref<boolean>(false);
 
 // Watch for store changes and update local refs
 watch(storeBand, (newBand) => {

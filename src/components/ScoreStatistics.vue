@@ -82,13 +82,13 @@ import BonusModal from './BonusModal.vue';
 import StatisticsModal from './StatisticsModal.vue';
 
 // Modal state
-const showBonusModal = ref(false);
-const statsModalOpen = ref(false);
+const showBonusModal = ref<boolean>(false);
+const statsModalOpen = ref<boolean>(false);
 
 // QSO counts by mode
-const cwCount = computed(() => qsos.value.filter(q => q.mode === 'CW').length);
-const phCount = computed(() => qsos.value.filter(q => q.mode === 'PH').length);
-const digCount = computed(() => qsos.value.filter(q => q.mode === 'DIG').length);
+const cwCount = computed<number>(() => qsos.value.filter(q => q.mode === 'CW').length);
+const phCount = computed<number>(() => qsos.value.filter(q => q.mode === 'PH').length);
+const digCount = computed<number>(() => qsos.value.filter(q => q.mode === 'DIG').length);
 
 // QSO points calculation
 const qsoPointsByMode = computed(() => getQsoPointsByMode());

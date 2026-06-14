@@ -28,7 +28,7 @@ export class StationInfoService {
   /**
    * Get complete station information
    */
-  static async getStationInfo(includePort: boolean = false): Promise<StationInfoResponse> {
+  static async getStationInfo(includePort = false): Promise<StationInfoResponse> {
     try {
       
       // Get station configuration
@@ -46,9 +46,9 @@ export class StationInfoService {
       const stationInfo: StationInfoResponse = {
         callsign: stationConfig.callsign,
         designator: stationConfig.designator,
-        networkId: networkId,
+        networkId,
         qsoCount: qsos.length,
-        score: score,
+        score,
         software: this.SOFTWARE_NAME,
         version: this.VERSION,
         timestamp: Date.now(),
@@ -62,8 +62,8 @@ export class StationInfoService {
 
       
       return stationInfo;
-    } catch (error) {
-      console.error('❌ StationInfoService: Error getting station info:', error);
+    } catch (e: unknown) {
+      console.error('❌ StationInfoService: Error getting station info:', e);
       return this.getFallbackStationInfo(includePort);
     }
   }
@@ -78,8 +78,8 @@ export class StationInfoService {
         callsign: config.callsign || 'K8TAR',
         designator: config.designator || '1A'
       };
-    } catch (error) {
-      console.warn('⚠️ StationInfoService: Failed to get station config, using fallback:', error);
+    } catch (e: unknown) {
+      console.warn('⚠️ StationInfoService: Failed to get station config, using fallback:', e);
       return {
         callsign: 'K8TAR',
         designator: '1A'
@@ -100,8 +100,8 @@ export class StationInfoService {
       // Get from file storage
       this.networkIdCache = await fileStorage.getNetworkId();
       return this.networkIdCache;
-    } catch (error) {
-      console.warn('⚠️ StationInfoService: Failed to get network ID, generating fallback:', error);
+    } catch (e: unknown) {
+      console.warn('⚠️ StationInfoService: Failed to get network ID, generating fallback:', e);
       
       // Generate fallback ID
       const timestamp = Date.now().toString(36);
@@ -115,12 +115,12 @@ export class StationInfoService {
   /**
    * Get QSO data with error handling
    */
-  private static async getQsoData(): Promise<any[]> {
+  private static async getQsoData(): Promise<import('@/store/qso').QSO[]> {
     try {
       const qsos = await fileStorage.getQsoData();
-      return Array.isArray(qsos) ? qsos : [];
-    } catch (error) {
-      console.warn('⚠️ StationInfoService: Failed to get QSO data:', error);
+      return Array.isArray(qsos) ? qsos as import('@/store/qso').QSO[] : [];
+    } catch (e: unknown) {
+      console.warn('⚠️ StationInfoService: Failed to get QSO data:', e);
       return [];
     }
   }
@@ -128,24 +128,24 @@ export class StationInfoService {
   /**
    * Calculate total score from QSOs
    */
-  private static calculateScore(qsos: any[]): number {
+  private static calculateScore(qsos: import('@/store/qso').QSO[]): number {
     try {
       if (!Array.isArray(qsos)) {
         return 0;
       }
 
-      return qsos.reduce((total: number, qso: any) => {
+      return qsos.reduce((total: number, qso: import('@/store/qso').QSO) => {
         if (!qso || typeof qso !== 'object') {
           return total;
         }
 
         // Calculate points based on mode (CW/Digital = 2 points, Phone = 1 point)
-        const mode = qso.mode || qso.MODE || '';
+        const mode = qso.mode || '';
         const points = (mode === 'CW' || mode === 'DIG' || mode === 'DIGITAL') ? 2 : 1;
         return total + points;
       }, 0);
-    } catch (error) {
-      console.warn('⚠️ StationInfoService: Error calculating score:', error);
+    } catch (e: unknown) {
+      console.warn('⚠️ StationInfoService: Error calculating score:', e);
       return 0;
     }
   }
@@ -153,7 +153,7 @@ export class StationInfoService {
   /**
    * Fallback station info for error cases
    */
-  private static getFallbackStationInfo(includePort: boolean = false): StationInfoResponse {
+  private static getFallbackStationInfo(includePort = false): StationInfoResponse {
     const fallbackInfo: StationInfoResponse = {
       callsign: 'UNKNOWN',
       designator: '1A',
@@ -183,11 +183,15 @@ export class StationInfoService {
   /**
    * Validate station info response has all required fields
    */
-  static validateStationInfo(stationInfo: any): boolean {
+  static validateStationInfo(stationInfo: unknown): boolean {
     const requiredFields = ['callsign', 'designator', 'networkId', 'software', 'qsoCount', 'score', 'timestamp', 'online'];
+    if (typeof stationInfo !== 'object' || stationInfo === null) {
+      return false;
+    }
+    const info = stationInfo as Record<string, unknown>;
     
     for (const field of requiredFields) {
-      if (stationInfo[field] === undefined || stationInfo[field] === null) {
+      if (info[field] === undefined || info[field] === null) {
         console.error(`❌ StationInfoService: Missing required field: ${field}`);
         return false;
       }
@@ -199,5 +203,6 @@ export class StationInfoService {
 
 // Export for global debugging
 if (typeof window !== 'undefined') {
-  (window as any).StationInfoService = StationInfoService;
+  const debugWindow = window as Window & { StationInfoService?: typeof StationInfoService };
+  debugWindow.StationInfoService = StationInfoService;
 }
