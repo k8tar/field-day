@@ -61,7 +61,7 @@
     "electron": "^41.7.1",
     "electron-builder": "^26.15.3",
     "esbuild": "^0.28.1",
-    "eslint": "^8.57.1",
+    "eslint": "^10.5.0",
     "eslint-plugin-vue": "^9.33.0",
     "oxlint": "^1.63.0",
     "oxlint-tsgolint": "^0.22.1",
