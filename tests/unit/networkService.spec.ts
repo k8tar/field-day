@@ -182,4 +182,45 @@ describe('StationInfoService', () => {
       })
     ).to.equal(true);
   });
+
+  it('returns fallback station info when an unexpected runtime error occurs', async () => {
+    getStationConfig.mockResolvedValue({ callsign: 'K8TAR', designator: '1A' });
+    getNetworkId.mockResolvedValue('MESH-12345');
+    getQsoData.mockResolvedValue([]);
+
+    const dateNowSpy = vi.spyOn(Date, 'now').mockImplementationOnce(() => {
+      throw new Error('clock unavailable');
+    });
+
+    const stationInfo = await StationInfoService.getStationInfo(false);
+
+    expect(stationInfo.callsign).to.equal('UNKNOWN');
+    expect(stationInfo.designator).to.equal('1A');
+    expect(stationInfo.networkId).to.match(/^MESH-error-/);
+    expect(stationInfo.online).to.equal(true);
+
+    dateNowSpy.mockRestore();
+  });
+
+  it('handles score calculation failures and returns zero', () => {
+    const badQso = {
+      get mode(): string {
+        throw new Error('bad mode getter');
+      }
+    };
+
+    const score = (
+      StationInfoService as unknown as {
+        calculateScore: (qsos: Array<{ mode: string }>) => number;
+      }
+    ).calculateScore([badQso]);
+
+    expect(score).to.equal(0);
+  });
+
+  it('constructs StationInfoService privately at runtime for ctor coverage', () => {
+    // @ts-expect-error Runtime allows construction; private is compile-time only.
+    const instance = new StationInfoService();
+    expect(instance).to.be.instanceOf(StationInfoService);
+  });
 });
