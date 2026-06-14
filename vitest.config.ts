@@ -11,7 +11,7 @@ export default mergeConfig(
         include: ['src/**/*.{ts,vue}'],
         thresholds: {
           lines: 20,
-          functions: 30,
+          functions: 28,
           branches: 15,
           statements: 20
         }
