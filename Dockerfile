@@ -15,7 +15,7 @@ COPY backend-service/src ./src
 RUN cargo build --release
 
 # Stage 2: Build Vue.js frontend
-FROM node:20-alpine AS frontend-builder
+FROM node:22.12-alpine AS frontend-builder
 
 WORKDIR /app
 
@@ -28,9 +28,12 @@ COPY package*.json ./
 ENV PUPPETEER_SKIP_DOWNLOAD=true
 ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
 ENV ELECTRON_SKIP_BINARY_DOWNLOAD=1
-RUN npm config set fetch-timeout 120000 && \
+RUN npm config set fetch-retries 5 && \
+    npm config set fetch-retry-mintimeout 20000 && \
+    npm config set fetch-retry-maxtimeout 120000 && \
+    npm config set fetch-timeout 120000 && \
     npm config set registry https://registry.npmjs.org/ && \
-    npm install --no-audit --no-fund
+    npm ci --no-audit --no-fund
 
 COPY . .
 
@@ -41,7 +44,7 @@ RUN rm -rf dist/ dist-electron/ node_modules/.vite
 RUN npm run build
 
 # Stage 3: Runtime image
-FROM node:20-alpine
+FROM node:22.12-alpine
 
 WORKDIR /app
 
