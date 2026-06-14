@@ -65,15 +65,16 @@ let backendProcess = null;
 let isBackendStarting = false;
 
 function resolveWindowIconPath() {
-  const devCandidates = [
-    path.join(__dirname, 'public', 'app-icon.ico'),
-    path.join(__dirname, 'public', 'icon.ico')
-  ];
+  const iconFiles = process.platform === 'linux'
+    ? ['app-icon.png', 'app-icon.ico', 'icon.ico']
+    : ['app-icon.ico', 'icon.ico', 'app-icon.png'];
+
+  const devCandidates = iconFiles.map((iconFile) =>
+    path.join(__dirname, 'public', iconFile)
+  );
   const packagedCandidates = [
-    path.join(process.resourcesPath, 'public', 'app-icon.ico'),
-    path.join(process.resourcesPath, 'public', 'icon.ico'),
-    path.join(process.resourcesPath, 'app.asar.unpacked', 'public', 'app-icon.ico'),
-    path.join(process.resourcesPath, 'app.asar.unpacked', 'public', 'icon.ico')
+    ...iconFiles.map((iconFile) => path.join(process.resourcesPath, 'public', iconFile)),
+    ...iconFiles.map((iconFile) => path.join(process.resourcesPath, 'app.asar.unpacked', 'public', iconFile))
   ];
 
   const candidates = app.isPackaged ? packagedCandidates : devCandidates;

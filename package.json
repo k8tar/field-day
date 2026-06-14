@@ -2,7 +2,6 @@
   "name": "k8tar-fieldday",
   "version": "1.1.0",
   "description": "Field Day Logger - ARRL Field Day Logging Application",
-  "desktopName": "k8tar-fieldday",
   "private": true,
   "type": "module",
   "main": "electron-main.js",
