@@ -1274,11 +1274,17 @@ function cancelImport() {
 /* Reset Log Section */
 .reset-log-section {
   flex: 0 0 280px; /* Increased width for two buttons */
-  margin-left: auto; /* Push to the right */
+  margin-left: 0;
+  margin-top: 0.5rem;
   padding: 1rem;
   border: 2px solid #e74c3c;
   border-radius: 8px;
   background-color: rgba(231, 76, 60, 0.1);
+  max-width: 420px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
   
   h4 {
     margin: 0 0 1rem 0;
@@ -1288,12 +1294,25 @@ function cancelImport() {
   }
 }
 
+.reset-log-section .config-option {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.35rem;
+}
+
+.reset-log-section .config-option small {
+  margin-top: 0;
+}
+
 .reset-log-button {
   @extend .btn;
   background-color: #e74c3c;
   color: white;
   border-color: #e74c3c;
-  width: 100%;
+  width: auto;
+  min-width: 170px;
+  padding: 0.55rem 0.9rem;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1316,12 +1335,14 @@ function cancelImport() {
   background-color: #ff9800;
   color: white;
   border-color: #ff9800;
-  width: 100%;
+  width: auto;
+  min-width: 170px;
+  padding: 0.55rem 0.9rem;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
-  margin-top: 0.5rem;
+  margin-top: 0;
   
   &:hover:not(:disabled) {
     background-color: #f57c00;
@@ -1571,6 +1592,11 @@ function cancelImport() {
   
   .reset-log-section {
     flex: none;
+    width: 100%;
+  }
+
+  .reset-log-button,
+  .wipe-qsos-button {
     width: 100%;
   }
 }
