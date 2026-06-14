@@ -567,4 +567,151 @@ describe('MeshNetworkService', () => {
       protocol: 'http'
     })).resolves.toBeUndefined()
   })
+
+  it('starts peer discovery immediately and on interval ticks', async () => {
+    vi.useFakeTimers()
+
+    const service = internalService as unknown as {
+      startPeerDiscovery: () => void
+      discoverPeers: () => Promise<void>
+    }
+
+    const discoverSpy = vi.spyOn(service, 'discoverPeers').mockResolvedValue(undefined)
+
+    service.startPeerDiscovery()
+    expect(discoverSpy).toHaveBeenCalledTimes(1)
+
+    vi.runOnlyPendingTimers()
+    expect(discoverSpy).toHaveBeenCalledTimes(2)
+  })
+
+  it('runs heartbeat loop callbacks on interval', () => {
+    vi.useFakeTimers()
+
+    const service = internalService as unknown as {
+      startHeartbeat: () => void
+      sendHeartbeat: () => void
+      checkNodeTimeouts: () => void
+    }
+
+    const heartbeatSpy = vi.spyOn(service, 'sendHeartbeat').mockImplementation(() => undefined)
+    const timeoutSpy = vi.spyOn(service, 'checkNodeTimeouts').mockImplementation(() => undefined)
+
+    service.startHeartbeat()
+    vi.runOnlyPendingTimers()
+
+    expect(heartbeatSpy).toHaveBeenCalledTimes(1)
+    expect(timeoutSpy).toHaveBeenCalledTimes(1)
+  })
+
+  it('runs periodic sync loop on interval', async () => {
+    vi.useFakeTimers()
+
+    const service = internalService as unknown as {
+      startPeriodicSync: () => void
+      performMeshSync: () => Promise<void>
+    }
+
+    const syncSpy = vi.spyOn(service, 'performMeshSync').mockResolvedValue(undefined)
+
+    service.startPeriodicSync()
+    vi.runOnlyPendingTimers()
+
+    expect(syncSpy).toHaveBeenCalledTimes(1)
+  })
+
+  it('returns false when station connection check receives non-ok response', async () => {
+    const service = internalService as unknown as {
+      testStationConnection: (node: { ip: string; port: number; callsign: string; designator: string }) => Promise<boolean>
+    }
+
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: false,
+      status: 502,
+      json: async () => ({})
+    })))
+
+    const reachable = await service.testStationConnection({
+      ip: '192.168.1.80',
+      port: 3030,
+      callsign: 'N80',
+      designator: '1A'
+    })
+
+    expect(reachable).to.equal(false)
+  })
+
+  it('covers successful connectToNode branch and sync kickoff', async () => {
+    const connectedEvent = vi.fn()
+    meshService.on('mesh:node-connected', connectedEvent)
+
+    const service = internalService as unknown as {
+      connectToNode: (node: { id: string; callsign: string; ip: string; port: number; protocol: 'http' }) => Promise<boolean>
+      syncWithNode: (node: { id: string; callsign: string; ip: string; port: number; protocol: 'http' }) => Promise<void>
+      connections: Map<string, string>
+      status: { connectedNodes: number }
+    }
+
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ success: true })
+    })))
+
+    const syncSpy = vi.spyOn(service, 'syncWithNode').mockResolvedValue(undefined)
+
+    const node = {
+      id: 'node-success',
+      callsign: 'NS',
+      ip: '192.168.1.81',
+      port: 3030,
+      protocol: 'http' as const
+    }
+
+    const connected = await service.connectToNode(node)
+
+    expect(connected).to.equal(true)
+    expect(service.connections.get('node-success')).to.equal('http-api')
+    expect(service.status.connectedNodes).to.equal(service.connections.size)
+    expect(syncSpy).toHaveBeenCalledTimes(1)
+    expect(connectedEvent).toHaveBeenCalledTimes(1)
+  })
+
+  it('returns browser hostname when it is a valid private address', async () => {
+    const service = internalService as unknown as {
+      getLocalIP: () => Promise<string>
+    }
+
+    vi.stubGlobal('window', {
+      location: {
+        hostname: '192.168.1.200'
+      }
+    })
+
+    const ip = await service.getLocalIP()
+    expect(ip).to.equal('192.168.1.200')
+  })
+
+  it('falls back when WebRTC setup throws during local IP detection', async () => {
+    const service = internalService as unknown as {
+      getLocalIP: () => Promise<string>
+    }
+
+    vi.stubGlobal('window', {
+      location: {
+        hostname: 'localhost'
+      }
+    })
+
+    class ThrowingPeerConnection {
+      constructor() {
+        throw new Error('webrtc unavailable')
+      }
+    }
+
+    vi.stubGlobal('RTCPeerConnection', ThrowingPeerConnection)
+
+    const ip = await service.getLocalIP()
+    expect(ip).to.equal('192.168.1.100')
+  })
 })
