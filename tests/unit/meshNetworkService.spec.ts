@@ -1,12 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const logQsoMock = vi.fn().mockResolvedValue(undefined)
+const fileStorageMock = {
+  getNetworkId: vi.fn().mockResolvedValue('MESH-TEST-1'),
+  getQsoData: vi.fn().mockResolvedValue([])
+}
 
 vi.mock('@/services/fileStorage', () => ({
-  fileStorage: {
-    getNetworkId: vi.fn().mockResolvedValue('MESH-TEST-1'),
-    getQsoData: vi.fn().mockResolvedValue([])
-  }
+  fileStorage: fileStorageMock
 }))
 
 vi.mock('@/utils/debug', () => ({
@@ -47,6 +48,10 @@ describe('MeshNetworkService', () => {
 
   beforeEach(async () => {
     vi.resetModules()
+    fileStorageMock.getNetworkId.mockReset()
+    fileStorageMock.getQsoData.mockReset()
+    fileStorageMock.getNetworkId.mockResolvedValue('MESH-TEST-1')
+    fileStorageMock.getQsoData.mockResolvedValue([])
     vi.stubGlobal('WebSocket', class {})
     vi.stubGlobal('fetch', vi.fn(async () => ({
       ok: true,
@@ -424,5 +429,142 @@ describe('MeshNetworkService', () => {
     expect(isLocalhost('127.0.0.1')).to.equal(true)
     expect(isLocalhost('localhost')).to.equal(true)
     expect(isLocalhost('192.168.1.55')).to.equal(false)
+  })
+
+  it('falls back to generated node id when persistent id lookup fails', async () => {
+    fileStorageMock.getNetworkId.mockRejectedValueOnce(new Error('id unavailable'))
+
+    const service = internalService as unknown as {
+      generateNodeId: () => Promise<void>
+      status: { nodeId: string }
+    }
+
+    await service.generateNodeId()
+
+    expect(service.status.nodeId.startsWith('MESH-node-')).to.equal(true)
+  })
+
+  it('runs discovery branches for no-local-node, empty backend list, and backend errors', async () => {
+    const service = internalService as unknown as {
+      localNode: Record<string, unknown> | null
+      discoverPeers: () => Promise<void>
+      updateMeshHealth: () => void
+      getBackendDiscoveredStations: () => Promise<Array<Record<string, unknown>>>
+      processDiscoveredStation: (station: Record<string, unknown>) => Promise<void>
+    }
+
+    const updateHealthSpy = vi.spyOn(service, 'updateMeshHealth')
+
+    service.localNode = null
+    await service.discoverPeers()
+    expect(updateHealthSpy).not.toHaveBeenCalled()
+
+    service.localNode = { id: 'local' }
+    vi.spyOn(service, 'getBackendDiscoveredStations').mockResolvedValueOnce([])
+    await service.discoverPeers()
+    expect(updateHealthSpy).toHaveBeenCalled()
+
+    const processSpy = vi.spyOn(service, 'processDiscoveredStation').mockResolvedValue(undefined)
+    vi.spyOn(service, 'getBackendDiscoveredStations').mockResolvedValueOnce([{ id: 'n1' }])
+    await service.discoverPeers()
+    expect(processSpy).toHaveBeenCalledTimes(1)
+
+    vi.spyOn(service, 'getBackendDiscoveredStations').mockRejectedValueOnce(new Error('discovery failed'))
+    await service.discoverPeers()
+    expect(updateHealthSpy).toHaveBeenCalled()
+  })
+
+  it('covers connection test success metadata update and abort timeout branches', async () => {
+    const service = internalService as unknown as {
+      testStationConnection: (node: { ip: string; port: number; callsign: string; designator: string }) => Promise<boolean>
+    }
+
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        success: true,
+        data: {
+          call_sign: 'W1AW',
+          name: 'Station 1'
+        }
+      })
+    })))
+
+    const node = { ip: '192.168.1.50', port: 3030, callsign: 'OLD', designator: 'OLD' }
+    const ok = await service.testStationConnection(node)
+    expect(ok).to.equal(true)
+    expect(node.callsign).to.equal('W1AW')
+    expect(node.designator).to.equal('Station 1')
+
+    const abortError = Object.assign(new Error('aborted'), { name: 'AbortError' })
+    vi.stubGlobal('fetch', vi.fn(async () => {
+      throw abortError
+    }))
+    const timedOut = await service.testStationConnection(node)
+    expect(timedOut).to.equal(false)
+  })
+
+  it('covers connectToNode exception path and performMeshSync early return', async () => {
+    const failureEvent = vi.fn()
+    meshService.on('mesh:connection-failed', failureEvent)
+
+    const service = internalService as unknown as {
+      connectToNode: (node: { id: string; callsign: string; ip: string; port: number; protocol: 'http' }) => Promise<boolean>
+      performMeshSync: () => Promise<void>
+      meshActive: boolean
+      discoveredNodes: Map<string, unknown>
+      status: { lastSync: number }
+    }
+
+    vi.stubGlobal('fetch', vi.fn(async () => {
+      throw new Error('connect failed')
+    }))
+
+    const connected = await service.connectToNode({
+      id: 'node-error',
+      callsign: 'NERR',
+      ip: '192.168.1.60',
+      port: 3030,
+      protocol: 'http'
+    })
+
+    expect(connected).to.equal(false)
+    expect(failureEvent).toHaveBeenCalledTimes(1)
+
+    service.meshActive = false
+    service.discoveredNodes.clear()
+    const beforeSync = service.status.lastSync
+    await service.performMeshSync()
+    expect(service.status.lastSync).to.equal(beforeSync)
+  })
+
+  it('covers syncWithNode non-ok response and caught exception paths', async () => {
+    const service = internalService as unknown as {
+      syncWithNode: (node: { id: string; callsign: string; ip: string; port: number; protocol: 'http' }) => Promise<void>
+    }
+
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: false,
+      status: 500,
+      json: async () => ({})
+    })))
+
+    await expect(service.syncWithNode({
+      id: 'node-non-ok',
+      callsign: 'NNOK',
+      ip: '192.168.1.70',
+      port: 3030,
+      protocol: 'http'
+    })).resolves.toBeUndefined()
+
+    fileStorageMock.getQsoData.mockRejectedValueOnce(new Error('qso read failed'))
+    await expect(service.syncWithNode({
+      id: 'node-error',
+      callsign: 'NERR',
+      ip: '192.168.1.71',
+      port: 3030,
+      protocol: 'http'
+    })).resolves.toBeUndefined()
   })
 })
