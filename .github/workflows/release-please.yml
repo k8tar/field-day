@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Run Release Please
-        uses: googleapis/release-please-action@v4
+        uses: googleapis/release-please-action@v5
         with:
           target-branch: ${{ github.ref_name }}
           config-file: ${{ github.ref_name == 'develop' && '.github/release-please-config-beta.json' || '.github/release-please-config.json' }}
